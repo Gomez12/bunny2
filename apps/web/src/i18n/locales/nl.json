@@ -129,6 +129,34 @@
       "cannotResetOwnPassword": "Beheerders moeten hun eigen wachtwoord wijzigen via het accountmenu, niet via het admin reset-endpoint.",
       "notSeeded": "Beheerfuncties zijn nog niet beschikbaar — de initiële beheerseed is niet uitgevoerd.",
       "badRequest": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw."
+    },
+    "entity": {
+      "notFound": "Item niet gevonden.",
+      "notInLayer": "Item niet gevonden in deze laag.",
+      "slugTaken": "Een item met deze slug bestaat al in deze laag.",
+      "validation": "Het item kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
+      "translationFailed": "Vertaling kon niet worden gegenereerd. Probeer het opnieuw.",
+      "syncFailed": "Synchronisatie met het externe systeem is mislukt. Probeer het later opnieuw."
+    }
+  },
+  "entity": {
+    "common": {
+      "list": "Items",
+      "create": "Item maken",
+      "edit": "Item bewerken",
+      "delete": "Item verwijderen",
+      "restore": "Item herstellen",
+      "search": "Items zoeken",
+      "empty": "Nog geen items.",
+      "titleLabel": "Titel",
+      "slugLabel": "Slug",
+      "saving": "Bezig met opslaan…",
+      "saved": "Opgeslagen.",
+      "deleted": "Item verwijderd.",
+      "restored": "Item hersteld.",
+      "externalLinks": "Externe koppelingen",
+      "addExternalLink": "Extern systeem koppelen",
+      "removeExternalLink": "Koppeling verwijderen"
     }
   }
 }

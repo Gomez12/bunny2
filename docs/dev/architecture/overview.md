@@ -53,6 +53,7 @@ file; if you have an hour, follow the links.
 |    ├── Layer enrichment (c.var.effectiveLayers, 3.3)           |
 |    ├── Admin gate (/admin/*)                                   |
 |    ├── Layer scope (requireLayer on /layers/:slug, /l/:slug)   |
+|    ├── Entity contract (per-kind store + router, 4.0)          |
 |    ├── GET  /status   (public)                                 |
 |    ├── POST /chat     (auth-gated from 2.2)                    |
 |    └── GET  /me/layers, /layers, /system/locales (3.4)         |
@@ -213,6 +214,25 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
   decisions are pinned in
   [ADR 0009](../decisions/0009-layer-model.md) and
   [ADR 0010](../decisions/0010-layer-resolver-and-invalidation.md).
+- Entity contract foundation (from phase 4.0): the
+  `apps/server/src/entities/` module ships the universal
+  `EntityModule<Payload>` interface, the process-local registry, the
+  generic `EntityStore` factory (CRUD + summary listing + soft-delete
+  - restore + version bump on every write), the `mountEntityRoutes`
+    per-kind HTTP router factory (`/l/:slug/<kind>/*`), the `entity.*`
+    event taxonomy
+    (`entity.<kind>.{created,updated,deleted,restored}`,
+    `entity.translation.*`, `entity.connector.sync.*`), the per-kind
+    translator runner (source-version-driven re-translation), and the
+    `EntityConnector<Payload>` base with secret-scrubbing helpers. The
+    four shared cross-cutting tables (`entity_versions`,
+    `entity_translations`, `entity_external_links`, `entity_souls`)
+    live in
+    `apps/server/src/storage/migrations/0005_entities_base.sql`. No
+    concrete entity kind ships in 4.0 — per-kind code (companies,
+    contacts, calendar, todos) lands in 4a..4d. Full narrative in
+    [`entities.md`](./entities.md); the decision is pinned in
+    [ADR 0011](../decisions/0011-entity-contract.md).
 
 ### 2.7 Renderer
 

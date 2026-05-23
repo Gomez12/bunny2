@@ -105,7 +105,7 @@ Out of scope (deferred):
 
 ### 4.1 Sub-phases (delivery order — one tasklist row each)
 
-#### 4.0 — Entity contract foundation *(prerequisite for 4a..4d)*
+#### 4.0 — Entity contract foundation _(prerequisite for 4a..4d)_
 
 Goal: ship the universal `Entity`-contract + generic store +
 generic router + connector base + translator runner + contract
@@ -145,56 +145,56 @@ test suite. **No** concrete entity kind is added in 4.0.
 - **One commit.** Conventional commit:
   `feat(entities): introduce universal entity contract (phase 4.0)`.
 
-#### 4a — Companies *(PR block)*
+#### 4a — Companies _(PR block)_
 
-| Sub-phase | What ships | Commit subject |
-|---|---|---|
-| 4a.1 | Per-kind migration `0006_companies.sql`, `companyModule` registration, `packages/shared/src/companies.ts` zod payload | `feat(companies): schema + module (phase 4a.1)` |
-| 4a.2 | KvK connector (`apps/server/src/entities/companies/kvk-connector.ts`) on top of the §4.0 connector base; minimal config in the per-layer `attachments` slot | `feat(companies): kvk connector (phase 4a.2)` |
-| 4a.3 | AI-enrichment scheduled job (summary + fill-missing-fields); uses the system-default LLM with per-call override; 100% logged per `overall.md` §4 | `feat(companies): scheduled AI enrichment (phase 4a.3)` |
-| 4a.4 | `CompaniesWidget` registered in the dashboard widget registry from phase 3.5 | `feat(companies): dashboard widget (phase 4a.4)` |
-| 4a.5 | Web UI `/l/:slug/companies` (list, detail, edit) — generic CRUD shell + company-specific fields | `feat(companies): web UI (phase 4a.5)` |
-| 4a.6 | i18n keys `entity.companies.*`, `connectors.kvk.*`, tests, smoke uses Companies as the canonical "create-edit-delete-search" flow | `test(companies): smoke + i18n (phase 4a.6)` |
+| Sub-phase | What ships                                                                                                                                                  | Commit subject                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 4a.1      | Per-kind migration `0006_companies.sql`, `companyModule` registration, `packages/shared/src/companies.ts` zod payload                                       | `feat(companies): schema + module (phase 4a.1)`         |
+| 4a.2      | KvK connector (`apps/server/src/entities/companies/kvk-connector.ts`) on top of the §4.0 connector base; minimal config in the per-layer `attachments` slot | `feat(companies): kvk connector (phase 4a.2)`           |
+| 4a.3      | AI-enrichment scheduled job (summary + fill-missing-fields); uses the system-default LLM with per-call override; 100% logged per `overall.md` §4            | `feat(companies): scheduled AI enrichment (phase 4a.3)` |
+| 4a.4      | `CompaniesWidget` registered in the dashboard widget registry from phase 3.5                                                                                | `feat(companies): dashboard widget (phase 4a.4)`        |
+| 4a.5      | Web UI `/l/:slug/companies` (list, detail, edit) — generic CRUD shell + company-specific fields                                                             | `feat(companies): web UI (phase 4a.5)`                  |
+| 4a.6      | i18n keys `entity.companies.*`, `connectors.kvk.*`, tests, smoke uses Companies as the canonical "create-edit-delete-search" flow                           | `test(companies): smoke + i18n (phase 4a.6)`            |
 
 PR: `feat(companies): companies entity (phase 4a)`.
 
-#### 4b — Contacts *(PR block)*
+#### 4b — Contacts _(PR block)_
 
-| Sub-phase | What ships | Commit subject |
-|---|---|---|
-| 4b.1 | Migration `0007_contacts.sql`, `contactModule`, `packages/shared/src/contacts.ts` payload (name, emails[], phones[], links to `entity_id` company) | `feat(contacts): schema + module (phase 4b.1)` |
-| 4b.2 | vCard-import connector (parser + upload endpoint behind `/l/:slug/contacts/import-vcard`) | `feat(contacts): vcard import (phase 4b.2)` |
-| 4b.3 | AI enrichment: given a contact, propose a `companyId` link based on email domain + existing companies in the layer | `feat(contacts): enrichment (phase 4b.3)` |
-| 4b.4 | `ContactsWidget` | `feat(contacts): dashboard widget (phase 4b.4)` |
-| 4b.5 | UI `/l/:slug/contacts` | `feat(contacts): web UI (phase 4b.5)` |
-| 4b.6 | i18n + tests + smoke | `test(contacts): smoke + i18n (phase 4b.6)` |
+| Sub-phase | What ships                                                                                                                                         | Commit subject                                  |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 4b.1      | Migration `0007_contacts.sql`, `contactModule`, `packages/shared/src/contacts.ts` payload (name, emails[], phones[], links to `entity_id` company) | `feat(contacts): schema + module (phase 4b.1)`  |
+| 4b.2      | vCard-import connector (parser + upload endpoint behind `/l/:slug/contacts/import-vcard`)                                                          | `feat(contacts): vcard import (phase 4b.2)`     |
+| 4b.3      | AI enrichment: given a contact, propose a `companyId` link based on email domain + existing companies in the layer                                 | `feat(contacts): enrichment (phase 4b.3)`       |
+| 4b.4      | `ContactsWidget`                                                                                                                                   | `feat(contacts): dashboard widget (phase 4b.4)` |
+| 4b.5      | UI `/l/:slug/contacts`                                                                                                                             | `feat(contacts): web UI (phase 4b.5)`           |
+| 4b.6      | i18n + tests + smoke                                                                                                                               | `test(contacts): smoke + i18n (phase 4b.6)`     |
 
 PR: `feat(contacts): contacts entity (phase 4b)`.
 
-#### 4c — Calendar *(PR block)*
+#### 4c — Calendar _(PR block)_
 
-| Sub-phase | What ships | Commit subject |
-|---|---|---|
-| 4c.1 | Migration `0008_calendar.sql`, `calendarEventModule`, `packages/shared/src/calendar.ts` payload (start, end, all_day, location, attendees[], rrule_string for v1 — opaque string, no expansion) | `feat(calendar): schema + module (phase 4c.1)` |
-| 4c.2 | Google Calendar connector (OAuth tokens stored encrypted in `entity_external_links.payload_json`; poll every N minutes) | `feat(calendar): google connector (phase 4c.2)` |
-| 4c.3 | AI enrichment: meeting summary + attendee-string → contact-resolution scheduled job | `feat(calendar): enrichment (phase 4c.3)` |
-| 4c.4 | `CalendarWidget` (this week / next 7 events) | `feat(calendar): dashboard widget (phase 4c.4)` |
-| 4c.5 | UI `/l/:slug/calendar` using `react-big-calendar` (month / week / day) | `feat(calendar): web UI (phase 4c.5)` |
-| 4c.6 | i18n + tests + smoke | `test(calendar): smoke + i18n (phase 4c.6)` |
+| Sub-phase | What ships                                                                                                                                                                                      | Commit subject                                  |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 4c.1      | Migration `0008_calendar.sql`, `calendarEventModule`, `packages/shared/src/calendar.ts` payload (start, end, all_day, location, attendees[], rrule_string for v1 — opaque string, no expansion) | `feat(calendar): schema + module (phase 4c.1)`  |
+| 4c.2      | Google Calendar connector (OAuth tokens stored encrypted in `entity_external_links.payload_json`; poll every N minutes)                                                                         | `feat(calendar): google connector (phase 4c.2)` |
+| 4c.3      | AI enrichment: meeting summary + attendee-string → contact-resolution scheduled job                                                                                                             | `feat(calendar): enrichment (phase 4c.3)`       |
+| 4c.4      | `CalendarWidget` (this week / next 7 events)                                                                                                                                                    | `feat(calendar): dashboard widget (phase 4c.4)` |
+| 4c.5      | UI `/l/:slug/calendar` using `react-big-calendar` (month / week / day)                                                                                                                          | `feat(calendar): web UI (phase 4c.5)`           |
+| 4c.6      | i18n + tests + smoke                                                                                                                                                                            | `test(calendar): smoke + i18n (phase 4c.6)`     |
 
 PR: `feat(calendar): calendar entity (phase 4c)`.
 
-#### 4d — Todos + cross-entity bridge *(PR block)*
+#### 4d — Todos + cross-entity bridge _(PR block)_
 
-| Sub-phase | What ships | Commit subject |
-|---|---|---|
-| 4d.1 | Migration `0009_todos.sql`, `todoModule`, `packages/shared/src/todos.ts` payload (title, status, priority, due_at, `linked_entity_ref` to a contact/company) | `feat(todos): schema + module (phase 4d.1)` |
-| 4d.2 | Connector placeholder — no external system in v1; the registry slot exists so a future "Trello import" connector lands additively | `feat(todos): connector placeholder (phase 4d.2)` |
-| 4d.3 | AI enrichment: auto-priority + auto-due suggestion when title contains a date phrase | `feat(todos): enrichment (phase 4d.3)` |
-| 4d.4 | `TodosWidget` | `feat(todos): dashboard widget (phase 4d.4)` |
-| 4d.5 | UI `/l/:slug/todos` — list view + simple per-status kanban (NOT the full Kanban-entity; that's later) | `feat(todos): web UI (phase 4d.5)` |
-| 4d.6 | **Bridge subscriber**: on `entity.todo.{created,updated}` with non-null `due_at`, emit a read-only `calendar.projection.todo` row visible in the calendar UI as a non-editable event. No second source of truth. On `entity.todo.deleted` or `due_at = null`, the projection drops. | `feat(todos): calendar projection bridge (phase 4d.6)` |
-| 4d.7 | i18n + tests + smoke | `test(todos): smoke + i18n (phase 4d.7)` |
+| Sub-phase | What ships                                                                                                                                                                                                                                                                          | Commit subject                                         |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 4d.1      | Migration `0009_todos.sql`, `todoModule`, `packages/shared/src/todos.ts` payload (title, status, priority, due_at, `linked_entity_ref` to a contact/company)                                                                                                                        | `feat(todos): schema + module (phase 4d.1)`            |
+| 4d.2      | Connector placeholder — no external system in v1; the registry slot exists so a future "Trello import" connector lands additively                                                                                                                                                   | `feat(todos): connector placeholder (phase 4d.2)`      |
+| 4d.3      | AI enrichment: auto-priority + auto-due suggestion when title contains a date phrase                                                                                                                                                                                                | `feat(todos): enrichment (phase 4d.3)`                 |
+| 4d.4      | `TodosWidget`                                                                                                                                                                                                                                                                       | `feat(todos): dashboard widget (phase 4d.4)`           |
+| 4d.5      | UI `/l/:slug/todos` — list view + simple per-status kanban (NOT the full Kanban-entity; that's later)                                                                                                                                                                               | `feat(todos): web UI (phase 4d.5)`                     |
+| 4d.6      | **Bridge subscriber**: on `entity.todo.{created,updated}` with non-null `due_at`, emit a read-only `calendar.projection.todo` row visible in the calendar UI as a non-editable event. No second source of truth. On `entity.todo.deleted` or `due_at = null`, the projection drops. | `feat(todos): calendar projection bridge (phase 4d.6)` |
+| 4d.7      | i18n + tests + smoke                                                                                                                                                                                                                                                                | `test(todos): smoke + i18n (phase 4d.7)`               |
 
 PR: `feat(todos): todos entity + calendar bridge (phase 4d)`.
 
@@ -217,7 +217,7 @@ applicable to that change. The minimum bar:
 - Soft-delete + version bump + UUID + `originalLocale` honored
   for every mutation (asserted by the contract test suite).
 - Auth via `effectiveLayers`; non-member sees `404
-  errors.layer.notVisible` (same contract as phase 3).
+errors.layer.notVisible` (same contract as phase 3).
 
 ### 4.3 Open questions resolved before start
 
@@ -348,10 +348,10 @@ CREATE INDEX idx_<kind>_deleted_at ON <kind>s(deleted_at);
 
 ```ts
 export interface EntityRef {
-  readonly id: string;             // UUID
-  readonly kind: string;           // 'company' | 'contact' | 'calendar_event' | 'todo' | <future>
+  readonly id: string; // UUID
+  readonly kind: string; // 'company' | 'contact' | 'calendar_event' | 'todo' | <future>
   readonly layerId: string;
-  readonly slug: string;           // unique within (layerId, kind)
+  readonly slug: string; // unique within (layerId, kind)
 }
 
 export interface EntityMeta {
@@ -520,14 +520,14 @@ a follow-up issue is filed rather than a bespoke wrapper.
 
 ## 13. Risks
 
-| Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
-| Generic router becomes a leaky abstraction (kind-specific edge cases creep in) | Med | High | Keep `EntityModule` minimal; kind-specific extensions go in per-kind modules, not the factory. Contract tests defend the boundary. |
-| Connector tokens leak via event log | Low | High | Connector base scrubs secrets before `bus.publish`; `entity_external_links.payload_json` is the only home for the encrypted token. |
-| Translation cost blows up on layers with many locales × many entities | Med | Med | Per-call LLM logging from phase 1.4; per-layer rate limit + coalescing on the translator job. Re-translate only when `source_version` < entity version. |
-| Todo→Calendar projection diverges from the calendar's own data model | Med | Med | Subscriber only emits; the calendar UI knows the row is a projection (different visual treatment, no edit). One subscriber, one direction. |
-| LanceDB index drift: deletes don't propagate | Med | Med | Soft-delete subscriber rewrites the index row with a "deleted" flag; phase-6 filter excludes it. Contract test asserts. |
-| Google Calendar OAuth complexity blows phase-4c scope | Med | Med | Token storage in `entity_external_links.payload_json` (encrypted with the same key already used for telemetry secrets); refresh on poll; manual reauth UI if refresh fails. |
+| Risk                                                                           | Likelihood | Impact | Mitigation                                                                                                                                                                  |
+| ------------------------------------------------------------------------------ | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generic router becomes a leaky abstraction (kind-specific edge cases creep in) | Med        | High   | Keep `EntityModule` minimal; kind-specific extensions go in per-kind modules, not the factory. Contract tests defend the boundary.                                          |
+| Connector tokens leak via event log                                            | Low        | High   | Connector base scrubs secrets before `bus.publish`; `entity_external_links.payload_json` is the only home for the encrypted token.                                          |
+| Translation cost blows up on layers with many locales × many entities          | Med        | Med    | Per-call LLM logging from phase 1.4; per-layer rate limit + coalescing on the translator job. Re-translate only when `source_version` < entity version.                     |
+| Todo→Calendar projection diverges from the calendar's own data model           | Med        | Med    | Subscriber only emits; the calendar UI knows the row is a projection (different visual treatment, no edit). One subscriber, one direction.                                  |
+| LanceDB index drift: deletes don't propagate                                   | Med        | Med    | Soft-delete subscriber rewrites the index row with a "deleted" flag; phase-6 filter excludes it. Contract test asserts.                                                     |
+| Google Calendar OAuth complexity blows phase-4c scope                          | Med        | Med    | Token storage in `entity_external_links.payload_json` (encrypted with the same key already used for telemetry secrets); refresh on poll; manual reauth UI if refresh fails. |
 
 ---
 
@@ -538,3 +538,81 @@ where the developer narrative now lives, which ADRs landed,
 which follow-ups remain. On all sub-phases `done`, the plan
 moves to `docs/dev/plans/done/phase-04-first-entities.md` and
 the tasklist `Related document` paths follow.
+
+### 4.0 shipped (2026-05-23)
+
+**What landed**
+
+- Migration
+  `apps/server/src/storage/migrations/0005_entities_base.sql` with
+  the four shared cross-cutting tables (`entity_versions`,
+  `entity_translations`, `entity_external_links`, `entity_souls`)
+  and all CHECK / UNIQUE / index constraints from §5. The phase-1
+  migrations test asserts the schema lands on a fresh DB.
+- Shared types in `packages/shared/src/entity.ts` — `EntityRef`,
+  `EntityMeta`, `EntitySummary`, `EntityExternalLink`,
+  `Entity<Payload>`, `EntitySyncState`, zod schemas and the
+  `entitySchema(payloadSchema)` factory.
+- Server-side foundation under `apps/server/src/entities/`:
+  - `module.ts` — `EntityModule<Payload>` contract.
+  - `registry.ts` — process-local registry with duplicate-kind
+    rejection and a test-only reset escape hatch.
+  - `store.ts` — `createEntityStore` factory: CRUD + version bump
+    per mutation + soft-delete + restore + summary listing +
+    summary search + external-link helpers + translation record;
+    every mutation emits `entity.<kind>.<action>` AFTER tx commit.
+  - `router.ts` — `mountEntityRoutes(app, { module, store, bus, db })`
+    factory producing `/l/:slug/<kind>/*` routes; all gated by
+    `createRequireLayer`; localized error keys throughout.
+  - `events.ts` — `ENTITY_EVENT_TYPES` + `entityEventType(kind, action)`
+    helper + payload interfaces for every event.
+  - `translator.ts` — per-kind translator runner: subscribes to
+    `entity.<kind>.{created,updated}`, source-version-driven
+    re-translation, injectable `translate` callback for tests.
+  - `connectors/base.ts` — `EntityConnector<Payload>` interface +
+    `markSyncing` / `markSucceeded` / `markFailed` sync-state
+    helpers + `insertExternalLink` / `listExternalLinks` /
+    `removeExternalLink` repo-style accessors +
+    `scrubConnectorPayload` secret-key filter.
+- Reusable contract test suite
+  `apps/server/tests/entity-contract/suite.ts` exporting
+  `runEntityContractSuite({...})` plus
+  `apps/server/tests/entity-contract/fixture-module.test.ts` which
+  registers a fake `FixtureEntityModule` (kind = `fixture`) and
+  runs the full battery against it, including the translator
+  lifecycle and the 0005 migration assertion.
+- ADR `docs/dev/decisions/0011-entity-contract.md` covering the
+  per-kind + shared-table split, the `EntityModule` registry, the
+  connector pattern, the translation lifecycle, and authz
+  inheritance from phase 3.
+- Architecture doc
+  `docs/dev/architecture/entities.md`: contract overview, schema,
+  module / store / router / translator / connector, future-extension
+  recipe.
+- Updates to
+  `docs/dev/architecture/overview.md`,
+  `docs/dev/architecture/event-bus.md`, and
+  `docs/dev/architecture/layers-and-auth.md`.
+- i18n keys `errors.entity.*` (notFound, notInLayer, slugTaken,
+  validation, translationFailed, syncFailed) and `entity.common.*`
+  (generic CRUD labels) in `en.json` + `nl.json`.
+
+**No per-kind code shipped.** Companies, Contacts, Calendar, and
+Todos all hang off the now-stable foundation. `mountEntityRoutes`
+is exported but intentionally unused in 4.0; phase 4a.1 is the
+first caller.
+
+**ADR**
+
+- `0011-entity-contract.md` — accepted.
+
+**Follow-ups noted**
+
+- Per-field translations (vs. per-record) — re-evaluate after we
+  have real translation-cost data. Open thread in `overall.md §10.7`.
+- Per-record edit ACL beyond "layer owner OR `created_by`" — file a
+  follow-up the first time a user reports the rule mismatches their
+  workflow. Phase-3.3's non-goal on fine-grained per-route
+  permissions still applies.
+- The translator runs the LLM call inline in 4.0. Phase 5 swaps
+  the inline call for a queue push; the event surface is stable.

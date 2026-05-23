@@ -292,6 +292,56 @@ Routes also invalidate the caller's entry inline before returning
 so the very next handler in the same process sees the new state
 without depending on subscriber ordering.
 
+## 12. Phase 4 events — entities
+
+Phase 4.0 introduces the universal entity contract
+(`apps/server/src/entities/`) and the `entity.*` event family. The
+taxonomy is closed over the `kind` parameter — every per-kind store
+emits `entity.<kind>.<action>` events, every translator job emits
+the same `entity.translation.*` events, and every connector emits
+the same `entity.connector.sync.*` events. No concrete entity kind
+ships in 4.0 — per-kind code lands in 4a..4d.
+
+| Type                              | When                                                  | Payload                                               |
+| --------------------------------- | ----------------------------------------------------- | ----------------------------------------------------- |
+| `entity.<kind>.created`           | `EntityStore.create` after the tx commits             | `{ ref, version, originalLocale, searchableText }`    |
+| `entity.<kind>.updated`           | `EntityStore.update` after the tx commits             | `{ ref, version, previousVersion, searchableText }`   |
+| `entity.<kind>.deleted`           | `EntityStore.softDelete` after the tx commits         | `{ ref, version, deletedBy }`                         |
+| `entity.<kind>.restored`          | `EntityStore.restore` after the tx commits            | `{ ref, version }`                                    |
+| `entity.translation.requested`    | Translator job enqueues a per-locale translation      | `{ ref, locale, sourceVersion }`                      |
+| `entity.translation.completed`    | Translator writes `entity_translations` and publishes | `{ ref, locale, sourceVersion, latencyMs }`           |
+| `entity.connector.sync.requested` | Connector base `markSyncing`                          | `{ ref, connector, externalId }`                      |
+| `entity.connector.sync.succeeded` | Connector base `markSucceeded`                        | `{ ref, connector, externalId, syncState, syncedAt }` |
+| `entity.connector.sync.failed`    | Connector base `markFailed`                           | `{ ref, connector, externalId, error }`               |
+
+Anti-leak invariants:
+
+- Connector payloads (KvK numbers, Google Calendar refresh tokens,
+  encrypted blobs) NEVER appear in a bus event. The connector base
+  scrubs `payload_json` before publish via
+  `scrubConnectorPayload(...)` — see ADR
+  [`0011`](../decisions/0011-entity-contract.md) §"Connector base +
+  secret scrubbing".
+- `searchableText` is a denormalized digest, not a content dump —
+  short enough to live in an event without bloating the log.
+- Translation events carry `sourceVersion`, never the translated
+  payload itself; the payload lives in `entity_translations`.
+
+Subscribers (announced; not all live in this commit):
+
+- Per-kind translator job — listens for
+  `entity.<kind>.{created,updated}` and enqueues re-translation per
+  layer locale. Re-translation is skipped when
+  `entity_translations.source_version >= entity.version`.
+- LanceDB index writer (write-side only; phase-6 reads apply the
+  pre-retrieval auth filter).
+- Todo→calendar projection (phase 4d.6) — listens for
+  `entity.todo.{created,updated,deleted}`.
+
+`apps/server/src/entities/events.ts` exports
+`ENTITY_EVENT_TYPES` + `entityEventType(kind, action)` so the
+constant set is machine-checkable.
+
 ## 11. Future extensions
 
 - Wildcard subscriptions (`'*'`) — currently the replay script manages

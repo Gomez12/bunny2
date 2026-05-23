@@ -16,6 +16,13 @@ import { registerAdminUsersRoutes } from './routes/admin-users';
 import { registerMeLayersRoute } from './routes/me-layers';
 import { registerLayersRoutes } from './routes/layers';
 import { registerSystemLocalesRoute } from './routes/system-locales';
+// Phase 4.0 — universal entity contract. The factory is imported here so
+// the symbol is reachable from `apps/server/src/http/router.ts` and
+// future per-kind sub-phases (4a..4d) can wire their concrete modules
+// without touching the import graph again. Intentionally NOT called in
+// 4.0 — no entity kind is registered yet.
+import { mountEntityRoutes as _mountEntityRoutes } from '../entities';
+void _mountEntityRoutes;
 
 /**
  * Builds the HTTP app for `apps/server`.

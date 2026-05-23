@@ -3,3 +3,4 @@ export const appVersion = '0.0.0';
 
 export * from './auth';
 export * from './layer';
+export * from './entity';

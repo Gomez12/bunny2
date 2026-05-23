@@ -314,6 +314,22 @@ Each entity-CRUD sub-phase MUST:
 - Cross-link this doc in the entity-specific architecture write-up
   so the layer contract stays visible.
 
+### How phase 4.0 wires entity routes off `requireLayer`
+
+The universal entity contract (phase 4.0,
+`apps/server/src/entities/router.ts`) is built ON TOP of the §0
+chain. `mountEntityRoutes(app, { module, store, bus, db })` mounts
+the per-kind routes under `/l/:slug/<kind>/*` and uses
+`createRequireLayer()` from `apps/server/src/http/middleware/layer.ts`
+verbatim — the same factory the layers routes use. A non-member of
+the layer therefore sees `404 errors.layer.notVisible` (ADR `0010`),
+and a request for a non-existent or wrong-layer entity sees
+`404 errors.entity.notFound`. No per-kind code repeats the
+middleware boilerplate; per-kind sub-phases (4a..4d) only register
+the module and call the factory. Full narrative in
+[`entities.md`](./entities.md); the decisions are pinned in
+[ADR 0011](../decisions/0011-entity-contract.md).
+
 ---
 
 ## 8. Related docs

@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0004_layer_locale_default');
+      expect(currentSchemaVersion(db)).toBe('0005_entities_base');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -39,6 +39,11 @@ describe('migrations', () => {
       expect(tables).toContain('layer_locales');
       expect(tables).toContain('layer_attachments');
       expect(tables).toContain('layer_dashboard_widgets');
+      // 0005 tables — universal entity contract foundation (phase 4.0).
+      expect(tables).toContain('entity_versions');
+      expect(tables).toContain('entity_translations');
+      expect(tables).toContain('entity_external_links');
+      expect(tables).toContain('entity_souls');
 
       const indexes = db
         .query<{ name: string }, []>(
@@ -59,6 +64,10 @@ describe('migrations', () => {
       // 0004 index — partial-unique-index for "exactly one default
       // locale per layer".
       expect(indexes).toContain('idx_layer_locales_one_default');
+      // 0005 indexes.
+      expect(indexes).toContain('idx_entity_versions_lookup');
+      expect(indexes).toContain('idx_entity_translations_kind');
+      expect(indexes).toContain('idx_entity_external_links_entity');
     } finally {
       db.close();
     }
@@ -78,6 +87,7 @@ describe('migrations', () => {
         '0002_users_groups',
         '0003_layers',
         '0004_layer_locale_default',
+        '0005_entities_base',
       ]);
     } finally {
       db2.close();

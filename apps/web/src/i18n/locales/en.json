@@ -347,6 +347,34 @@
       "attachmentConfigInvalid": "Attachment config must be a JSON object.",
       "attachmentAlreadyRegistered": "This attachment is already registered for the layer.",
       "attachmentNotFound": "Attachment not found."
+    },
+    "entity": {
+      "notFound": "Item not found.",
+      "notInLayer": "Item not found in this layer.",
+      "slugTaken": "An item with this slug already exists in this layer.",
+      "validation": "The item could not be saved. Please check the input and try again.",
+      "translationFailed": "Translation could not be generated. Please try again.",
+      "syncFailed": "Sync with the external system failed. Please try again later."
+    }
+  },
+  "entity": {
+    "common": {
+      "list": "Items",
+      "create": "Create item",
+      "edit": "Edit item",
+      "delete": "Delete item",
+      "restore": "Restore item",
+      "search": "Search items",
+      "empty": "No items yet.",
+      "titleLabel": "Title",
+      "slugLabel": "Slug",
+      "saving": "Saving…",
+      "saved": "Saved.",
+      "deleted": "Item deleted.",
+      "restored": "Item restored.",
+      "externalLinks": "External links",
+      "addExternalLink": "Link external system",
+      "removeExternalLink": "Remove link"
     }
   }
 }
