@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-23
 - Phase: 2.2
-- Related: `docs/dev/plans/phase-02-users-and-groups.md` §11.2;
+- Related: `docs/dev/plans/done/phase-02-users-and-groups.md` §11.2;
   `apps/server/src/auth/sessions.ts`,
   `apps/server/src/auth/session-token.ts`,
   `apps/server/src/auth/cookie.ts`,

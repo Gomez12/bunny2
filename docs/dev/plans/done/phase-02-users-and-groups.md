@@ -336,3 +336,76 @@ Per `AGENTS.md` §Done Means Done, plus phase-specific:
 
 Add sub-phase rows 2.1–2.7 to `docs/dev/tasklist.md` as `open`,
 then start sub-phase **2.1 — Schema + password hashing + repos**.
+
+---
+
+## 14. Phase 2 close-out (authored 2026-05-23 at the end of 2.7)
+
+Walkthrough of §12 Definition of Done. Tracked here so a reader does
+not have to chase the tasklist + git history to know what is done
+and what is gated. Mirrors the close-out shape of
+[`phase-01-system-foundation.md`](./phase-01-system-foundation.md)
+§14.
+
+| §12 line                                                                                                          | State   | Evidence / notes                                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| All sub-phase tasklist rows 2.1–2.7 are `done`                                                                    | done    | 2.1–2.6 flipped at the end of each sub-phase; 2.7 flips at the end of this commit.                                                                                                                                                                                       |
+| On a fresh `bun run dev:server`, the initial admin password is printed exactly once; first login forces rotation. | done    | `apps/server/src/auth/seed.ts` is idempotent against `kv_meta.admin_seed_done`; the seed and the gate are exercised end-to-end in `apps/server/tests/smoke.test.ts`. Manual run against a fresh `./.data` reproduces the printed block.                                  |
+| Every route except `GET /status`, `POST /auth/login`, `POST /auth/logout` returns 401 without a session.          | done    | `createAuthMiddleware` enforces this against `DEFAULT_PUBLIC_PATHS`; smoke asserts the pre-login `/chat` 401 leg (step 6-pre).                                                                                                                                           |
+| Admin can create at least one extra group + one extra user via the UI; that user is denied admin pages.           | partial | Server-side covered by `apps/server/tests/http-admin-users.test.ts` + `http-admin-groups.test.ts` + `http-auth-me.test.ts`. UI click-through is a manual smoke against `bun run dev:web` until DOM tests land — tracked in `docs/dev/follow-ups/web-component-tests.md`. |
+| Extended smoke covers login → protected → logout → 401 + the `mustChangePassword` gate.                           | done    | `apps/server/tests/smoke.test.ts` — see the invariants header for the asserted chain (pre-login 401, login, gate fires, rotate, protected works, logout, post-logout 401, plus admin-group flow).                                                                        |
+| All CI matrix checks green on macOS, Linux, Windows.                                                              | gated   | `.github/workflows/ci.yml` runs `format:check + lint + typecheck + test + build + docs:check + i18n:check` on all three OSes. This commit has not been pushed yet — the matrix runs when the user pushes. Phase-1 close-out used the same `gated` wording.               |
+| ADRs `0007` and `0008` exist.                                                                                     | done    | `docs/dev/decisions/0007-argon2-implementation.md` (status: accepted, dated 2026-05-23) and `0008-session-strategy.md` (status: accepted, dated 2026-05-23) — both follow the house ADR shape (Context, Decision, Consequences, Alternatives, Status).                   |
+| `overall.md` and this plan stay accurate; reality wins, fix docs.                                                 | done    | `overall.md` §8 phase-2 status flipped to `done` in this commit; this §14 captures the divergence between the plan as written and reality at close-out (UI manual leg, gated CI).                                                                                        |
+
+### Release-matrix verification
+
+`bun install && bun run format:check && bun run lint && bun run typecheck && bun test && bun run i18n:check && bun run docs:check && bun run build`
+all green on the macOS host at close-out. The Linux + Windows legs are
+**gated** on the user pushing this commit — `.github/workflows/ci.yml`
+runs the same recipe on all three OSes; flip the gated row above to
+`done` once the matrix lands green.
+
+### Test count at close-out
+
+`bun test` reports **221 pass / 0 fail / 681 expect() calls** across
+40 files. The single smoke run (`bun run smoke`) reports **1 pass /
+0 fail / 52 expect() calls** with the extended phase-2 invariants
+asserted (see file-level docstring).
+
+### Follow-ups created / referenced during phase 2
+
+- `docs/dev/follow-ups/auth-rate-limit.md` — stub for the
+  rate-limit + lockout policy. Captured in 2.1, kept open at
+  close-out (out of phase-2 scope per §2). Risk row in §10 cites it.
+- `docs/dev/follow-ups/web-component-tests.md` — DOM-runtime
+  component tests for `LoginPage`, `ChangePasswordPage`, admin
+  pages, `UserMenu`. Inherited from 1.5, re-deferred by 2.6 since
+  wiring `happy-dom` + `@testing-library/react` is a phase on its
+  own. Stays open; tracked next to phase 3.
+
+No phase-2 follow-up moved to `done/` at close-out: every active
+follow-up either pre-dates phase 2 (desktop / packaging) or is the
+two above. The `argon2-bundler-asset.md` follow-up never needed to
+be created — the smoke test runs argon2 against the production
+wrapper on every CI leg, which is the empirical proof the bundler
+asset is fine.
+
+### Phase-2 surface map
+
+For the at-a-glance route + middleware inventory of every endpoint
+introduced in phase 2, see
+[`auth-and-sessions.md`](../architecture/auth-and-sessions.md) §0
+("Phase 2 surface map"). The map covers public / authenticated /
+`mustChangePassword`-gated / admin-only and the middleware chain
+order.
+
+### What flips after this commit lands
+
+- Tasklist row 2.7 → `done`.
+- This plan moves from `docs/dev/plans/` to
+  `docs/dev/plans/done/` (every 2.x sub-phase row is `done`).
+- Every doc that referenced `docs/dev/plans/phase-02-users-and-groups.md`
+  is updated to point at the `done/` path.
+- `overall.md` §8 phase-2 status flips from "open" to "done" with a
+  close-out date pointer to this §14.

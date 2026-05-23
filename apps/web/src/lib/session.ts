@@ -7,7 +7,7 @@
  * a third-party state library — phase 2.6 only needs a small reactive
  * pub/sub.
  *
- * State machine (per `docs/dev/plans/phase-02-users-and-groups.md` §4.1):
+ * State machine (per `docs/dev/plans/done/phase-02-users-and-groups.md` §4.1):
  *
  *   unknown ─bootstrapSession()─▶ loading
  *   loading ─200 /auth/me──────▶ authenticated

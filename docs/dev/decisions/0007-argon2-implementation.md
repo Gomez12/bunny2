@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-23
 - Phase: 2.1
-- Related: `docs/dev/plans/phase-02-users-and-groups.md` §11.1; `apps/server/src/auth/password.ts`.
+- Related: `docs/dev/plans/done/phase-02-users-and-groups.md` §11.1; `apps/server/src/auth/password.ts`.
 
 ---
 

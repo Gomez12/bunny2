@@ -1,11 +1,11 @@
 /**
- * Phase 1.7 — end-to-end smoke test.
+ * Phase 1.7 — end-to-end smoke test. Extended through phase 2.7.
  *
- * This is the canonical "spine" test for phase 1: it goes through
- * `loadConfig()` (data-dir + schema defaults), opens the real SQLite +
- * LanceDB, builds the real bus with all middlewares, wires the real
- * telemetry-wrapped LLM client against the deterministic `mock://echo`
- * provider, and drives the real HTTP layer via `createApp(deps).fetch`.
+ * This is the canonical "spine" test: it goes through `loadConfig()`
+ * (data-dir + schema defaults), opens the real SQLite + LanceDB, builds
+ * the real bus with all middlewares, wires the real telemetry-wrapped
+ * LLM client against the deterministic `mock://echo` provider, and
+ * drives the real HTTP layer via `createApp(deps).fetch`.
  *
  * It differs from `http-chat.test.ts` (which mocks the status body and
  * skips `loadConfig`) by:
@@ -21,6 +21,25 @@
  *    and shared across requests.
  *  - Asserting matching `correlation_id` across the SQLite `events` and
  *    `llm_calls` rows for the same request.
+ *
+ * Phase-2 invariants asserted in this file (in order):
+ *
+ *  1. Unauthenticated `POST /chat` → 401 (auth middleware is on).
+ *  2. Admin seed runs exactly once and prints the initial password.
+ *  3. `POST /auth/login` with the seeded credentials → 200 + Bearer
+ *     token in `Set-Cookie`, response carries `mustChangePassword: true`.
+ *  4. Authenticated `POST /chat` BEFORE rotation → 409 (the
+ *     `requirePasswordCurrent` gate fires).
+ *  5. `POST /auth/password` (no `currentPassword`, valid session) → 200.
+ *  6. Admin can create a group and add itself as a direct member; the
+ *     transitive resolver keeps `/auth/me.isAdmin === true` through it.
+ *  7. `GET /status` reports `phase = '2.7'` and `auth.adminSeeded = true`.
+ *  8. Authenticated `POST /chat` AFTER rotation → 200 (mock echo).
+ *  9. `POST /auth/logout` → 200 and the now-revoked token fails the next
+ *     `POST /chat` with 401.
+ * 10. The SQLite event log contains the chat + auth-domain events with
+ *     matching correlation/flow ids and the LLM telemetry row joins
+ *     cleanly on `correlation_id`.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
@@ -157,7 +176,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     const status = (): StatusBody => ({
       app: 'bunny2',
       version: '0.0.0',
-      phase: '2.6',
+      phase: '2.7',
       ok: true,
       dataDir: loaded.dataDir,
       configFile: loaded.configFile,
@@ -194,6 +213,19 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       auth: loaded.config.auth,
       resolver,
     });
+
+    // 6-pre. Phase 2.2 invariant — every non-public route requires a
+    //        session. Hit `/chat` with NO `Authorization` header and
+    //        NO `Cookie`; the auth middleware must return 401 long
+    //        before the chat handler runs.
+    const unauthenticatedChat = await app.fetch(
+      new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'no-session' }),
+      }),
+    );
+    expect(unauthenticatedChat.status).toBe(401);
 
     // 6a. The admin seed already ran (see 5b above) so we extract the
     //     printed password and do the login directly. Login succeeds
@@ -295,7 +327,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     expect(statusBefore.status).toBe(200);
     const statusBeforeBody = (await statusBefore.json()) as StatusBody;
     expect(statusBeforeBody.ok).toBe(true);
-    expect(statusBeforeBody.phase).toBe('2.6');
+    expect(statusBeforeBody.phase).toBe('2.7');
     expect(statusBeforeBody.sqlite.schemaVersion).toBe(schemaVersion);
     expect(statusBeforeBody.lancedb.ready).toBe(true);
     expect(statusBeforeBody.bus.adapter).toBe('in-memory');

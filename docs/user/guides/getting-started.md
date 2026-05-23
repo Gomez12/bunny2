@@ -74,7 +74,35 @@ Inside, you will find:
 
 ---
 
-## 4. Status screen
+## 4. First login and password change
+
+The very first time you launch bunny2, the server prints a one-time
+**initial admin password** to its console window. The message looks
+like:
+
+```
+   username: admin
+   password: <24-char random string>
+```
+
+This is printed **once** — copy it before launching the UI.
+
+1. In the bunny2 window, click **Sign in**.
+2. Enter `admin` as the username and paste the printed password.
+3. bunny2 sends you straight to the **Change password** screen. You
+   cannot reach any other screen until you rotate.
+4. Pick a password that is at least 12 characters long and contains
+   at least one non-letter character. Submit.
+
+After that you land on the main app.
+
+If you administer bunny2 for others — creating extra users, managing
+groups, resetting forgotten passwords — see the admin guide:
+[`admin-managing-users.md`](./admin-managing-users.md).
+
+---
+
+## 5. Status screen
 
 After launch, the **Status** view shows:
 
@@ -91,7 +119,7 @@ the troubleshooting section below.
 
 ---
 
-## 5. Send your first chat message
+## 6. Send your first chat message
 
 1. Switch to the **Chat** view.
 2. Type `hello` and submit.
@@ -111,7 +139,7 @@ So your full conversation history is in one file you own.
 
 ---
 
-## 6. Connecting a real LLM
+## 7. Connecting a real LLM
 
 Edit `config.json` and change:
 
@@ -134,7 +162,7 @@ machine except to the endpoint you configured.
 
 ---
 
-## 7. Resetting / removing bunny2
+## 8. Resetting / removing bunny2
 
 bunny2 keeps **everything** under the data directory listed above. To
 reset, close the app and delete that directory. To uninstall, also
@@ -142,7 +170,7 @@ delete the app artifact you downloaded.
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 - **"Network error" or the Status view shows the server is down.**
   Close bunny2 and re-launch. On macOS, check that the bundled Bun

@@ -260,10 +260,12 @@ stack traces, secrets, or internal details to the user.
 
 ## 4. What's not here yet
 
-Phase 1 deliberately ships the foundation only. The following are
-phase-2+ deliverables:
+Phase 1 shipped the foundation and phase 2 layered authentication +
+users + groups on top (see
+[`auth-and-sessions.md`](./auth-and-sessions.md) and the close-out at
+[`docs/dev/plans/done/phase-02-users-and-groups.md`](../plans/done/phase-02-users-and-groups.md)
+§14). The following are phase-3+ deliverables:
 
-- Authentication, sessions, users, groups (phase 2).
 - Layers (personal / project / group / everyone) and per-layer
   scoping (phase 3).
 - Entities (Companies, Contacts, Calendar, Todos) and the dashboard

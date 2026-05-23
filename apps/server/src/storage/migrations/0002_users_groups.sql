@@ -1,5 +1,5 @@
 -- Phase 2.1 schema: users, groups, memberships, sessions.
--- See `docs/dev/plans/phase-02-users-and-groups.md` §4.1 (sub-phase 2.1).
+-- See `docs/dev/plans/done/phase-02-users-and-groups.md` §4.1 (sub-phase 2.1).
 
 CREATE TABLE users (
   id TEXT PRIMARY KEY,

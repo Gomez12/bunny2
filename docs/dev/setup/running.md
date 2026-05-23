@@ -137,6 +137,18 @@ If you lose the password before logging in, delete the data-dir (see
 must immediately rotate via the change-password screen; until they do,
 every other route returns 409 `errors.auth.mustChangePassword`.
 
+### Lost the admin password in dev
+
+The fastest dev recovery is `rm -rf ./.data` (or
+`rm ./.data/bunny2.sqlite` for a slightly less destructive variant
+that keeps the `lancedb/` directory). The next `bun run dev:server`
+re-runs the seed and prints a fresh credential block. **Trade-off:**
+this wipes every event row, every LLM telemetry row, and every user
+and group you created — it is the right move for a hacking loop and
+the wrong move once you have data you care about. For a real
+deployment, recover via a second admin user who can reset the first
+one (see `docs/user/guides/admin-managing-users.md` §4 and §6).
+
 See [`docs/dev/architecture/auth-and-sessions.md`](../architecture/auth-and-sessions.md)
 for the deeper narrative.
 

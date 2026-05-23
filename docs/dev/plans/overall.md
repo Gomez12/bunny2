@@ -219,6 +219,16 @@ plan only fixes the **order**, **goal per phase**, and
 - Seeded `admin` group + `admin` user with forced password change.
 - Sessions; everything from here on is auth-gated.
 - **Exit:** multiple users can log in, admin can manage groups.
+- **Status (as of 2026-05-23):** sub-phases 2.1–2.7 are all `done`.
+  The plan is archived at
+  [`done/phase-02-users-and-groups.md`](./done/phase-02-users-and-groups.md);
+  see its §14 for the per-DoD walkthrough and the gated CI-matrix
+  row. ADRs [`0007`](../decisions/0007-argon2-implementation.md) +
+  [`0008`](../decisions/0008-session-strategy.md) are accepted; the
+  developer-side narrative lives in
+  [`architecture/auth-and-sessions.md`](../architecture/auth-and-sessions.md)
+  and the admin user-facing guide is at
+  [`docs/user/guides/admin-managing-users.md`](../../user/guides/admin-managing-users.md).
 
 ### Phase 3 — Layers
 

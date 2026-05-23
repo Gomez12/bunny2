@@ -13,6 +13,70 @@ ADRs [`0007`](../decisions/0007-argon2-implementation.md) /
 
 ---
 
+## 0. Phase 2 surface map (cheat sheet)
+
+The routes and middlewares introduced across phase 2 in one table. Read
+this once; the sections below are the long form.
+
+### Public (no session required)
+
+| Method    | Path           | Owner phase | Notes                                               |
+| --------- | -------------- | ----------- | --------------------------------------------------- |
+| `GET`     | `/status`      | 1.5         | Health probe; reports `auth.{users,groups,…}`.      |
+| `POST`    | `/auth/login`  | 2.3         | Entry door. Latency-equalised across failure paths. |
+| `POST`    | `/auth/logout` | 2.3         | Exit door. Works with or without a live cookie.     |
+| `OPTIONS` | any            | 1.5 / 2.2   | CORS preflight short-circuits before auth.          |
+
+### Authenticated only (any logged-in user, no `mustChangePassword`)
+
+| Method | Path       | Owner phase | Notes                                         |
+| ------ | ---------- | ----------- | --------------------------------------------- |
+| `GET`  | `/auth/me` | 2.3         | Current user + transitive groups + `isAdmin`. |
+| `POST` | `/chat`    | 1.5 / 2.2   | Gated since 2.2; chat flow unchanged.         |
+
+### Authenticated and able to rotate (bypass the `mustChangePassword` gate)
+
+| Method | Path             | Owner phase | Notes                                                  |
+| ------ | ---------------- | ----------- | ------------------------------------------------------ |
+| `POST` | `/auth/password` | 2.3         | Self rotation. `currentPassword` optional when forced. |
+| `POST` | `/auth/logout`   | 2.3         | The other exit door honoured by the gate.              |
+
+Every other authenticated route returns `409 errors.auth.mustChangePassword`
+while the gate is armed.
+
+### Admin only (`requireAdmin` — transitively in the seeded `admin` group)
+
+| Method   | Path                                  | Owner phase |
+| -------- | ------------------------------------- | ----------- |
+| `GET`    | `/admin/groups[?includeDeleted]`      | 2.4         |
+| `POST`   | `/admin/groups`                       | 2.4         |
+| `GET`    | `/admin/groups/:id`                   | 2.4         |
+| `PATCH`  | `/admin/groups/:id`                   | 2.4         |
+| `DELETE` | `/admin/groups/:id`                   | 2.4         |
+| `POST`   | `/admin/groups/:id/members`           | 2.4         |
+| `DELETE` | `/admin/groups/:id/members/:memberId` | 2.4         |
+| `GET`    | `/admin/users[?includeDeleted]`       | 2.5         |
+| `POST`   | `/admin/users`                        | 2.5         |
+| `GET`    | `/admin/users/:id`                    | 2.5         |
+| `PATCH`  | `/admin/users/:id`                    | 2.5         |
+| `DELETE` | `/admin/users/:id`                    | 2.5         |
+| `POST`   | `/admin/users/:id/reset-password`     | 2.5         |
+
+### Middleware chain (request order)
+
+```
+CORS preflight short-circuit
+  → createAuthMiddleware (2.2)        — session resolve (Bearer ∨ cookie)
+    → requirePasswordCurrent (2.3)    — mustChangePassword gate
+      → requireAdmin (2.4, /admin/*)  — transitive admin-group check
+        → route handler
+```
+
+A route is public iff its `(method, path)` is in `DEFAULT_PUBLIC_PATHS`
+(see §4). Everything else inherits the full chain in the order above.
+
+---
+
 ## 1. Password hashing — argon2id
 
 - Library: `@node-rs/argon2` (native N-API, prebuilt binaries for the
