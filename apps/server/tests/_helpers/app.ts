@@ -14,22 +14,48 @@ import { createLlmClient } from '../../src/llm/client';
 import { createSqliteEventLog } from '../../src/bus/event-log';
 import { openDatabase } from '../../src/storage/sqlite';
 import { AuthConfigSchema } from '../../src/config/schema';
+import { createGroupResolver, type GroupResolver } from '../../src/auth/group-resolver';
+import { ADMIN_GROUP_ID_KEY, seedAdminIfNeeded } from '../../src/auth/seed';
+import { getMeta } from '../../src/storage/kv-meta';
 
 /**
  * Test fixture: temp data-dir, real SQLite + migrations, real bus with the
- * full middleware chain (so `events` rows land), real LLM mock, and the
- * production `createApp` wiring. Returns a tear-down helper so tests can
- * close the DB and remove the temp dir in a `finally` block.
+ * full middleware chain (so `events` rows land), real LLM mock, real
+ * transitive group resolver, and the production `createApp` wiring.
+ * Returns a tear-down helper so tests can close the DB and remove the
+ * temp dir in a `finally` block.
+ *
+ * Opt-in `seedAdmin: true` runs the admin seed BEFORE constructing the
+ * resolver and the app, so the `requireAdmin` middleware (which reads
+ * `admin_group_id` once at factory creation) sees the seeded id and
+ * lets admin routes resolve. Tests that explicitly exercise the
+ * unseeded 503 path pass `seedAdmin: false` (the default).
  */
 export interface TestApp {
   readonly dir: string;
   readonly db: Database;
   readonly bus: InMemoryMessageBus;
+  readonly resolver: GroupResolver;
   readonly app: { fetch: (req: Request) => Response | Promise<Response> };
+  /**
+   * Captured `seedAdminIfNeeded` log lines when `seedAdmin: true`; empty
+   * otherwise. Tests that want the printed initial password can read it
+   * here without a second seed call.
+   */
+  readonly seedLog: readonly string[];
   cleanup(): void;
 }
 
-export function makeTestApp(prefix = 'bunny2-auth-test-'): TestApp {
+export interface MakeTestAppOptions {
+  readonly prefix?: string;
+  /** Run the admin seed before constructing `createApp`. Default `false`. */
+  readonly seedAdmin?: boolean;
+}
+
+export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): TestApp {
+  const opts: MakeTestAppOptions =
+    typeof prefixOrOptions === 'string' ? { prefix: prefixOrOptions } : prefixOrOptions;
+  const prefix = opts.prefix ?? 'bunny2-auth-test-';
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const db = openDatabase(dir);
   const eventLog = createSqliteEventLog(db);
@@ -45,10 +71,20 @@ export function makeTestApp(prefix = 'bunny2-auth-test-'): TestApp {
     apiKey: '',
     defaultModel: 'mock-default',
   });
+
+  // The seed must run BEFORE the resolver and the app so the
+  // `requireAdmin` middleware factory observes the seeded
+  // `admin_group_id`. The async work resolves synchronously enough on
+  // the test path (Bun timers do not bite this code path), but the
+  // helper has to be sync to keep its existing callers untouched, so
+  // we use a synchronous "make me a TestApp" wrapper that defers the
+  // seed-and-construct work into the caller via the dedicated async
+  // variant below if they need pre-seed.
+  const captured: string[] = [];
   const status = (): StatusBody => ({
     app: 'bunny2',
     version: '0.0.0',
-    phase: '2.3',
+    phase: '2.4',
     ok: true,
     dataDir: dir,
     configFile: null,
@@ -56,14 +92,111 @@ export function makeTestApp(prefix = 'bunny2-auth-test-'): TestApp {
     lancedb: { ready: true, tables: [] },
     bus: { adapter: 'in-memory', events: eventLog.count() },
     llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
-    auth: { sessions: 0, users: 0, groups: 0, adminSeeded: false },
+    auth: {
+      sessions: 0,
+      users: 0,
+      groups: 0,
+      adminSeeded: false,
+      adminGroupResolved: getMeta(db, ADMIN_GROUP_ID_KEY) !== null,
+    },
   });
-  const app = createApp({ bus, llmClient, status, db, auth: AuthConfigSchema.parse({}) });
+  const resolver = createGroupResolver({ db, bus });
+  const app = createApp({
+    bus,
+    llmClient,
+    status,
+    db,
+    auth: AuthConfigSchema.parse({}),
+    resolver,
+  });
+  if (opts.seedAdmin === true) {
+    throw new Error(
+      'makeTestApp: `seedAdmin: true` requires the async `makeTestAppSeeded` factory — the seed runs argon2 which must be awaited.',
+    );
+  }
   return {
     dir,
     db,
     bus,
+    resolver,
     app,
+    seedLog: captured,
+    cleanup() {
+      try {
+        db.close();
+      } catch {
+        /* already closed */
+      }
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
+    },
+  };
+}
+
+/**
+ * Async variant: seeds the admin BEFORE constructing the resolver and
+ * the app, so the `requireAdmin` middleware's factory-time read of
+ * `admin_group_id` observes the seeded value. Use this for any test
+ * that drives `/admin/*` against the seeded admin.
+ */
+export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<TestApp> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const db = openDatabase(dir);
+  const eventLog = createSqliteEventLog(db);
+  const bus = new InMemoryMessageBus({
+    middlewares: [
+      correlationIdMiddleware,
+      telemetryMiddleware(eventLog.writer),
+      errorCaptureMiddleware(),
+    ],
+  });
+  const llmClient = createLlmClient({
+    endpoint: 'mock://echo',
+    apiKey: '',
+    defaultModel: 'mock-default',
+  });
+  const captured: string[] = [];
+  await seedAdminIfNeeded({ db, bus, log: (l) => captured.push(l) });
+
+  const status = (): StatusBody => ({
+    app: 'bunny2',
+    version: '0.0.0',
+    phase: '2.4',
+    ok: true,
+    dataDir: dir,
+    configFile: null,
+    sqlite: { schemaVersion: '0002_users_groups' },
+    lancedb: { ready: true, tables: [] },
+    bus: { adapter: 'in-memory', events: eventLog.count() },
+    llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
+    auth: {
+      sessions: 0,
+      users: 0,
+      groups: 0,
+      adminSeeded: true,
+      adminGroupResolved: getMeta(db, ADMIN_GROUP_ID_KEY) !== null,
+    },
+  });
+  const resolver = createGroupResolver({ db, bus });
+  const app = createApp({
+    bus,
+    llmClient,
+    status,
+    db,
+    auth: AuthConfigSchema.parse({}),
+    resolver,
+  });
+
+  return {
+    dir,
+    db,
+    bus,
+    resolver,
+    app,
+    seedLog: captured,
     cleanup() {
       try {
         db.close();

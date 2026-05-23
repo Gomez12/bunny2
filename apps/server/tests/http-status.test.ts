@@ -8,6 +8,7 @@ import type { StatusBody } from '../src/http/router';
 import { createLlmClient } from '../src/llm/client';
 import { openDatabase } from '../src/storage/sqlite';
 import { AuthConfigSchema } from '../src/config/schema';
+import { createGroupResolver } from '../src/auth/group-resolver';
 
 describe('GET /status', () => {
   it('returns the injected status body shape with the auth section and skips auth (public route)', async () => {
@@ -31,15 +32,23 @@ describe('GET /status', () => {
         lancedb: { ready: true, tables: [] },
         bus: { adapter: 'in-memory', events: 0 },
         llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
-        auth: { sessions: 0, users: 0, groups: 0, adminSeeded: false },
+        auth: {
+          sessions: 0,
+          users: 0,
+          groups: 0,
+          adminSeeded: false,
+          adminGroupResolved: false,
+        },
       };
 
+      const resolver = createGroupResolver({ db, bus });
       const app = createApp({
         bus,
         llmClient,
         status: () => body,
         db,
         auth: AuthConfigSchema.parse({}),
+        resolver,
       });
       // No Authorization header, no cookie — status must still respond.
       const res = await app.fetch(new Request('http://localhost/status'));
@@ -47,7 +56,13 @@ describe('GET /status', () => {
       const json = (await res.json()) as StatusBody;
       expect(json).toEqual(body);
       expect(json.phase).toBe('2.2');
-      expect(json.auth).toEqual({ sessions: 0, users: 0, groups: 0, adminSeeded: false });
+      expect(json.auth).toEqual({
+        sessions: 0,
+        users: 0,
+        groups: 0,
+        adminSeeded: false,
+        adminGroupResolved: false,
+      });
     } finally {
       db.close();
     }

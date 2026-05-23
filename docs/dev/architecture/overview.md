@@ -164,6 +164,17 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
   exactly once, and stamps `kv_meta.admin_seed_done = 'true'`. The
   seed runs before `Bun.serve` accepts the first request, and is
   idempotent on every subsequent boot.
+- Group resolver + admin gate (from phase 2.4): a transitive group
+  resolver (`apps/server/src/auth/group-resolver.ts`) lives on the
+  request path. It answers "is user U transitively in group G?" via
+  recursive-CTE walks of `user_group_memberships` and
+  `group_group_memberships`, with an in-memory cache invalidated by
+  bus subscribers on `group.*` and `user.*` events. The
+  `requireAdmin` middleware
+  (`apps/server/src/http/middleware/admin.ts`) is mounted on the
+  `/admin/*` prefix and uses the resolver to gate the admin-group
+  CRUD endpoints; `/auth/me.isAdmin` uses the same resolver so the
+  answer is consistent across the gate and the client-facing flag.
 
 ### 2.7 Renderer
 

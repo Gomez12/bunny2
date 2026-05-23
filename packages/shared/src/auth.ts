@@ -107,3 +107,35 @@ export const CreateGroupRequestSchema = z.object({
   description: z.string().optional(),
 });
 export type CreateGroupRequest = z.infer<typeof CreateGroupRequestSchema>;
+
+/**
+ * Patch for `PATCH /admin/groups/:id`. `slug` is deliberately omitted —
+ * other code (the admin seed, the `requireAdmin` middleware) keys off
+ * the `admin` slug and we don't support renaming. Description can be
+ * cleared by passing `null`.
+ */
+export const UpdateGroupRequestSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().nullable().optional(),
+  })
+  .refine(
+    (v) => v.name !== undefined || v.description !== undefined,
+    'at least one of name, description must be present',
+  );
+export type UpdateGroupRequest = z.infer<typeof UpdateGroupRequestSchema>;
+
+/**
+ * `POST /admin/groups/:id/members` — exactly one of `userId` / `groupId`.
+ * The route handler enforces the xor; this schema validates each shape.
+ */
+export const AddGroupMemberRequestSchema = z
+  .object({
+    userId: z.string().uuid().optional(),
+    groupId: z.string().uuid().optional(),
+  })
+  .refine(
+    (v) => (v.userId === undefined) !== (v.groupId === undefined),
+    'exactly one of userId or groupId must be provided',
+  );
+export type AddGroupMemberRequest = z.infer<typeof AddGroupMemberRequestSchema>;

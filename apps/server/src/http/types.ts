@@ -4,6 +4,7 @@ import type { User as SafeUser } from '@bunny2/shared';
 import type { LlmClient } from '../llm';
 import type { AuthConfig } from '../config/schema';
 import type { Session } from '../repos/sessions-repo';
+import type { GroupResolver } from '../auth/group-resolver';
 
 /**
  * Snapshot returned by `GET /status`. Built by `index.ts` and passed as a
@@ -36,6 +37,14 @@ export interface StatusBody {
      * server-side behaviour itself.
      */
     readonly adminSeeded: boolean;
+    /**
+     * `true` once the transitive group resolver successfully read the
+     * `admin_group_id` from `kv_meta` at startup. Mirrors `adminSeeded`
+     * for the purposes of admin-route enablement: when this is `false`
+     * every `/admin/*` route returns 503 (the `requireAdmin` middleware
+     * cannot answer "is user in admin group?" without the group id).
+     */
+    readonly adminGroupResolved: boolean;
   };
 }
 
@@ -54,6 +63,13 @@ export interface AppDeps {
   readonly status: () => StatusBody;
   readonly db: Database;
   readonly auth: AuthConfig;
+  /**
+   * Transitive group resolver — phase 2.4. Built in `index.ts` against
+   * the shared bus so the resolver's cache invalidation subscribers see
+   * the same publishes the rest of the system emits. Tests build it via
+   * `_helpers/app.ts`.
+   */
+  readonly resolver: GroupResolver;
 }
 
 /**

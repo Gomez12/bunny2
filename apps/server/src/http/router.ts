@@ -3,12 +3,14 @@ import type { AppDeps, HonoVariables } from './types';
 import { createDevCors } from './cors';
 import { createAuthMiddleware, DEFAULT_PUBLIC_PATHS } from './middleware/auth';
 import { requirePasswordCurrent } from './middleware/password-gate';
+import { createRequireAdmin } from './middleware/admin';
 import { createSessionService } from '../auth/sessions';
 import { createSessionsRepo } from '../repos/sessions-repo';
 import { createUsersRepo } from '../repos/users-repo';
 import { mountStatusRoute } from './routes/status';
 import { mountChatRoute } from './routes/chat';
 import { registerAuthRoutes } from './routes/auth';
+import { registerAdminGroupsRoutes } from './routes/admin-groups';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -56,6 +58,20 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
   // the active user still needs to rotate.
   app.use('*', requirePasswordCurrent());
 
+  // `requireAdmin` is mounted on the `/admin/*` prefix only. It runs
+  // after `requireAuth` (which already attached `c.var.user`) and after
+  // `requirePasswordCurrent`, so the seeded admin must rotate before any
+  // admin route lets them through. The middleware factory caches the
+  // `admin_group_id` once at construction time — if the seed has not run
+  // yet, every admin route returns 503 with `errors.admin.notSeeded`.
+  app.use(
+    '/admin/*',
+    createRequireAdmin({
+      db: deps.db,
+      resolver: deps.resolver,
+    }),
+  );
+
   mountStatusRoute(app, deps);
   mountChatRoute(app, deps);
   registerAuthRoutes(app, {
@@ -63,6 +79,12 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     db: deps.db,
     auth: deps.auth,
     sessions: sessionService,
+    resolver: deps.resolver,
+  });
+  registerAdminGroupsRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
+    resolver: deps.resolver,
   });
   return app;
 }

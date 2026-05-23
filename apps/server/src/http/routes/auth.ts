@@ -4,8 +4,8 @@ import type { MessageBus } from '@bunny2/bus';
 import type { User as SafeUser } from '@bunny2/shared';
 import { ChangePasswordRequestSchema, LoginRequestSchema } from '@bunny2/shared';
 import { createUsersRepo, type User as StoredUser } from '../../repos/users-repo';
-import { createGroupsRepo } from '../../repos/groups-repo';
 import { createSessionsRepo } from '../../repos/sessions-repo';
+import type { GroupResolver } from '../../auth/group-resolver';
 import { dummyVerify, hashPassword, verifyPassword } from '../../auth/password';
 import { clearSessionCookie, cookieSecureDefault, setSessionCookie } from '../../auth/cookie';
 import { readSessionCookie } from '../../auth/cookie';
@@ -56,6 +56,7 @@ export interface AuthRouteDeps {
   readonly db: Database;
   readonly auth: AuthConfig;
   readonly sessions: SessionService;
+  readonly resolver: GroupResolver;
   readonly cookieSecure?: boolean;
   readonly now?: () => Date;
 }
@@ -78,7 +79,6 @@ export function registerAuthRoutes(
   deps: AuthRouteDeps,
 ): void {
   const usersRepo = createUsersRepo(deps.db);
-  const groupsRepo = createGroupsRepo(deps.db);
   const sessionsRepo = createSessionsRepo(deps.db);
   const cookieSecure = deps.cookieSecure ?? cookieSecureDefault();
   const clock = deps.now ?? (() => new Date());
@@ -221,18 +221,17 @@ export function registerAuthRoutes(
       return c.json(INVALID_CREDENTIALS, 401);
     }
 
-    // Phase 2.3 isAdmin rule: direct membership of the seeded admin
-    // group, looked up via `kv_meta.admin_group_id`. If the seed has
-    // not run (`adminGroupId === null`) the answer is unambiguously
-    // false. TODO(phase 2.4): replace with the transitive helper once
-    // it lands so a user inherited via a sub-group also resolves as
-    // admin.
+    // Phase 2.4 isAdmin rule: transitive membership via the resolver.
+    // The resolver walks `user_group_memberships` then
+    // `group_group_memberships` upward, so a user inherited via a
+    // sub-group (e.g. `engineering` is a child of `admin`) resolves as
+    // admin. If the seed has not run, `adminGroupId` is null/empty and
+    // the answer is unambiguously `false`.
     const adminGroupId = getMeta(deps.db, ADMIN_GROUP_ID_KEY);
-    let isAdmin = false;
-    if (adminGroupId !== null && adminGroupId !== '') {
-      const memberships = groupsRepo.listDirectUserMemberships(user.id);
-      isAdmin = memberships.some((m) => m.groupId === adminGroupId);
-    }
+    const isAdmin =
+      adminGroupId !== null && adminGroupId !== ''
+        ? deps.resolver.isUserInGroup(user.id, adminGroupId)
+        : false;
 
     return c.json({
       user,

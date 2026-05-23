@@ -31,6 +31,17 @@
       "weakPassword": "Wachtwoord moet minstens 12 tekens bevatten en ten minste één niet-letter.",
       "invalidCurrentPassword": "Het huidige wachtwoord is onjuist.",
       "badRequest": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw."
+    },
+    "admin": {
+      "forbidden": "Je hebt geen rechten om deze actie uit te voeren.",
+      "groupNotFound": "Groep niet gevonden.",
+      "groupSlugTaken": "Een groep met deze slug bestaat al.",
+      "groupCycle": "Deze wijziging zou een circulair groepslidmaatschap veroorzaken.",
+      "groupSelfMember": "Een groep kan geen lid van zichzelf zijn.",
+      "missingMemberKind": "Geef aan of je een gebruiker of een subgroep toevoegt.",
+      "userNotFound": "Gebruiker niet gevonden.",
+      "notSeeded": "Beheerfuncties zijn nog niet beschikbaar — de initiële beheerseed is niet uitgevoerd.",
+      "badRequest": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw."
     }
   }
 }

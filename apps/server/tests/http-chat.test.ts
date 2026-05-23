@@ -16,6 +16,7 @@ import { withTelemetry } from '../src/llm/telemetry';
 import { createApp } from '../src/http/router';
 import type { StatusBody } from '../src/http/router';
 import { AuthConfigSchema } from '../src/config/schema';
+import { createGroupResolver } from '../src/auth/group-resolver';
 import { seedUserAndSession } from './_helpers/auth';
 
 function mkTmp(): string {
@@ -65,7 +66,13 @@ function status(): StatusBody {
     lancedb: { ready: true, tables: [] },
     bus: { adapter: 'in-memory', events: 0 },
     llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
-    auth: { sessions: 0, users: 0, groups: 0, adminSeeded: false },
+    auth: {
+      sessions: 0,
+      users: 0,
+      groups: 0,
+      adminSeeded: false,
+      adminGroupResolved: false,
+    },
   };
 }
 
@@ -95,7 +102,8 @@ describe('POST /chat', () => {
       const llmClient = withTelemetry(raw, { log: callLog });
 
       const { token } = seedUserAndSession(db);
-      const app = createApp({ bus, llmClient, status, db, auth });
+      const resolver = createGroupResolver({ db, bus });
+      const app = createApp({ bus, llmClient, status, db, auth, resolver });
       const res = await app.fetch(
         new Request('http://localhost/chat', {
           method: 'POST',
@@ -159,7 +167,8 @@ describe('POST /chat', () => {
       );
 
       const { token } = seedUserAndSession(db);
-      const app = createApp({ bus, llmClient, status, db, auth });
+      const resolver = createGroupResolver({ db, bus });
+      const app = createApp({ bus, llmClient, status, db, auth, resolver });
       const res = await app.fetch(
         new Request('http://localhost/chat', {
           method: 'POST',
@@ -208,7 +217,8 @@ describe('POST /chat', () => {
       );
 
       const { token } = seedUserAndSession(db);
-      const app = createApp({ bus, llmClient, status, db, auth });
+      const resolver = createGroupResolver({ db, bus });
+      const app = createApp({ bus, llmClient, status, db, auth, resolver });
       const res = await app.fetch(
         new Request('http://localhost/chat', {
           method: 'POST',
@@ -254,7 +264,8 @@ describe('POST /chat', () => {
         { log: callLog },
       );
       const { token } = seedUserAndSession(db);
-      const app = createApp({ bus, llmClient, status, db, auth });
+      const resolver = createGroupResolver({ db, bus });
+      const app = createApp({ bus, llmClient, status, db, auth, resolver });
 
       const res = await app.fetch(
         new Request('http://localhost/chat', {
@@ -288,7 +299,8 @@ describe('POST /chat', () => {
         }),
         { log: callLog },
       );
-      const app = createApp({ bus, llmClient, status, db, auth });
+      const resolver = createGroupResolver({ db, bus });
+      const app = createApp({ bus, llmClient, status, db, auth, resolver });
       const res = await app.fetch(
         new Request('http://localhost/chat', {
           method: 'POST',

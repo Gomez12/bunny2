@@ -46,9 +46,10 @@ import {
 } from '../src/llm';
 import { createApp } from '../src/http/router';
 import type { StatusBody } from '../src/http/router';
-import { seedAdminAndLogin } from './_helpers/auth';
-import { ADMIN_SEED_DONE_KEY } from '../src/auth/seed';
+import { seedAdminIfNeeded } from '../src/auth/seed';
+import { ADMIN_GROUP_ID_KEY, ADMIN_SEED_DONE_KEY } from '../src/auth/seed';
 import { getMeta } from '../src/storage/kv-meta';
+import { createGroupResolver } from '../src/auth/group-resolver';
 
 interface ChatSuccessBody {
   content: string;
@@ -156,7 +157,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     const status = (): StatusBody => ({
       app: 'bunny2',
       version: '0.0.0',
-      phase: '2.3',
+      phase: '2.4',
       ok: true,
       dataDir: loaded.dataDir,
       configFile: loaded.configFile,
@@ -173,15 +174,53 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
         users: 0,
         groups: 0,
         adminSeeded: getMeta(database, ADMIN_SEED_DONE_KEY) === 'true',
+        adminGroupResolved: getMeta(database, ADMIN_GROUP_ID_KEY) !== null,
       },
     });
-    const app = createApp({ bus, llmClient, status, db: database, auth: loaded.config.auth });
+    // Seed admin BEFORE createApp so the `requireAdmin` middleware's
+    // factory-time read of `admin_group_id` observes the seeded value.
+    // We capture the printed password here so the later
+    // `seedAdminAndLogin` helper sees the idempotent no-op and we still
+    // get a token via the same code path the user takes.
+    const seedCaptured: string[] = [];
+    await seedAdminIfNeeded({ db: database, bus, log: (l) => seedCaptured.push(l) });
 
-    // 6a. Run the admin seed via the test helper so we capture the
-    //     one-time printed password and log in as admin. The login
-    //     succeeds even with `mustChangePassword=true` — the gate fires
-    //     on the NEXT protected request.
-    const admin = await seedAdminAndLogin({ db: database, bus, app });
+    const resolver = createGroupResolver({ db: database, bus });
+    const app = createApp({
+      bus,
+      llmClient,
+      status,
+      db: database,
+      auth: loaded.config.auth,
+      resolver,
+    });
+
+    // 6a. The admin seed already ran (see 5b above) so we extract the
+    //     printed password and do the login directly. Login succeeds
+    //     even with `mustChangePassword=true` — the gate fires on the
+    //     NEXT protected request.
+    const passwordLine = seedCaptured.find((l) => l.includes('password:'));
+    if (passwordLine === undefined) throw new Error('smoke: no password line in seed output');
+    const initialPassword = passwordLine.split('password:')[1]?.trim() ?? '';
+    const loginRes = await app.fetch(
+      new Request('http://localhost/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: initialPassword }),
+      }),
+    );
+    expect(loginRes.status).toBe(200);
+    const loginBody = (await loginRes.json()) as {
+      user: { id: string };
+      mustChangePassword: boolean;
+    };
+    const setCookie = loginRes.headers.get('set-cookie') ?? '';
+    const adminToken = /bunny2_session=([^;]+)/.exec(setCookie)?.[1] ?? '';
+    const admin = {
+      token: adminToken,
+      userId: loginBody.user.id,
+      mustChangePassword: loginBody.mustChangePassword,
+    };
     expect(admin.mustChangePassword).toBe(true);
 
     // 6b. The password gate blocks /chat until we rotate.
@@ -210,13 +249,53 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     );
     expect(rotate.status).toBe(200);
 
+    // 6d. Phase 2.4 — admin group flow. Create `engineering`, then add
+    //     the seeded admin as a direct member. /auth/me must keep
+    //     reporting isAdmin=true through both operations (the
+    //     transitive resolver picks the admin up via the admin group;
+    //     the engineering membership is independent).
+    const createGroupRes = await app.fetch(
+      new Request('http://localhost/admin/groups', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${admin.token}`,
+        },
+        body: JSON.stringify({ slug: 'engineering', name: 'Engineering' }),
+      }),
+    );
+    expect(createGroupRes.status).toBe(201);
+    const createGroupBody = (await createGroupRes.json()) as { group: { id: string } };
+    const engineeringId = createGroupBody.group.id;
+
+    const addMemberRes = await app.fetch(
+      new Request(`http://localhost/admin/groups/${engineeringId}/members`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${admin.token}`,
+        },
+        body: JSON.stringify({ userId: admin.userId }),
+      }),
+    );
+    expect(addMemberRes.status).toBe(201);
+
+    const meRes = await app.fetch(
+      new Request('http://localhost/auth/me', {
+        headers: { authorization: `Bearer ${admin.token}` },
+      }),
+    );
+    expect(meRes.status).toBe(200);
+    const meBody = (await meRes.json()) as { isAdmin: boolean };
+    expect(meBody.isAdmin).toBe(true);
+
     // 7. GET /status (before any chat) — structural fields the plan calls
     //    out explicitly. After the seed, `adminSeeded` is `true`.
     const statusBefore = await app.fetch(new Request('http://localhost/status'));
     expect(statusBefore.status).toBe(200);
     const statusBeforeBody = (await statusBefore.json()) as StatusBody;
     expect(statusBeforeBody.ok).toBe(true);
-    expect(statusBeforeBody.phase).toBe('2.3');
+    expect(statusBeforeBody.phase).toBe('2.4');
     expect(statusBeforeBody.sqlite.schemaVersion).toBe(schemaVersion);
     expect(statusBeforeBody.lancedb.ready).toBe(true);
     expect(statusBeforeBody.bus.adapter).toBe('in-memory');

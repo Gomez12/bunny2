@@ -214,7 +214,18 @@ CRUD endpoints in 2.4 and 2.5.
 | `session.created`       | `POST /auth/login` success                     | `{ sessionId, userId, expiresAt }`                                                      |
 | `session.expired`       | `POST /auth/logout` when a session was revoked | `{ sessionId, userId, reason: 'logout' }`                                               |
 | `group.created`         | Admin seed (2.3); group CRUD (2.4)             | `{ groupId, slug, name, seeded? }`                                                      |
-| `group.member_added`    | Admin seed (2.3); membership endpoints (2.4)   | `{ groupId, userId, seeded? }`                                                          |
+| `group.updated`         | `PATCH /admin/groups/:id` (2.4)                | `{ groupId, patch: { name?, description? } }`                                           |
+| `group.deleted`         | `DELETE /admin/groups/:id` (2.4)               | `{ groupId, slug }`                                                                     |
+| `group.member_added`    | Admin seed (2.3); membership endpoints (2.4)   | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId?, seeded? }`               |
+| `group.member_removed`  | `DELETE /admin/groups/:id/members/:memberId`   | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId? }`                        |
+
+Phase 2.4 also adds an **in-memory transitive group resolver**
+(`apps/server/src/auth/group-resolver.ts`) that subscribes to
+`group.*` and `user.*` events on the bus. The subscriber clears the
+resolver's caches so the next `isUserInGroup(userId, groupId)` call
+reflects the new graph. See
+[`auth-and-sessions.md`](./auth-and-sessions.md) §9 for the resolver
+narrative and the recursive-CTE shapes.
 
 Anti-leak invariants:
 

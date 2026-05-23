@@ -57,6 +57,17 @@
       "weakPassword": "Password must be at least 12 characters and include a non-letter.",
       "invalidCurrentPassword": "Current password is incorrect.",
       "badRequest": "The request could not be processed. Please check the input and try again."
+    },
+    "admin": {
+      "forbidden": "You do not have permission to perform this action.",
+      "groupNotFound": "Group not found.",
+      "groupSlugTaken": "A group with this slug already exists.",
+      "groupCycle": "This change would create a circular group membership.",
+      "groupSelfMember": "A group cannot be a member of itself.",
+      "missingMemberKind": "Specify whether you are adding a user or a sub-group.",
+      "userNotFound": "User not found.",
+      "notSeeded": "Admin features are not available yet — the initial admin seed has not run.",
+      "badRequest": "The request could not be processed. Please check the input and try again."
     }
   }
 }

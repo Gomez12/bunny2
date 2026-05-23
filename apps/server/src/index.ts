@@ -21,7 +21,8 @@ import type { StatusBody } from './http/router';
 import { createUsersRepo } from './repos/users-repo';
 import { createGroupsRepo } from './repos/groups-repo';
 import { createSessionsRepo } from './repos/sessions-repo';
-import { seedAdminIfNeeded, ADMIN_SEED_DONE_KEY } from './auth/seed';
+import { seedAdminIfNeeded, ADMIN_SEED_DONE_KEY, ADMIN_GROUP_ID_KEY } from './auth/seed';
+import { createGroupResolver } from './auth/group-resolver';
 import { getMeta } from './storage/kv-meta';
 
 const { config, configFile, dataDir } = loadConfig();
@@ -59,12 +60,21 @@ const usersRepo = createUsersRepo(db);
 const groupsRepo = createGroupsRepo(db);
 const sessionsRepo = createSessionsRepo(db);
 
+// One-shot admin bootstrap. Must complete BEFORE `Bun.serve` starts
+// accepting connections — otherwise the very first login attempt could
+// race the seed and observe a missing user. Also runs BEFORE the
+// transitive resolver is built so the resolver's startup read of
+// `admin_group_id` (via the `requireAdmin` factory) sees the seeded id.
+await seedAdminIfNeeded({ db, bus });
+
+const resolver = createGroupResolver({ db, bus });
+
 const status = (): StatusBody => {
   const now = new Date().toISOString();
   return {
     app: appName,
     version: appVersion,
-    phase: '2.3',
+    phase: '2.4',
     ok: true,
     dataDir,
     configFile,
@@ -81,16 +91,12 @@ const status = (): StatusBody => {
       users: usersRepo.countActive(),
       groups: groupsRepo.countActive(),
       adminSeeded: getMeta(db, ADMIN_SEED_DONE_KEY) === 'true',
+      adminGroupResolved: getMeta(db, ADMIN_GROUP_ID_KEY) !== null,
     },
   };
 };
 
-// One-shot admin bootstrap. Must complete BEFORE `Bun.serve` starts
-// accepting connections — otherwise the very first login attempt could
-// race the seed and observe a missing user.
-await seedAdminIfNeeded({ db, bus });
-
-const app = createApp({ bus, llmClient, status, db, auth: config.auth });
+const app = createApp({ bus, llmClient, status, db, auth: config.auth, resolver });
 
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);

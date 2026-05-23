@@ -231,28 +231,125 @@ env was rejected for v1 in favour of a simpler portable experience.
 | `user.login.failed`     | `/auth/login` failures | `{ userId? \| username, reason: 'unknown_user' \| 'soft_deleted' \| 'wrong_password' }` |
 | `session.created`       | `/auth/login` success  | `{ sessionId, userId, expiresAt }`                                                      |
 | `session.expired`       | `/auth/logout` (token) | `{ sessionId, userId, reason: 'logout' }`                                               |
-| `group.created`         | seed (`seeded: true`)  | `{ groupId, slug, name, seeded }`                                                       |
-| `group.member_added`    | seed (`seeded: true`)  | `{ groupId, userId, seeded }`                                                           |
+| `group.created`         | seed; 2.4 admin CRUD   | `{ groupId, slug, name, seeded? }`                                                      |
+| `group.updated`         | 2.4 admin CRUD         | `{ groupId, patch: { name?, description? } }`                                           |
+| `group.deleted`         | 2.4 admin CRUD         | `{ groupId, slug }`                                                                     |
+| `group.member_added`    | seed; 2.4 admin CRUD   | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId?, seeded? }`               |
+| `group.member_removed`  | 2.4 admin CRUD         | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId? }`                        |
 
-`group.created` and `group.member_added` will gain non-seeded
-producers in 2.4 (full group CRUD). `session.expired` will gain a
-`reason: 'idle'` / `'absolute'` producer when the prune job lands as
-a subscriber (post-phase-2).
+`session.expired` will gain a `reason: 'idle'` / `'absolute'` producer
+when the prune job lands as a subscriber (post-phase-2).
 
 ---
 
-## 9. Open extensions (post-2.3)
+## 9. Group resolution (phase 2.4)
 
-- **Transitive admin resolution** (2.4) — `GET /auth/me.isAdmin`
-  currently uses a direct membership check against the seeded admin
-  group's id. 2.4 introduces the recursive-CTE helper, after which
-  the route will compute the flag transitively. The handler carries
-  a `TODO(phase 2.4)` comment.
+`apps/server/src/auth/group-resolver.ts` is the single source of truth
+for "is this user transitively in this group?". The admin gate
+(`requireAdmin`) and `/auth/me.isAdmin` both call it; future per-layer
+auth (phase 3) will too.
+
+### 9.1 Recursive CTE shapes
+
+Edges in `group_group_memberships` point from `parent_group_id`
+**downward** to `child_group_id`. A parent group transitively contains
+every user that any of its descendant groups directly contains.
+
+Two reusable CTEs:
+
+```sql
+-- 1. user → containing groups (upward walk)
+WITH RECURSIVE ancestors(group_id) AS (
+  SELECT group_id FROM user_group_memberships WHERE user_id = ?
+  UNION
+  SELECT ggm.parent_group_id
+    FROM group_group_memberships ggm
+    JOIN ancestors a ON ggm.child_group_id = a.group_id
+)
+SELECT group_id FROM ancestors;
+
+-- 2. group → descendant group set (downward walk)
+WITH RECURSIVE descendants(group_id) AS (
+  SELECT ?
+  UNION
+  SELECT ggm.child_group_id
+    FROM group_group_memberships ggm
+    JOIN descendants d ON ggm.parent_group_id = d.group_id
+)
+SELECT group_id FROM descendants;
+```
+
+`UNION` (not `UNION ALL`) makes every step deduplicate, which both
+prunes the work and defends against stray cycle rows (we block cycles
+on insert but defence in depth keeps the CTE bounded if a row ever
+slips through).
+
+### 9.2 Cycle detection
+
+Adding edge `parent → child` would close a loop iff `parent` is already
+reachable from `child` via existing edges. `wouldCreateCycle(parent,
+child)`:
+
+1. If `parent === child` → return `true`.
+2. Otherwise walk DOWNWARD from `child` (CTE #2) and check if `parent`
+   appears in the descendant set.
+
+Routes check `wouldCreateCycle` before calling
+`groupsRepo.addGroupToGroup` so the error surface is friendly
+(`409 errors.admin.groupCycle`) instead of an FK violation.
+
+### 9.3 In-memory cache
+
+The resolver keeps three caches:
+
+- `isUserInGroup(userId, groupId)` → boolean.
+- `expandUserGroups(userId)` → `Set<groupId>`.
+- `expandGroupMembers(groupId)` → `{ userIds, groupIds }`.
+
+Each map is a tiny LRU with a 5000-entry cap (DoS defence against a
+hostile request stream probing arbitrary pairs) and a 60-second
+defensive TTL on top of the event-driven invalidation.
+
+Invalidation: the resolver subscribes to seven event types on the
+shared bus — `group.created`, `group.updated`, `group.deleted`,
+`group.member_added`, `group.member_removed`, `user.created`,
+`user.deleted`. Any of them clears all three maps. The set is
+intentionally coarse: a single membership flip can change answers for
+any user via diamond inheritance, and a partial-invalidation strategy
+would have to walk the same CTEs we are caching.
+
+### 9.4 Immutable `admin` slug
+
+The seeded `admin` group is permanent. `DELETE /admin/groups/:id`
+returns `404 errors.admin.groupNotFound` if `slug === 'admin'` (we
+mask existence rather than 403 because leaking "exists but protected"
+gives no useful info). The slug itself is also immutable — `PATCH
+/admin/groups/:id` accepts `name` and `description` only.
+
+### 9.5 `requireAdmin` middleware
+
+`apps/server/src/http/middleware/admin.ts` sits on the `/admin/*`
+prefix, after `requireAuth` and after `requirePasswordCurrent`. It
+reads `admin_group_id` from `kv_meta` once at factory construction:
+
+- If the seed has not run → every admin route returns
+  `503 errors.admin.notSeeded` and the factory logs once.
+- Otherwise → `resolver.isUserInGroup(user.id, adminGroupId)`. `true`
+  → `next()`; `false` → `403 errors.admin.forbidden`.
+
+`/auth/me.isAdmin` uses the same resolver call, so the answer is
+consistent across the gate and the client-facing flag.
+
+---
+
+## 10. Open extensions (post-2.4)
+
 - **Rate limiting on `/auth/login`** — captured but not enforced;
   follow-up tracked in `docs/dev/follow-ups/auth-rate-limit.md`.
 - **Session-fixation rotation** — rotate session id on
   `mustChangePassword` flip. Currently we revoke siblings but keep
   the same session id for the rotator; tracked alongside group-
   change events in phase 3+.
+- **User CRUD** — 2.5 deliverable.
 - **2FA / passkeys / SSO** — explicitly out of phase 2 (`overall.md`
   §10).

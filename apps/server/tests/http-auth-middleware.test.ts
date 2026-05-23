@@ -10,6 +10,7 @@ import { openDatabase } from '../src/storage/sqlite';
 import { AuthConfigSchema } from '../src/config/schema';
 import { createUsersRepo } from '../src/repos/users-repo';
 import { SESSION_COOKIE_NAME } from '../src/auth/cookie';
+import { createGroupResolver } from '../src/auth/group-resolver';
 import { seedUserAndSession } from './_helpers/auth';
 
 function mkAppFixture() {
@@ -32,14 +33,22 @@ function mkAppFixture() {
     lancedb: { ready: true, tables: [] },
     bus: { adapter: 'in-memory', events: 0 },
     llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
-    auth: { sessions: 0, users: 0, groups: 0, adminSeeded: false },
+    auth: {
+      sessions: 0,
+      users: 0,
+      groups: 0,
+      adminSeeded: false,
+      adminGroupResolved: false,
+    },
   });
+  const resolver = createGroupResolver({ db, bus });
   const app = createApp({
     bus,
     llmClient,
     status,
     db,
     auth: AuthConfigSchema.parse({}),
+    resolver,
   });
   return { db, app };
 }
