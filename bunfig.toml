@@ -1,0 +1,4 @@
+# Bun configuration shared by every `bun test` invocation in this repo.
+# See `tests-setup.ts` for why we force the SQLite journal mode.
+[test]
+preload = ["./tests-setup.ts"]

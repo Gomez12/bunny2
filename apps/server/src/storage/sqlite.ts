@@ -21,11 +21,25 @@ function loadMigrationsFromDisk(): Migration[] {
 
 export const MIGRATIONS: readonly Migration[] = loadMigrationsFromDisk();
 
-export function openDatabase(dataDir: string): Database {
+export type JournalMode = 'WAL' | 'DELETE' | 'MEMORY';
+
+export interface OpenDatabaseOptions {
+  /**
+   * SQLite journal mode. Production uses WAL. Tests pass `DELETE`
+   * because `bun:sqlite` on Windows holds the `-wal`/`-shm` files
+   * after `db.close()`, which makes the temp-dir cleanup EBUSY.
+   * Falls back to `BUNNY2_SQLITE_JOURNAL_MODE` env when unset.
+   */
+  readonly journalMode?: JournalMode;
+}
+
+export function openDatabase(dataDir: string, opts: OpenDatabaseOptions = {}): Database {
   fs.mkdirSync(dataDir, { recursive: true });
   const dbPath = path.join(dataDir, 'bunny2.sqlite');
   const db = new Database(dbPath, { create: true });
-  db.exec('PRAGMA journal_mode = WAL');
+  const envMode = Bun.env['BUNNY2_SQLITE_JOURNAL_MODE'] as JournalMode | undefined;
+  const journalMode = opts.journalMode ?? envMode ?? 'WAL';
+  db.exec(`PRAGMA journal_mode = ${journalMode}`);
   db.exec('PRAGMA foreign_keys = ON');
   applyMigrations(db, MIGRATIONS);
   return db;
