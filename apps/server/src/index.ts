@@ -18,6 +18,9 @@ import {
 } from './llm';
 import { createApp } from './http/router';
 import type { StatusBody } from './http/router';
+import { createUsersRepo } from './repos/users-repo';
+import { createGroupsRepo } from './repos/groups-repo';
+import { createSessionsRepo } from './repos/sessions-repo';
 
 const { config, configFile, dataDir } = loadConfig();
 const db = openDatabase(dataDir);
@@ -50,22 +53,34 @@ const llmPrune = startLlmRetentionPrune({
   retentionDays: config.llm.retentionDays,
 });
 
-const status = (): StatusBody => ({
-  app: appName,
-  version: appVersion,
-  phase: '1.7',
-  ok: true,
-  dataDir,
-  configFile,
-  sqlite: { schemaVersion },
-  lancedb: { ready: true, tables: lanceTables },
-  bus: { adapter: busAdapterName, events: eventLog.count() },
-  llm: {
-    endpoint: llmClient.endpoint,
-    defaultModel: llmClient.defaultModel,
-    calls: llmCallLog.count(),
-  },
-});
+const usersRepo = createUsersRepo(db);
+const groupsRepo = createGroupsRepo(db);
+const sessionsRepo = createSessionsRepo(db);
+
+const status = (): StatusBody => {
+  const now = new Date().toISOString();
+  return {
+    app: appName,
+    version: appVersion,
+    phase: '2.1',
+    ok: true,
+    dataDir,
+    configFile,
+    sqlite: { schemaVersion },
+    lancedb: { ready: true, tables: lanceTables },
+    bus: { adapter: busAdapterName, events: eventLog.count() },
+    llm: {
+      endpoint: llmClient.endpoint,
+      defaultModel: llmClient.defaultModel,
+      calls: llmCallLog.count(),
+    },
+    auth: {
+      sessions: sessionsRepo.countActiveSessions(now),
+      users: usersRepo.countActive(),
+      groups: groupsRepo.countActive(),
+    },
+  };
+};
 
 const app = createApp({ bus, llmClient, status });
 

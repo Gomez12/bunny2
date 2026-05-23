@@ -192,7 +192,22 @@ to reconstruct the full flow. The LLM telemetry row (in `llm_calls`)
 carries the same `correlationId` and `flowId`, so cross-table joins
 are direct.
 
-## 9. Future extensions (not in phase 1.3)
+## 9. Phase 2 — upcoming auth events
+
+Phase 2.1 (current sub-phase) adds the `users`, `groups`, `sessions`
+tables and the repositories that write them. It deliberately emits **no**
+new event types — the repos are pure DB writes, with no bus interaction.
+
+Phase 2.3 introduces the auth domain events; they will be added to this
+document at that time. The planned set is `user.created`, `user.updated`,
+`user.password_changed`, `user.deleted`, `user.login.succeeded`,
+`user.login.failed`, `session.created`, `session.expired`,
+`group.created`, `group.updated`, `group.deleted`, `group.member_added`,
+`group.member_removed`. See
+`docs/dev/plans/phase-02-users-and-groups.md` §2 for the list and the
+seed-event behavior.
+
+## 10. Future extensions (not in phase 1.3)
 
 - Wildcard subscriptions (`'*'`) — currently the replay script manages
   this via per-type subscription on demand.

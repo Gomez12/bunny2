@@ -70,4 +70,10 @@ describe('AppConfigSchema', () => {
     expect(parsed.http.port).toBe(4317);
     expect(parsed.dataDir).toBe('./.data');
   });
+
+  it('fills auth defaults expected by phase 2.2', () => {
+    const parsed = AppConfigSchema.parse({});
+    expect(parsed.auth.sessionTtlMinutes).toBe(60 * 24 * 14);
+    expect(parsed.auth.sessionIdleMinutes).toBe(60 * 24);
+  });
 });

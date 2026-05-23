@@ -162,6 +162,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
         defaultModel: llmClient.defaultModel,
         calls: callLog.count(),
       },
+      auth: { sessions: 0, users: 0, groups: 0 },
     });
     const app = createApp({ bus, llmClient, status });
 

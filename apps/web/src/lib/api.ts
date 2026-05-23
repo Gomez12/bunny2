@@ -38,6 +38,11 @@ export interface StatusResponse {
     readonly defaultModel: string;
     readonly calls: number;
   };
+  readonly auth: {
+    readonly sessions: number;
+    readonly users: number;
+    readonly groups: number;
+  };
 }
 
 export interface ChatResponse {

@@ -21,6 +21,11 @@ export interface StatusBody {
     readonly defaultModel: string;
     readonly calls: number;
   };
+  readonly auth: {
+    readonly sessions: number;
+    readonly users: number;
+    readonly groups: number;
+  };
 }
 
 /**
