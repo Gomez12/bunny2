@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
+import { safeRmSync } from './_helpers/temp-dir';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -59,8 +60,7 @@ afterEach(() => {
   } catch {
     /* already closed */
   }
-  // Windows holds the WAL/SHM file briefly after db.close(); retry a few times.
-  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  safeRmSync(dir);
 });
 
 describe('group-resolver — isUserInGroup', () => {

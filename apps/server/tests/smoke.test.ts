@@ -44,6 +44,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import * as fs from 'node:fs';
+import { safeRmSync } from './_helpers/temp-dir';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
@@ -121,8 +122,7 @@ afterAll(() => {
     process.env['BUNNY2_DATA_DIR'] = prevDataDir;
   }
   try {
-    // Windows holds the WAL/SHM file briefly after db.close(); retry a few times.
-    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    safeRmSync(tmpDir);
   } catch {
     /* best-effort */
   }

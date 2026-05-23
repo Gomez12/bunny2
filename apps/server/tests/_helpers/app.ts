@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { safeRmSync } from './temp-dir';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -128,8 +129,7 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
         /* already closed */
       }
       try {
-        // Windows holds the WAL/SHM file briefly after db.close(); retry a few times.
-        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        safeRmSync(dir);
       } catch {
         /* best effort */
       }
@@ -205,8 +205,7 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
         /* already closed */
       }
       try {
-        // Windows holds the WAL/SHM file briefly after db.close(); retry a few times.
-        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        safeRmSync(dir);
       } catch {
         /* best effort */
       }
