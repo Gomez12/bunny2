@@ -43,6 +43,13 @@ export interface SessionsRepo {
   revokeSession(id: string, revokedAt: string): void;
   revokeAllForUser(userId: string, revokedAt: string): void;
   /**
+   * Lists every still-active (non-revoked, non-expired) session id for
+   * `userId`. Used by the session service to capture the set of sessions
+   * BEFORE a bulk revoke, so it can publish `session.expired` rows with
+   * the correct ids.
+   */
+  listActiveSessionIdsForUser(userId: string, now: string): string[];
+  /**
    * Deletes rows where `expires_at < now` or where `revoked_at` is older
    * than 7 days. Returns the number of rows deleted.
    */
@@ -110,6 +117,12 @@ export function createSessionsRepo(db: Database): SessionsRepo {
 
   const countAll = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM sessions');
 
+  const listActiveForUser = db.query<{ id: string }, [string, string]>(
+    `SELECT id FROM sessions
+      WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?
+      ORDER BY created_at`,
+  );
+
   return {
     createSession(input) {
       insert.run(
@@ -138,6 +151,9 @@ export function createSessionsRepo(db: Database): SessionsRepo {
     },
     revokeAllForUser(userId, revokedAt) {
       revokeAll.run(revokedAt, userId);
+    },
+    listActiveSessionIdsForUser(userId, now) {
+      return listActiveForUser.all(userId, now).map((r) => r.id);
     },
     pruneExpired(now) {
       const before = countAll.get()?.n ?? 0;

@@ -40,6 +40,11 @@
       "groupSelfMember": "Een groep kan geen lid van zichzelf zijn.",
       "missingMemberKind": "Geef aan of je een gebruiker of een subgroep toevoegt.",
       "userNotFound": "Gebruiker niet gevonden.",
+      "userUsernameTaken": "Een gebruiker met deze gebruikersnaam bestaat al.",
+      "userUnknownGroup": "Een of meer groep-id's bestaan niet.",
+      "userInvalidUsername": "Gebruikersnaam moet 3–32 tekens lang zijn en mag letters, cijfers, punt, underscore of streepje bevatten.",
+      "lastAdmin": "Deze wijziging zou de laatste beheerder verwijderen.",
+      "cannotResetOwnPassword": "Beheerders moeten hun eigen wachtwoord wijzigen via het accountmenu, niet via het admin reset-endpoint.",
       "notSeeded": "Beheerfuncties zijn nog niet beschikbaar — de initiële beheerseed is niet uitgevoerd.",
       "badRequest": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw."
     }

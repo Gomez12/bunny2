@@ -84,7 +84,7 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
   const status = (): StatusBody => ({
     app: 'bunny2',
     version: '0.0.0',
-    phase: '2.4',
+    phase: '2.5',
     ok: true,
     dataDir: dir,
     configFile: null,
@@ -164,7 +164,7 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
   const status = (): StatusBody => ({
     app: 'bunny2',
     version: '0.0.0',
-    phase: '2.4',
+    phase: '2.5',
     ok: true,
     dataDir: dir,
     configFile: null,

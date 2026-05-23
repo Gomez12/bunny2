@@ -157,7 +157,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     const status = (): StatusBody => ({
       app: 'bunny2',
       version: '0.0.0',
-      phase: '2.4',
+      phase: '2.5',
       ok: true,
       dataDir: loaded.dataDir,
       configFile: loaded.configFile,
@@ -295,7 +295,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     expect(statusBefore.status).toBe(200);
     const statusBeforeBody = (await statusBefore.json()) as StatusBody;
     expect(statusBeforeBody.ok).toBe(true);
-    expect(statusBeforeBody.phase).toBe('2.4');
+    expect(statusBeforeBody.phase).toBe('2.5');
     expect(statusBeforeBody.sqlite.schemaVersion).toBe(schemaVersion);
     expect(statusBeforeBody.lancedb.ready).toBe(true);
     expect(statusBeforeBody.bus.adapter).toBe('in-memory');

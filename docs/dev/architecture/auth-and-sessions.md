@@ -33,9 +33,11 @@ ADRs [`0007`](../decisions/0007-argon2-implementation.md) /
   "username unknown" and "wrong password" so an attacker cannot probe
   for valid usernames by timing.
 
-### Password-policy floor (end-user-chosen)
+### Password policy (shared helper, phase 2.5)
 
-The change-password route enforces:
+`apps/server/src/auth/password-policy.ts` exports
+`validateNewPassword(password)` which both `POST /auth/password` and
+`POST /admin/users/:id/reset-password` call. Rules:
 
 - Length ≥ 12 characters.
 - At least one non-letter character.
@@ -43,10 +45,13 @@ The change-password route enforces:
 These two rules cover the OWASP "minimum-acceptable" bar for a
 single-factor portable tool. Rejection returns 400 with the i18n key
 `errors.auth.weakPassword`. The structural minimum in the shared zod
-schema (`ChangePasswordRequestSchema.newPassword.min(8)`) is a
-permissive structural check; the policy is enforced in the route so
-admin-set initial passwords (added in 2.5) can share a different bar
-without tightening the cross-package schema for everyone.
+schemas (`ChangePasswordRequestSchema.newPassword.min(8)`,
+`CreateUserRequestSchema.initialPassword.min(8)`,
+`ResetPasswordRequestSchema.newPassword.min(8)`) is a permissive
+structural check; the policy is enforced in the route handlers so
+admin-set initial passwords and admin-driven resets share the bar
+with self-rotated passwords without tightening the cross-package
+schema for everyone.
 
 ---
 
@@ -67,12 +72,18 @@ without tightening the cross-package schema for everyone.
   refuses tokens whose owning user has been soft-deleted (plan
   §11.5).
 - Revocation: `revokeSession(id, now)` sets `revoked_at` on a single
-  row; `revokeAllForUser(userId, now)` does the same for every row
-  owned by `userId`. Logout uses the per-row variant. The change-
-  password route iterates the user's active sessions and calls the
-  per-row variant on every one except the rotating session itself —
-  this keeps the current session alive without a "revoke then
-  un-revoke" round trip, and the row-skip is observable in
+  row; `revokeAllForUser(userId, now, { reason })` does the same for
+  every row owned by `userId` and publishes one `session.expired`
+  event per revoked row carrying the supplied `reason`. The four
+  legal reasons today are `'logout'`, `'self_password_change'`,
+  `'admin_password_reset'`, and `'user_deleted'`. Logout uses the
+  per-row variant (the route knows the single session id). The
+  change-password route iterates the user's active sessions and calls
+  the per-row variant on every one except the rotating session
+  itself — this keeps the current session alive without a "revoke
+  then un-revoke" round trip, and emits
+  `session.expired { reason: 'self_password_change' }` per revoked
+  sibling. The row-skip is observable in
   `apps/server/src/http/routes/auth.ts`. See §6.
 
 ADR [`0008`](../decisions/0008-session-strategy.md) records why we
@@ -221,21 +232,23 @@ env was rejected for v1 in favour of a simpler portable experience.
 
 ---
 
-## 8. Bus events emitted (phase 2.3)
+## 8. Bus events emitted (phases 2.3 – 2.5)
 
-| Event                   | Producer               | Payload                                                                                 |
-| ----------------------- | ---------------------- | --------------------------------------------------------------------------------------- |
-| `user.created`          | seed (`seeded: true`)  | `{ userId, username, seeded }`                                                          |
-| `user.password_changed` | `/auth/password`       | `{ userId }`                                                                            |
-| `user.login.succeeded`  | `/auth/login` success  | `{ userId, sessionId }`                                                                 |
-| `user.login.failed`     | `/auth/login` failures | `{ userId? \| username, reason: 'unknown_user' \| 'soft_deleted' \| 'wrong_password' }` |
-| `session.created`       | `/auth/login` success  | `{ sessionId, userId, expiresAt }`                                                      |
-| `session.expired`       | `/auth/logout` (token) | `{ sessionId, userId, reason: 'logout' }`                                               |
-| `group.created`         | seed; 2.4 admin CRUD   | `{ groupId, slug, name, seeded? }`                                                      |
-| `group.updated`         | 2.4 admin CRUD         | `{ groupId, patch: { name?, description? } }`                                           |
-| `group.deleted`         | 2.4 admin CRUD         | `{ groupId, slug }`                                                                     |
-| `group.member_added`    | seed; 2.4 admin CRUD   | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId?, seeded? }`               |
-| `group.member_removed`  | 2.4 admin CRUD         | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId? }`                        |
+| Event                   | Producer                                            | Payload                                                                                                                |
+| ----------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `user.created`          | seed; `POST /admin/users` (2.5)                     | `{ userId, username, seeded: boolean, createdBy?: actingAdminId }` (`createdBy` present on 2.5 admin path)             |
+| `user.updated`          | `PATCH /admin/users/:id` (2.5)                      | `{ userId, patch: { displayName?, groupIds? }, updatedBy: actingAdminId }`                                             |
+| `user.deleted`          | `DELETE /admin/users/:id` (2.5)                     | `{ userId, deletedBy: actingAdminId }`                                                                                 |
+| `user.password_changed` | `/auth/password`; `/admin/users/:id/reset-password` | `{ userId, by: actingAdminId \| userId, forced: boolean }` (`forced: true` for admin reset; `false` for self rotation) |
+| `user.login.succeeded`  | `/auth/login` success                               | `{ userId, sessionId }`                                                                                                |
+| `user.login.failed`     | `/auth/login` failures                              | `{ userId? \| username, reason: 'unknown_user' \| 'soft_deleted' \| 'wrong_password' }`                                |
+| `session.created`       | `/auth/login` success                               | `{ sessionId, userId, expiresAt }`                                                                                     |
+| `session.expired`       | `/auth/logout`; self rotation; admin reset; delete  | `{ sessionId, userId, reason: 'logout' \| 'self_password_change' \| 'admin_password_reset' \| 'user_deleted' }`        |
+| `group.created`         | seed; 2.4 admin CRUD                                | `{ groupId, slug, name, seeded? }`                                                                                     |
+| `group.updated`         | 2.4 admin CRUD                                      | `{ groupId, patch: { name?, description? } }`                                                                          |
+| `group.deleted`         | 2.4 admin CRUD                                      | `{ groupId, slug }`                                                                                                    |
+| `group.member_added`    | seed; admin CRUD (2.4); user CRUD (2.5)             | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId?, seeded? }`                                              |
+| `group.member_removed`  | admin CRUD (2.4); user CRUD (2.5)                   | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId? }`                                                       |
 
 `session.expired` will gain a `reason: 'idle'` / `'absolute'` producer
 when the prune job lands as a subscriber (post-phase-2).
@@ -342,7 +355,99 @@ consistent across the gate and the client-facing flag.
 
 ---
 
-## 10. Open extensions (post-2.4)
+## 10. Admin user CRUD (phase 2.5)
+
+`apps/server/src/http/routes/admin-users.ts` mounts the following
+routes under `/admin/users/*` (inheriting `requireAuth`, the password
+gate, and `requireAdmin`):
+
+| Method   | Path                                 | Purpose                                                                              |
+| -------- | ------------------------------------ | ------------------------------------------------------------------------------------ |
+| `GET`    | `/admin/users[?includeDeleted=true]` | List users (each row carries `directGroupIds`).                                      |
+| `GET`    | `/admin/users/:id`                   | Detail: `{ user, directGroups }`. 404 if absent or (soft-deleted without the query). |
+| `POST`   | `/admin/users`                       | Create. Body: `{ username, displayName, initialPassword?, groupIds? }`.              |
+| `PATCH`  | `/admin/users/:id`                   | Update. Body: `{ displayName?, groupIds? }` (groupIds is a full replace).            |
+| `DELETE` | `/admin/users/:id`                   | Soft delete + revoke every active session for the target user.                       |
+| `POST`   | `/admin/users/:id/reset-password`    | Set a new password + force rotation on next login + revoke target's sessions.        |
+
+Behaviour rules:
+
+- `username` matches `^[a-zA-Z0-9._-]{3,32}$`; the route lowercase-
+  normalizes on the way to the repo (the column uses `COLLATE NOCASE`
+  so uniqueness is case-insensitive regardless).
+- `displayName` is 1..100 characters.
+- `initialPassword` and `reset-password.newPassword` are validated via
+  `validateNewPassword` so they share the §1 policy floor with self
+  rotation. When the field is omitted, the server generates a 24-char
+  base64url CSPRNG token and returns it in the response body
+  **exactly once** (the cleartext is never put on the bus). Document
+  this clearly in the admin guide.
+- Admin-created users always start with `must_change_password = true`.
+- `groupIds` references must exist; unknown ids are rejected with
+  `400 errors.admin.userUnknownGroup`. A duplicate username is
+  rejected with `409 errors.admin.userUsernameTaken`. A schema
+  rejection surfaces as `400 errors.admin.badRequest`.
+
+### 10.1 "Last admin" guard
+
+Every PATCH that replaces `groupIds` and every DELETE runs the same
+pure-arithmetic guard before mutating state. Users sit at the leaves
+of the membership DAG, so flipping U's direct memberships only
+changes U's own transitive admin status — no other user is affected.
+
+Inputs: the resolver's expansion of the admin group
+(`expandGroupMembers(adminGroupId)`), the target user id, and the
+caller-proposed new direct memberships (`new Set()` for DELETE):
+
+```
+adminUsers     = expansion.userIds
+adminGroupSet  = expansion.groupIds
+wasAdmin       = adminUsers.has(targetUserId) ? 1 : 0
+willBeAdmin    = newGroupIds.some(g => adminGroupSet.has(g)) ? 1 : 0
+postCount      = adminUsers.size - wasAdmin + willBeAdmin
+ok             = postCount >= 1
+```
+
+Failure → `409 errors.admin.lastAdmin`. The check is exported from
+`admin-users.ts` as `lastAdminGuard` so tests can hammer it without
+spinning an HTTP fixture.
+
+### 10.2 Seeded-admin protection
+
+`DELETE /admin/users/:id` returns `404 errors.admin.userNotFound`
+when `id === kv_meta.admin_user_id`. Same masking pattern as the
+seeded admin group's slug. The "last admin" rule could not save the
+seeded admin alone anyway (it is the same identity), but the
+explicit 404 keeps the rule self-evident in code review.
+
+### 10.3 Self-reset prohibition
+
+`POST /admin/users/:id/reset-password` returns
+`404 errors.admin.cannotResetOwnPassword` when `id === c.var.user.id`.
+Admins rotate their own password through `POST /auth/password`,
+which requires the current password as proof-of-presence. This is
+a deliberate guard against a privilege-escalation footgun where an
+admin who lost their credentials could silently re-grant access
+without re-authenticating. Note this is `c.var.user.id`, not the
+seeded admin id — other admins are allowed to reset the seeded
+admin (only the seeded admin themselves is blocked by it through
+this rule).
+
+### 10.4 Sessions on user mutation
+
+- `DELETE /admin/users/:id` calls
+  `sessions.revokeAllForUser(id, now, { reason: 'user_deleted' })`
+  which emits a `session.expired` event per revoked row. The
+  group-resolver cache also clears via the existing `user.deleted`
+  subscriber.
+- `POST /admin/users/:id/reset-password` calls
+  `sessions.revokeAllForUser(id, now, { reason: 'admin_password_reset' })`.
+  The next login for the target lands with `mustChangePassword = true`
+  and the §6 gate fires on every protected route until they rotate.
+
+---
+
+## 11. Open extensions (post-2.5)
 
 - **Rate limiting on `/auth/login`** — captured but not enforced;
   follow-up tracked in `docs/dev/follow-ups/auth-rate-limit.md`.
@@ -350,6 +455,5 @@ consistent across the gate and the client-facing flag.
   `mustChangePassword` flip. Currently we revoke siblings but keep
   the same session id for the rotator; tracked alongside group-
   change events in phase 3+.
-- **User CRUD** — 2.5 deliverable.
 - **2FA / passkeys / SSO** — explicitly out of phase 2 (`overall.md`
   §10).

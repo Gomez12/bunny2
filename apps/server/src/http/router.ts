@@ -11,6 +11,7 @@ import { mountStatusRoute } from './routes/status';
 import { mountChatRoute } from './routes/chat';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAdminGroupsRoutes } from './routes/admin-groups';
+import { registerAdminUsersRoutes } from './routes/admin-users';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -40,7 +41,11 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
 
   const usersRepo = createUsersRepo(deps.db);
   const sessionsRepo = createSessionsRepo(deps.db);
-  const sessionService = createSessionService({ sessions: sessionsRepo, users: usersRepo });
+  const sessionService = createSessionService({
+    sessions: sessionsRepo,
+    users: usersRepo,
+    bus: deps.bus,
+  });
 
   app.use('*', createDevCors());
   app.use(
@@ -85,6 +90,12 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     bus: deps.bus,
     db: deps.db,
     resolver: deps.resolver,
+  });
+  registerAdminUsersRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
+    resolver: deps.resolver,
+    sessions: sessionService,
   });
   return app;
 }

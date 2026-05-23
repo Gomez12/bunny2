@@ -66,6 +66,11 @@
       "groupSelfMember": "A group cannot be a member of itself.",
       "missingMemberKind": "Specify whether you are adding a user or a sub-group.",
       "userNotFound": "User not found.",
+      "userUsernameTaken": "A user with this username already exists.",
+      "userUnknownGroup": "One or more group ids do not exist.",
+      "userInvalidUsername": "Username must be 3–32 characters using letters, digits, dot, underscore, or hyphen.",
+      "lastAdmin": "This change would remove the last administrator.",
+      "cannotResetOwnPassword": "Administrators must change their own password via the account menu, not the admin reset endpoint.",
       "notSeeded": "Admin features are not available yet — the initial admin seed has not run.",
       "badRequest": "The request could not be processed. Please check the input and try again."
     }

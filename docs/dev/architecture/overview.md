@@ -175,6 +175,18 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
   `/admin/*` prefix and uses the resolver to gate the admin-group
   CRUD endpoints; `/auth/me.isAdmin` uses the same resolver so the
   answer is consistent across the gate and the client-facing flag.
+- Admin user CRUD + forced password reset (from phase 2.5): the
+  `/admin/users/*` routes
+  (`apps/server/src/http/routes/admin-users.ts`) expose list, detail,
+  create, patch, soft-delete and `reset-password` endpoints. They
+  inherit auth + the password gate + `requireAdmin`. A "last
+  administrator" safety net is enforced by the same pure-arithmetic
+  guard on PATCH and DELETE (see `auth-and-sessions.md` §10), the
+  seeded admin user is permanent (404 masking), and admins are
+  forbidden from resetting their own password through this surface
+  (they must use `POST /auth/password`). Sessions of a deleted or
+  reset-target user are revoked through the session service, which
+  publishes `session.expired { reason }` per killed row.
 
 ### 2.7 Renderer
 

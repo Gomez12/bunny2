@@ -90,13 +90,66 @@ export const ChangePasswordRequestSchema = z.object({
 });
 export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequestSchema>;
 
+/**
+ * `POST /admin/users` payload.
+ *
+ * - `username` regex `^[a-zA-Z0-9._-]{3,32}$` — 3..32 chars, letters,
+ *   digits, dot, underscore, hyphen. The server lowercase-normalizes
+ *   on insert (the `users.username` column uses NOCASE collation so
+ *   case-insensitive uniqueness is enforced) but the schema tolerates
+ *   any-case so the client error stays predictable.
+ * - `displayName` 1..100 chars.
+ * - `initialPassword` is OPTIONAL. When absent the server generates a
+ *   24-char random password and includes it in the response body
+ *   exactly once (it is never published to the bus). The structural
+ *   `min(8)` floor here matches `ChangePasswordRequestSchema`; the
+ *   policy floor (min 12 + non-letter) is enforced in the route via
+ *   `validateNewPassword` so admin-set passwords share the bar with
+ *   self-rotated ones.
+ * - `groupIds` is an optional list of direct group memberships. Unknown
+ *   ids are rejected with `errors.admin.userUnknownGroup`.
+ */
 export const CreateUserRequestSchema = z.object({
-  username: z.string().min(1),
-  displayName: z.string().min(1),
+  username: z
+    .string()
+    .regex(
+      /^[a-zA-Z0-9._-]{3,32}$/,
+      'username must be 3..32 chars: letters, digits, dot, underscore, hyphen',
+    ),
+  displayName: z.string().min(1).max(100),
   initialPassword: z.string().min(8).optional(),
   groupIds: z.array(z.string().uuid()).optional(),
 });
 export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;
+
+/**
+ * `PATCH /admin/users/:id` payload. Partial update: at least one of
+ * `displayName` or `groupIds` must be present. `groupIds` REPLACES the
+ * user's direct memberships with this exact list (the route computes
+ * the diff and emits `group.member_added` / `group.member_removed`
+ * events accordingly).
+ */
+export const UpdateUserRequestSchema = z
+  .object({
+    displayName: z.string().min(1).max(100).optional(),
+    groupIds: z.array(z.string().uuid()).optional(),
+  })
+  .refine(
+    (v) => v.displayName !== undefined || v.groupIds !== undefined,
+    'at least one of displayName, groupIds must be present',
+  );
+export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
+
+/**
+ * `POST /admin/users/:id/reset-password` payload. `newPassword` is
+ * optional; when absent, the server generates a 24-char random one and
+ * returns it in the response exactly once. When present, the route
+ * validates against the same policy floor as self-rotation.
+ */
+export const ResetPasswordRequestSchema = z.object({
+  newPassword: z.string().min(8).optional(),
+});
+export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequestSchema>;
 
 export const CreateGroupRequestSchema = z.object({
   slug: z

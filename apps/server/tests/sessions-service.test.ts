@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { InMemoryMessageBus, type BusEvent } from '@bunny2/bus';
 import { openDatabase } from '../src/storage/sqlite';
 import { createSessionsRepo } from '../src/repos/sessions-repo';
 import { createUsersRepo } from '../src/repos/users-repo';
@@ -166,7 +167,7 @@ describe('session service', () => {
     }
   });
 
-  it('revokeAllForUser kills every live session for the user', () => {
+  it('revokeAllForUser kills every live session for the user', async () => {
     const { db, service, userId } = mkFixture();
     try {
       const a = service.createSession({
@@ -181,10 +182,58 @@ describe('session service', () => {
         idleMinutes: 30,
         now: new Date('2026-05-23T10:00:00.000Z'),
       });
-      service.revokeAllForUser(userId, new Date('2026-05-23T10:01:00.000Z'));
+      await service.revokeAllForUser(userId, new Date('2026-05-23T10:01:00.000Z'));
       const now = new Date('2026-05-23T10:02:00.000Z');
       expect(service.resolveSession({ token: a.token, now, idleMinutes: 30 })).toBeNull();
       expect(service.resolveSession({ token: b.token, now, idleMinutes: 30 })).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('revokeAllForUser publishes session.expired per revoked row with the supplied reason', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunny2-sessions-bus-'));
+    const db = openDatabase(dir);
+    try {
+      const users = createUsersRepo(db);
+      const sessions = createSessionsRepo(db);
+      const bus = new InMemoryMessageBus();
+      const captured: BusEvent[] = [];
+      bus.subscribe('session.expired', (e) => {
+        captured.push(e);
+      });
+      const service = createSessionService({ sessions, users, bus });
+      const userId = crypto.randomUUID();
+      users.createUser({
+        id: userId,
+        username: 'alice',
+        displayName: 'Alice',
+        passwordHash: 'h',
+        mustChangePassword: false,
+        now: new Date().toISOString(),
+      });
+      service.createSession({
+        userId,
+        ttlMinutes: 60,
+        idleMinutes: 30,
+        now: new Date('2026-05-23T10:00:00.000Z'),
+      });
+      service.createSession({
+        userId,
+        ttlMinutes: 60,
+        idleMinutes: 30,
+        now: new Date('2026-05-23T10:00:00.000Z'),
+      });
+      const revoked = await service.revokeAllForUser(userId, new Date('2026-05-23T10:01:00.000Z'), {
+        reason: 'admin_password_reset',
+      });
+      expect(revoked.length).toBe(2);
+      expect(captured.length).toBe(2);
+      for (const e of captured) {
+        const payload = e.payload as { sessionId: string; userId: string; reason: string };
+        expect(payload.userId).toBe(userId);
+        expect(payload.reason).toBe('admin_password_reset');
+      }
     } finally {
       db.close();
     }

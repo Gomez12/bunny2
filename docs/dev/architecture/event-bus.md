@@ -200,24 +200,25 @@ and the auth middleware. None of that emits new event types: the repos
 are pure DB writes, and the auth middleware reads sessions per
 request without publishing.
 
-Phase **2.3** introduces the auth domain events listed below. The
-remaining `user.updated`, `user.deleted`, `group.updated`,
-`group.deleted`, and `group.member_removed` types arrive with the
-CRUD endpoints in 2.4 and 2.5.
+Phase **2.3** introduces the auth domain events. Phases **2.4** and
+**2.5** extend the table with the rest of the user / group lifecycle.
+The full set of phase-2 events:
 
-| Type                    | When                                           | Payload                                                                                 |
-| ----------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `user.created`          | Admin seed (2.3); user CRUD (2.5)              | `{ userId, username, seeded? }`                                                         |
-| `user.password_changed` | `POST /auth/password` success                  | `{ userId }`                                                                            |
-| `user.login.succeeded`  | `POST /auth/login` success                     | `{ userId, sessionId }`                                                                 |
-| `user.login.failed`     | `POST /auth/login` 401 (every failure branch)  | `{ userId? \| username, reason: 'unknown_user' \| 'soft_deleted' \| 'wrong_password' }` |
-| `session.created`       | `POST /auth/login` success                     | `{ sessionId, userId, expiresAt }`                                                      |
-| `session.expired`       | `POST /auth/logout` when a session was revoked | `{ sessionId, userId, reason: 'logout' }`                                               |
-| `group.created`         | Admin seed (2.3); group CRUD (2.4)             | `{ groupId, slug, name, seeded? }`                                                      |
-| `group.updated`         | `PATCH /admin/groups/:id` (2.4)                | `{ groupId, patch: { name?, description? } }`                                           |
-| `group.deleted`         | `DELETE /admin/groups/:id` (2.4)               | `{ groupId, slug }`                                                                     |
-| `group.member_added`    | Admin seed (2.3); membership endpoints (2.4)   | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId?, seeded? }`               |
-| `group.member_removed`  | `DELETE /admin/groups/:id/members/:memberId`   | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId? }`                        |
+| Type                    | When                                                                                                              | Payload                                                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `user.created`          | Admin seed (2.3); `POST /admin/users` (2.5)                                                                       | `{ userId, username, seeded: boolean, createdBy?: actingAdminId }` (seed → `seeded: true`; admin path → adds `createdBy`) |
+| `user.updated`          | `PATCH /admin/users/:id` (2.5)                                                                                    | `{ userId, patch: { displayName?, groupIds? }, updatedBy: actingAdminId }`                                                |
+| `user.deleted`          | `DELETE /admin/users/:id` (2.5)                                                                                   | `{ userId, deletedBy: actingAdminId }`                                                                                    |
+| `user.password_changed` | `POST /auth/password`; `POST /admin/users/:id/reset-password` (2.5)                                               | `{ userId, by: actingAdminId \| userId, forced: boolean }` (`true` for admin reset; `false` for self rotation)            |
+| `user.login.succeeded`  | `POST /auth/login` success                                                                                        | `{ userId, sessionId }`                                                                                                   |
+| `user.login.failed`     | `POST /auth/login` 401 (every failure branch)                                                                     | `{ userId? \| username, reason: 'unknown_user' \| 'soft_deleted' \| 'wrong_password' }`                                   |
+| `session.created`       | `POST /auth/login` success                                                                                        | `{ sessionId, userId, expiresAt }`                                                                                        |
+| `session.expired`       | `POST /auth/logout`; `POST /auth/password` (per revoked sibling); `DELETE /admin/users/:id`; reset-password (2.5) | `{ sessionId, userId, reason: 'logout' \| 'self_password_change' \| 'admin_password_reset' \| 'user_deleted' }`           |
+| `group.created`         | Admin seed (2.3); `POST /admin/groups` (2.4)                                                                      | `{ groupId, slug, name, seeded? }`                                                                                        |
+| `group.updated`         | `PATCH /admin/groups/:id` (2.4)                                                                                   | `{ groupId, patch: { name?, description? } }`                                                                             |
+| `group.deleted`         | `DELETE /admin/groups/:id` (2.4)                                                                                  | `{ groupId, slug }`                                                                                                       |
+| `group.member_added`    | Admin seed (2.3); membership endpoints (2.4); user CRUD (2.5)                                                     | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId?, seeded? }`                                                 |
+| `group.member_removed`  | `DELETE /admin/groups/:id/members/:memberId` (2.4); `PATCH /admin/users/:id` group diff (2.5)                     | `{ groupId, kind: 'user' \| 'group', userId? \| childGroupId? }`                                                          |
 
 Phase 2.4 also adds an **in-memory transitive group resolver**
 (`apps/server/src/auth/group-resolver.ts`) that subscribes to

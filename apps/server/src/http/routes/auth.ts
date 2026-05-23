@@ -7,6 +7,7 @@ import { createUsersRepo, type User as StoredUser } from '../../repos/users-repo
 import { createSessionsRepo } from '../../repos/sessions-repo';
 import type { GroupResolver } from '../../auth/group-resolver';
 import { dummyVerify, hashPassword, verifyPassword } from '../../auth/password';
+import { validateNewPassword } from '../../auth/password-policy';
 import { clearSessionCookie, cookieSecureDefault, setSessionCookie } from '../../auth/cookie';
 import { readSessionCookie } from '../../auth/cookie';
 import { hashSessionToken } from '../../auth/session-token';
@@ -65,14 +66,6 @@ const INVALID_CREDENTIALS = { error: 'errors.auth.invalidCredentials' } as const
 const WEAK_PASSWORD = { error: 'errors.auth.weakPassword' } as const;
 const INVALID_CURRENT_PASSWORD = { error: 'errors.auth.invalidCurrentPassword' } as const;
 const BAD_REQUEST = { error: 'errors.auth.badRequest' } as const;
-
-/**
- * Password-policy floor for end-user-chosen passwords. Plan §4.1 sub-
- * phase 2.3: min 12 chars and at least one non-letter. Documented in
- * the architecture doc — keep these two locations in sync.
- */
-const MIN_PASSWORD_LENGTH = 12;
-const NON_LETTER = /[^A-Za-z]/;
 
 export function registerAuthRoutes(
   app: Hono<{ Variables: HonoVariables }>,
@@ -284,8 +277,10 @@ export function registerAuthRoutes(
       }
     }
 
-    // Policy floor: ≥ 12 chars AND ≥ 1 non-letter. See architecture doc.
-    if (newPassword.length < MIN_PASSWORD_LENGTH || !NON_LETTER.test(newPassword)) {
+    // Policy floor — shared with the admin reset endpoint via
+    // `validateNewPassword`. Rejection key is `errors.auth.weakPassword`.
+    const policy = validateNewPassword(newPassword);
+    if (!policy.ok) {
       return c.json(WEAK_PASSWORD, 400);
     }
 
@@ -296,15 +291,17 @@ export function registerAuthRoutes(
     usersRepo.updateUser(stored.id, { passwordHash: newHash, mustChangePassword: false }, nowIso);
 
     // Revoke ALL OTHER sessions for this user — defensive against a
-    // compromised cookie reaching a second device. Keep the current
-    // session live so the user does not have to re-login right after
-    // rotating. We achieve this by revoking everything, then re-touching
-    // the current session is not needed (we revoked siblings, not it).
-    revokeAllOtherSessions(deps, user.id, session.id, nowDate);
+    // compromised cookie reaching a second device. We keep the current
+    // session live by skipping it in the per-row revocation loop and
+    // publish a `session.expired { reason: 'self_password_change' }`
+    // event per revoked sibling. We do NOT call the bulk
+    // `revokeAllForUser` helper here because the per-row "skip the
+    // current session" rule is unique to self-rotation.
+    await revokeOtherSessions(deps, user.id, session.id, nowDate, correlationId);
 
     await deps.bus.publish({
       type: 'user.password_changed',
-      payload: { userId: stored.id },
+      payload: { userId: stored.id, by: stored.id, forced: false },
       correlationId,
     });
 
@@ -329,34 +326,34 @@ function extractToken(c: Context): string | null {
 }
 
 /**
- * Revokes every active session for `userId` EXCEPT `keepSessionId`. The
- * repo only exposes `revokeAllForUser`, so we re-create the keep-alive
- * by reading then revoking. A small race is possible if a brand-new
- * session lands between read and revoke — that session will survive,
- * which is the safe failure mode (it carries the freshly-rotated
- * password's session, so it cannot be the attacker's).
+ * Revokes every active session for `userId` EXCEPT `keepSessionId` and
+ * publishes a `session.expired { reason: 'self_password_change' }` event
+ * per revoked row. The per-row variant exists because the bulk
+ * `revokeAllForUser` helper has no "keep one alive" knob — self-rotation
+ * is the only call site with that need.
+ *
+ * Race note: a brand-new session that lands between the read and the
+ * revoke will survive. That is the safe failure mode — the new session
+ * already carries the rotated password's authority, so it cannot be the
+ * attacker's.
  */
-function revokeAllOtherSessions(
+async function revokeOtherSessions(
   deps: AuthRouteDeps,
   userId: string,
   keepSessionId: string,
   now: Date,
-): void {
-  // We only need the session list to skip the current one; the repo
-  // doesn't expose `listForUser`, so we query directly. Filter on
-  // not-revoked + not-expired so we don't pointlessly touch dead rows.
-  interface SessionRow {
-    id: string;
-  }
-  const rows = deps.db
-    .query<
-      SessionRow,
-      [string, string]
-    >(`SELECT id FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?`)
-    .all(userId, now.toISOString());
-  for (const { id } of rows) {
+  correlationId: string,
+): Promise<void> {
+  const sessionsRepo = createSessionsRepo(deps.db);
+  const ids = sessionsRepo.listActiveSessionIdsForUser(userId, now.toISOString());
+  for (const id of ids) {
     if (id === keepSessionId) continue;
     deps.sessions.revokeSession(id, now);
+    await deps.bus.publish({
+      type: 'session.expired',
+      payload: { sessionId: id, userId, reason: 'self_password_change' },
+      correlationId,
+    });
   }
 }
 
