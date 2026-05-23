@@ -62,7 +62,7 @@ const status = (): StatusBody => {
   return {
     app: appName,
     version: appVersion,
-    phase: '2.1',
+    phase: '2.2',
     ok: true,
     dataDir,
     configFile,
@@ -82,7 +82,7 @@ const status = (): StatusBody => {
   };
 };
 
-const app = createApp({ bus, llmClient, status });
+const app = createApp({ bus, llmClient, status, db, auth: config.auth });
 
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);

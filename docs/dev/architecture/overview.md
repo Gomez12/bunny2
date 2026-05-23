@@ -47,8 +47,10 @@ file; if you have an hour, follow the links.
 |         └── wrapped by withTelemetry → llm_calls table         |
 |                                                                |
 |  HTTP API (Hono on Bun.serve)                                  |
-|    ├── GET  /status                                            |
-|    └── POST /chat                                              |
+|    ├── CORS (dev allowlist)                                    |
+|    ├── Auth middleware (opaque session, cookie + Bearer)       |
+|    ├── GET  /status   (public)                                 |
+|    └── POST /chat     (auth-gated from 2.2)                    |
 +----------------------------------------------------------------+
                                  ^
                                  | HTTP (CORS-allowlisted in dev)
@@ -140,6 +142,13 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
   is exactly what the smoke test and the chat tests do.
 - CORS: dev-only allowlist for `localhost`/`127.0.0.1`/`null` (Electron
   `file://`); see ADR 0006 §CORS.
+- Auth (from phase 2.2): every route is gated by `createAuthMiddleware`
+  except a small public whitelist (`GET /status`, `POST /auth/login`,
+  `POST /auth/logout`, and any CORS preflight). The middleware reads an
+  opaque session token from `Authorization: Bearer` or the
+  `bunny2_session` HttpOnly cookie, validates it through the session
+  service, and attaches `c.var.session` + `c.var.user`. See
+  [ADR 0008](../decisions/0008-session-strategy.md).
 
 ### 2.7 Renderer
 

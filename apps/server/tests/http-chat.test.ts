@@ -15,6 +15,8 @@ import { createLlmClient } from '../src/llm/client';
 import { withTelemetry } from '../src/llm/telemetry';
 import { createApp } from '../src/http/router';
 import type { StatusBody } from '../src/http/router';
+import { AuthConfigSchema } from '../src/config/schema';
+import { seedUserAndSession } from './_helpers/auth';
 
 function mkTmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'bunny2-http-chat-'));
@@ -55,17 +57,19 @@ function status(): StatusBody {
   return {
     app: 'bunny2',
     version: '0.0.0',
-    phase: '1.7',
+    phase: '2.2',
     ok: true,
     dataDir: '/tmp/test',
     configFile: null,
-    sqlite: { schemaVersion: '0001_init' },
+    sqlite: { schemaVersion: '0002_users_groups' },
     lancedb: { ready: true, tables: [] },
     bus: { adapter: 'in-memory', events: 0 },
     llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
     auth: { sessions: 0, users: 0, groups: 0 },
   };
 }
+
+const auth = AuthConfigSchema.parse({});
 
 describe('POST /chat', () => {
   it('publishes chat.requested and chat.responded events, writes one llm_calls row, returns response shape', async () => {
@@ -90,11 +94,15 @@ describe('POST /chat', () => {
       });
       const llmClient = withTelemetry(raw, { log: callLog });
 
-      const app = createApp({ bus, llmClient, status });
+      const { token } = seedUserAndSession(db);
+      const app = createApp({ bus, llmClient, status, db, auth });
       const res = await app.fetch(
         new Request('http://localhost/chat', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({ message: 'hello world' }),
         }),
       );
@@ -150,11 +158,15 @@ describe('POST /chat', () => {
         { log: callLog },
       );
 
-      const app = createApp({ bus, llmClient, status });
+      const { token } = seedUserAndSession(db);
+      const app = createApp({ bus, llmClient, status, db, auth });
       const res = await app.fetch(
         new Request('http://localhost/chat', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({ message: 'hi', model: 'override-model' }),
         }),
       );
@@ -195,11 +207,15 @@ describe('POST /chat', () => {
         { log: callLog },
       );
 
-      const app = createApp({ bus, llmClient, status });
+      const { token } = seedUserAndSession(db);
+      const app = createApp({ bus, llmClient, status, db, auth });
       const res = await app.fetch(
         new Request('http://localhost/chat', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({ message: 'boom' }),
         }),
       );
@@ -237,18 +253,52 @@ describe('POST /chat', () => {
         }),
         { log: callLog },
       );
-      const app = createApp({ bus, llmClient, status });
+      const { token } = seedUserAndSession(db);
+      const app = createApp({ bus, llmClient, status, db, auth });
 
       const res = await app.fetch(
         new Request('http://localhost/chat', {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({}),
         }),
       );
       expect(res.status).toBe(400);
       const body = (await res.json()) as ChatErrorBody;
       expect(body.error).toBe('errors.chat.badRequest');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('returns 401 when no Authorization header or session cookie is sent', async () => {
+    const dir = mkTmp();
+    const db = openDatabase(dir);
+    try {
+      const bus = new InMemoryMessageBus();
+      const callLog = createSqliteLlmCallLog(db);
+      const llmClient = withTelemetry(
+        createLlmClient({
+          endpoint: 'mock://echo',
+          apiKey: '',
+          defaultModel: 'mock-default',
+        }),
+        { log: callLog },
+      );
+      const app = createApp({ bus, llmClient, status, db, auth });
+      const res = await app.fetch(
+        new Request('http://localhost/chat', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ message: 'hi' }),
+        }),
+      );
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('errors.auth.unauthorized');
     } finally {
       db.close();
     }

@@ -1,6 +1,6 @@
 import type { Hono } from 'hono';
 import { z } from 'zod';
-import type { AppDeps } from '../types';
+import type { AppDeps, HonoVariables } from '../types';
 
 const ChatRequestBodySchema = z.object({
   message: z.string().min(1, 'message must be a non-empty string'),
@@ -45,7 +45,7 @@ export interface ChatFailedPayload {
  * not an English string — so the frontend can render it in the user's
  * locale. `AGENTS.md` forbids hardcoded user-facing strings.
  */
-export function mountChatRoute(app: Hono, deps: AppDeps): void {
+export function mountChatRoute(app: Hono<{ Variables: HonoVariables }>, deps: AppDeps): void {
   app.post('/chat', async (c) => {
     let body: unknown;
     try {

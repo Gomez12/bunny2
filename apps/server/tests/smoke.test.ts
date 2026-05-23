@@ -46,6 +46,7 @@ import {
 } from '../src/llm';
 import { createApp } from '../src/http/router';
 import type { StatusBody } from '../src/http/router';
+import { seedUserAndSession } from './_helpers/auth';
 
 interface ChatSuccessBody {
   content: string;
@@ -164,7 +165,13 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       },
       auth: { sessions: 0, users: 0, groups: 0 },
     });
-    const app = createApp({ bus, llmClient, status });
+    const app = createApp({ bus, llmClient, status, db, auth: loaded.config.auth });
+    // Auth gate is live from 2.2: seed a user + session so the `/chat`
+    // round-trip below carries a valid Bearer token. `/status` is public
+    // and does not need the header. Smoke does not assert specific
+    // session counts so the hardcoded `auth` block above stays valid
+    // for the structural-equality checks.
+    const seeded = seedUserAndSession(db);
 
     // 6. GET /status (before any chat) — asserts structural fields the
     //    plan calls out explicitly.
@@ -179,11 +186,16 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     expect(statusBeforeBody.llm.endpoint).toBe('mock://echo');
     expect(statusBeforeBody.llm.calls).toBe(0);
 
-    // 7. POST /chat against the deterministic mock provider.
+    // 7. POST /chat against the deterministic mock provider. Carries
+    //    the seeded Bearer token — the 2.2 auth middleware gates this
+    //    route and rejects unauthenticated calls with 401.
     const chatRes = await app.fetch(
       new Request('http://localhost/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${seeded.token}`,
+        },
         body: JSON.stringify({ message: 'hello' }),
       }),
     );

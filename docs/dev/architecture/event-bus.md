@@ -194,9 +194,14 @@ are direct.
 
 ## 9. Phase 2 — upcoming auth events
 
-Phase 2.1 (current sub-phase) adds the `users`, `groups`, `sessions`
-tables and the repositories that write them. It deliberately emits **no**
-new event types — the repos are pure DB writes, with no bus interaction.
+Phases 2.1 and 2.2 add the `users`, `groups`, `sessions` tables, the
+repositories that write them, the session service, the cookie helpers,
+and the auth middleware. None of that emits new event types: the repos
+are pure DB writes, and the auth middleware reads sessions per
+request without publishing. In particular, `session.created` /
+`session.expired` are **not** emitted in 2.2 — they land in 2.3
+alongside the login / logout routes that own session lifecycle from
+the user's perspective.
 
 Phase 2.3 introduces the auth domain events; they will be added to this
 document at that time. The planned set is `user.created`, `user.updated`,
