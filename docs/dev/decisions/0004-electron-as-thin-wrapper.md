@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-23
 - Phase: 1.6
-- Related: `docs/dev/plans/overall.md` §4, §10.6; `docs/dev/plans/phase-01-system-foundation.md` §4.2 row "1.6", §10 row 3 (packaging risk); `docs/dev/architecture/packaging.md`.
+- Related: `docs/dev/plans/overall.md` §4, §10.6; `docs/dev/plans/done/phase-01-system-foundation.md` §4.2 row "1.6", §10 row 3 (packaging risk); `docs/dev/architecture/packaging.md`.
 
 ---
 

@@ -36,5 +36,5 @@ No Windows host was available during phase 1.6 implementation. Phase
 
 - `apps/server/src/index.ts`
 - `apps/server/src/storage/lancedb.ts`
-- `docs/dev/plans/phase-01-system-foundation.md` §10 row 2 (LanceDB risk)
+- `docs/dev/plans/done/phase-01-system-foundation.md` §10 row 2 (LanceDB risk)
 - `docs/dev/decisions/0003-lancedb.md`

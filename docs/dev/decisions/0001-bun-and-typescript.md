@@ -4,7 +4,7 @@
 - Date: 2026-05-23
 - Phase: 1.1 (recap, authored during 1.7 close-out)
 - Related: `AGENTS.md` §Bun / §Code; `docs/dev/plans/overall.md` §4;
-  `docs/dev/plans/phase-01-system-foundation.md` §4.2 row "1.1";
+  `docs/dev/plans/done/phase-01-system-foundation.md` §4.2 row "1.1";
   ADR 0004 (Electron + Bun sidecar), ADR 0006 (Hono on Bun).
 
 ---

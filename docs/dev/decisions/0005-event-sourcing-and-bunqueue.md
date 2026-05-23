@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-23
 - Phase: 1.3
-- Related: `docs/dev/plans/overall.md` §5, §10.1; `docs/dev/plans/phase-01-system-foundation.md` §4.2 / §10; `docs/dev/architecture/event-bus.md`.
+- Related: `docs/dev/plans/overall.md` §5, §10.1; `docs/dev/plans/done/phase-01-system-foundation.md` §4.2 / §10; `docs/dev/architecture/event-bus.md`.
 
 ---
 

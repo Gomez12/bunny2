@@ -370,5 +370,5 @@ This overall plan is verified by being able to answer **yes** to:
   drag them in? — §3, §8 ("Later").
 
 Concrete next step: write
-`docs/dev/plans/phase-01-system-foundation.md` using the decisions in
+`docs/dev/plans/done/phase-01-system-foundation.md` using the decisions in
 §10.

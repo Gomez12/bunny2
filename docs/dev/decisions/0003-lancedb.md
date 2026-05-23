@@ -6,7 +6,7 @@
 - Related: `docs/dev/plans/overall.md` §3 (non-goals; vector retrieval
   is auth-aware), §4 (technical foundation), §5.8 (authorization-aware
   retrieval invariant), §9 (LanceDB risk row);
-  `docs/dev/plans/phase-01-system-foundation.md` §4.2 row "1.2",
+  `docs/dev/plans/done/phase-01-system-foundation.md` §4.2 row "1.2",
   §10 row 2 (LanceDB risk); `docs/dev/follow-ups/lancedb-windows.md`.
 
 ---

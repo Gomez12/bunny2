@@ -5,7 +5,7 @@
 - Phase: 1.2 (recap, authored during 1.7 close-out)
 - Related: `docs/dev/plans/overall.md` §3 (non-goals), §4
   (technical foundation), §11.7 (deferred Postgres);
-  `docs/dev/plans/phase-01-system-foundation.md` §4.2 row "1.2",
+  `docs/dev/plans/done/phase-01-system-foundation.md` §4.2 row "1.2",
   §11.2 (open question on SQLite driver); `AGENTS.md` §Platforms.
 
 ---

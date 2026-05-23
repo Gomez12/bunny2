@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-23
 - Phase: 1.5
-- Related: `docs/dev/plans/phase-01-system-foundation.md` §4.2 row "1.5", §11.1; `docs/dev/architecture/event-bus.md`.
+- Related: `docs/dev/plans/done/phase-01-system-foundation.md` §4.2 row "1.5", §11.1; `docs/dev/architecture/event-bus.md`.
 
 ---
 

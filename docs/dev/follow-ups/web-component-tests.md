@@ -43,4 +43,4 @@ in one PR and bring this set of tests along.
 - `apps/web/src/pages/ChatPage.tsx`
 - `apps/web/tests/i18n-no-hardcoded-strings.test.ts`
 - `docs/dev/architecture/i18n.md`
-- `docs/dev/plans/phase-01-system-foundation.md` §4.2 row 1.5 (option F)
+- `docs/dev/plans/done/phase-01-system-foundation.md` §4.2 row 1.5 (option F)
