@@ -136,7 +136,13 @@
       "slugTaken": "Een item met deze slug bestaat al in deze laag.",
       "validation": "Het item kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
       "translationFailed": "Vertaling kon niet worden gegenereerd. Probeer het opnieuw.",
-      "syncFailed": "Synchronisatie met het externe systeem is mislukt. Probeer het later opnieuw."
+      "syncFailed": "Synchronisatie met het externe systeem is mislukt. Probeer het later opnieuw.",
+      "companies": {
+        "kvkInvalid": "Het KvK-nummer moet uit precies 8 cijfers bestaan.",
+        "websiteInvalid": "De website moet een geldige URL zijn.",
+        "emailInvalid": "Het e-mailadres is niet geldig.",
+        "descriptionTooLong": "De beschrijving is te lang."
+      }
     }
   },
   "entity": {
@@ -157,6 +163,33 @@
       "externalLinks": "Externe koppelingen",
       "addExternalLink": "Extern systeem koppelen",
       "removeExternalLink": "Koppeling verwijderen"
+    },
+    "companies": {
+      "title": "Bedrijven",
+      "singular": "Bedrijf",
+      "create": "Nieuw bedrijf",
+      "edit": "Bedrijf bewerken",
+      "empty": "Nog geen bedrijven.",
+      "search": "Bedrijven zoeken",
+      "fields": {
+        "legalName": "Statutaire naam",
+        "tradeName": "Handelsnaam",
+        "kvkNumber": "KvK-nummer",
+        "website": "Website",
+        "address": "Adres",
+        "addressStreet": "Straat",
+        "addressHouseNumber": "Huisnummer",
+        "addressPostalCode": "Postcode",
+        "addressCity": "Plaats",
+        "addressCountry": "Land",
+        "phone": "Telefoon",
+        "email": "E-mail",
+        "industry": "Branche",
+        "description": "Beschrijving"
+      },
+      "subtitle": {
+        "noDetails": "Nog geen KvK-nummer of website."
+      }
     }
   }
 }

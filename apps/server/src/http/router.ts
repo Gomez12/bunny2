@@ -16,13 +16,10 @@ import { registerAdminUsersRoutes } from './routes/admin-users';
 import { registerMeLayersRoute } from './routes/me-layers';
 import { registerLayersRoutes } from './routes/layers';
 import { registerSystemLocalesRoute } from './routes/system-locales';
-// Phase 4.0 — universal entity contract. The factory is imported here so
-// the symbol is reachable from `apps/server/src/http/router.ts` and
-// future per-kind sub-phases (4a..4d) can wire their concrete modules
-// without touching the import graph again. Intentionally NOT called in
-// 4.0 — no entity kind is registered yet.
-import { mountEntityRoutes as _mountEntityRoutes } from '../entities';
-void _mountEntityRoutes;
+// Phase 4a.1 — first concrete entity kind. Each per-kind sub-phase
+// (4a..4d) registers its module and mounts its routes via a small
+// helper exported from `apps/server/src/entities/<kind>/index.ts`.
+import { mountCompanyRoutes, registerCompanyModule } from '../entities/companies';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -132,6 +129,17 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     locales: deps.locales,
   });
   registerSystemLocalesRoute(app, { locales: deps.locales });
+
+  // Phase 4a.1 — companies entity. `registerCompanyModule()` is
+  // idempotent per process so `makeTestApp`-driven tests can rebuild
+  // the app any number of times without resetting the registry; see
+  // `apps/server/src/entities/companies/index.ts`.
+  registerCompanyModule();
+  mountCompanyRoutes(app, {
+    db: deps.db,
+    bus: deps.bus,
+    llm: deps.llmClient,
+  });
 
   return app;
 }

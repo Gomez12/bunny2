@@ -354,7 +354,13 @@
       "slugTaken": "An item with this slug already exists in this layer.",
       "validation": "The item could not be saved. Please check the input and try again.",
       "translationFailed": "Translation could not be generated. Please try again.",
-      "syncFailed": "Sync with the external system failed. Please try again later."
+      "syncFailed": "Sync with the external system failed. Please try again later.",
+      "companies": {
+        "kvkInvalid": "The KvK number must be exactly 8 digits.",
+        "websiteInvalid": "The website must be a valid URL.",
+        "emailInvalid": "The email address is not valid.",
+        "descriptionTooLong": "The description is too long."
+      }
     }
   },
   "entity": {
@@ -375,6 +381,33 @@
       "externalLinks": "External links",
       "addExternalLink": "Link external system",
       "removeExternalLink": "Remove link"
+    },
+    "companies": {
+      "title": "Companies",
+      "singular": "Company",
+      "create": "New company",
+      "edit": "Edit company",
+      "empty": "No companies yet.",
+      "search": "Search companies",
+      "fields": {
+        "legalName": "Legal name",
+        "tradeName": "Trade name",
+        "kvkNumber": "KvK number",
+        "website": "Website",
+        "address": "Address",
+        "addressStreet": "Street",
+        "addressHouseNumber": "House number",
+        "addressPostalCode": "Postal code",
+        "addressCity": "City",
+        "addressCountry": "Country",
+        "phone": "Phone",
+        "email": "Email",
+        "industry": "Industry",
+        "description": "Description"
+      },
+      "subtitle": {
+        "noDetails": "No KvK number or website yet."
+      }
     }
   }
 }

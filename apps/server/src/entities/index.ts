@@ -36,6 +36,7 @@ export {
 
 export type {
   EntityModule,
+  EntityIndexedColumn,
   EntityLifecycleContext,
   EntityLifecycleHook,
   EntityScheduledJob,

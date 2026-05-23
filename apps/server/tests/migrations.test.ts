@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0005_entities_base');
+      expect(currentSchemaVersion(db)).toBe('0006_companies');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -44,6 +44,8 @@ describe('migrations', () => {
       expect(tables).toContain('entity_translations');
       expect(tables).toContain('entity_external_links');
       expect(tables).toContain('entity_souls');
+      // 0006 — first concrete entity kind (phase 4a.1).
+      expect(tables).toContain('companies');
 
       const indexes = db
         .query<{ name: string }, []>(
@@ -68,6 +70,10 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_entity_versions_lookup');
       expect(indexes).toContain('idx_entity_translations_kind');
       expect(indexes).toContain('idx_entity_external_links_entity');
+      // 0006 indexes — companies.
+      expect(indexes).toContain('idx_companies_layer');
+      expect(indexes).toContain('idx_companies_deleted_at');
+      expect(indexes).toContain('idx_companies_kvk');
     } finally {
       db.close();
     }
@@ -88,6 +94,7 @@ describe('migrations', () => {
         '0003_layers',
         '0004_layer_locale_default',
         '0005_entities_base',
+        '0006_companies',
       ]);
     } finally {
       db2.close();

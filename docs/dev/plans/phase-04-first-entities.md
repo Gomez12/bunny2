@@ -616,3 +616,69 @@ first caller.
   permissions still applies.
 - The translator runs the LLM call inline in 4.0. Phase 5 swaps
   the inline call for a queue push; the event surface is stable.
+
+### 4a.1 shipped (2026-05-23)
+
+**What landed**
+
+- Migration `apps/server/src/storage/migrations/0006_companies.sql` —
+  the first per-kind table. Follows §5 shape exactly: shared columns
+  (`id`, `layer_id`, `slug`, `title`, `searchable_text`,
+  `original_locale`, `payload_json`, audit columns, `version`) plus
+  `kvk_number TEXT` and `website TEXT`. Indexes:
+  `idx_companies_layer`, `idx_companies_deleted_at`,
+  `idx_companies_kvk` (sparse; KvK number is nullable).
+  `apps/server/tests/migrations.test.ts` asserts the schema lands on a
+  fresh DB and that the migration list ends at `0006_companies`.
+- Cross-package zod schemas in `packages/shared/src/companies.ts`:
+  `CompanyAddressSchema`, `CompanyPayloadSchema` (8-digit KvK,
+  URL website, 4000-char description cap, every field optional),
+  `CreateCompanyRequestSchema`, `UpdateCompanyRequestSchema`. Slug
+  validation matches `CreateLayerRequestSchema` (`^[a-z0-9-]+$`).
+  Re-exported from `packages/shared/src/index.ts`.
+- `companyModule` (`apps/server/src/entities/companies/module.ts`)
+  with `kind = 'company'`, `tableName = 'companies'`, the new
+  `indexedColumns` declaration for `kvk_number` + `website`, a
+  lowercase searchable-text digest, and a `subtitle` that picks the
+  KvK number first, the website second.
+- Wire-up helper `apps/server/src/entities/companies/index.ts` —
+  exports `registerCompanyModule()` (idempotent per process so
+  `makeTestApp`-rebuilt tests do not collide on the registry) and
+  `mountCompanyRoutes(app, { db, bus, llm })`. Wired into the
+  production app from `apps/server/src/http/router.ts`.
+- Contract suite for the kind:
+  `apps/server/tests/entities/companies-contract.test.ts` runs the
+  §4.0 reusable suite against `companyModule` and adds two
+  per-kind assertions for the indexed-column path (write on
+  create/update; clear writes `NULL`).
+- i18n: `entity.companies.*` and `errors.entity.companies.*` in
+  both `en.json` and `nl.json`.
+- Docs: §2 of `docs/dev/architecture/entities.md` documents the new
+  `indexedColumns` mechanism; new §10a "First consumer: companies
+  (4a.1)" walks through the registered module shape.
+
+**Foundation tweak**
+
+- `EntityModule<Payload>` gained an optional
+  `indexedColumns: readonly EntityIndexedColumn<Payload>[]` field.
+  The generic `EntityStore` (`apps/server/src/entities/store.ts`)
+  validates each `name` against `/^[a-z_][a-z0-9_]*$/`, rejects
+  collisions with the reserved-column set, rejects duplicates within
+  the array, and appends the columns + placeholders to the INSERT
+  and UPDATE SQL it builds once per factory call. The `extract`
+  callback projects payload values into `string | number | null` —
+  the type space SQLite stores natively.
+  This was extracted into the contract once (instead of patched
+  per kind) because all four phase-4 entities need an indexed
+  column: companies (`kvk_number`, `website`), calendar
+  (`starts_at`, `ends_at`), todos (`due_at`, `status`, `priority`).
+  See §4.3 question 1 above.
+
+**Follow-ups noted**
+
+- Per-kind route prefix is `/l/:slug/company` (singular) per the
+  §4.0 router's `/<kind>/*` convention. The phase-4a.5 web UI will
+  surface a friendlier `/l/:slug/companies` page that calls this
+  URL underneath; if the discrepancy ever bothers a future kind,
+  expose an optional `routeSegment` on `EntityModule` then. Not
+  worth touching the foundation again now.

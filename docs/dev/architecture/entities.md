@@ -100,8 +100,9 @@ interface EntityModule<Payload> {
   readonly kind: string;
   readonly tableName: string;
   readonly payloadSchema: ZodType<Payload>;
-  toSummary(input: { ref; meta; payload }): EntitySummary;
+  toSummary(input: { ref; meta; payload; title }): EntitySummary;
   searchableText(payload): string;
+  readonly indexedColumns?: readonly EntityIndexedColumn<Payload>[];
   readonly connectors?: readonly EntityConnector<Payload>[];
   readonly scheduledJobs?: readonly EntityScheduledJob[];
   readonly onCreate?: EntityLifecycleHook<Payload>;
@@ -109,7 +110,20 @@ interface EntityModule<Payload> {
   readonly onSoftDelete?: EntityLifecycleHook<Payload>;
   readonly onRestore?: EntityLifecycleHook<Payload>;
 }
+
+interface EntityIndexedColumn<Payload> {
+  readonly name: string;
+  extract(payload: Payload): string | number | null;
+}
 ```
+
+`indexedColumns` (added in 4a.1) tells the generic store which per-kind
+columns to populate alongside `payload_json` — e.g. `companies.kvk_number`,
+`calendar_events.starts_at`, `todos.due_at`. The store validates each
+`name` against `/^[a-z_][a-z0-9_]*$/` at factory time (same surface-area
+treatment as `tableName`); reserved-column collisions throw at boot.
+Modules that need no extra columns omit the field entirely — the fixture
+module is the canonical example.
 
 `registerEntityModule(module)` throws on duplicate `kind` — the
 registry is process-local and authoritative (see
@@ -336,6 +350,55 @@ bus, db })`.
 The §4.0 contract test suite, the per-kind table shape, and the
 `EntityModule` registry are designed so this recipe never grows past
 the eight steps above.
+
+---
+
+## 10a. First consumer: companies (4a.1)
+
+The first concrete `EntityModule` is `companyModule`
+(`apps/server/src/entities/companies/module.ts`). It registers under
+`kind = 'company'`, writes to the `companies` table created by
+`0006_companies.sql`, and declares two indexed columns:
+
+```ts
+export const companyModule: EntityModule<CompanyPayload> = {
+  kind: 'company',
+  tableName: 'companies',
+  payloadSchema: CompanyPayloadSchema,
+  indexedColumns: [
+    { name: 'kvk_number', extract: (p) => p.kvkNumber ?? null },
+    { name: 'website', extract: (p) => p.website ?? null },
+  ],
+  toSummary({ ref, meta, payload, title }) {
+    return {
+      ...ref,
+      meta,
+      title,
+      subtitle: payload.kvkNumber ?? payload.website ?? null,
+      searchableText: /* lowercase digest */,
+    };
+  },
+  searchableText(payload) { /* lowercase digest */ },
+};
+```
+
+Wired into the HTTP surface from `apps/server/src/http/router.ts` via
+`mountCompanyRoutes(app, { db, bus, llm })`, which builds the per-kind
+`EntityStore` and delegates to the generic `mountEntityRoutes` factory.
+The companies-specific routes are therefore identical in shape to the
+ones documented in §4 — the only difference is that requests carry a
+`CompanyPayload` body and `GET /l/:slug/company` returns
+`{ entities: EntitySummary[] }` with `subtitle = kvkNumber | website | null`.
+
+Companies pass the §4.0 contract suite verbatim
+(`apps/server/tests/entities/companies-contract.test.ts` →
+`runEntityContractSuite(...)`). The same file adds two extra checks for
+the §2 indexed-column path: the per-kind columns receive values on
+create / update, and clearing the payload writes `NULL` so the sparse
+`idx_companies_kvk` index stays correct.
+
+No connectors / scheduled jobs / lifecycle hooks ship in 4a.1; the KvK
+connector and the AI enrichment job follow in 4a.2 / 4a.3.
 
 ---
 

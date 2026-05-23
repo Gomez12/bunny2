@@ -8,7 +8,7 @@ import type {
   EntitySummary,
 } from '@bunny2/shared';
 import type { LlmClient } from '../llm';
-import type { EntityModule } from './module';
+import type { EntityIndexedColumn, EntityModule } from './module';
 import {
   ENTITY_EVENT_TYPES,
   entityEventType,
@@ -152,6 +152,21 @@ interface KindRow {
 }
 
 /**
+ * Type of a single indexed-column value handed to `bun:sqlite`. SQLite
+ * stores strings, numbers, and `null` natively; the per-kind module's
+ * `extract` callback projects payload data into this space.
+ */
+type IndexedValue = string | number | null;
+
+/**
+ * Tuple shape for the prepared insert statement: 11 fixed columns + N
+ * dynamic indexed columns. `bun:sqlite`'s typed `query<R, P>` binds the
+ * parameter shape; using the generic array form keeps the type stable
+ * regardless of how many indexed columns a module declares.
+ */
+type IndexedSqlArgs = IndexedValue[];
+
+/**
  * Helper for `exactOptionalPropertyTypes`: only includes `correlationId`
  * when it is defined. Spreading `undefined` would be a type error and
  * also a runtime no-op, so this is purely shape-driven.
@@ -169,28 +184,72 @@ export function createEntityStore<Payload>(
   const clock = deps.clock ?? (() => new Date());
   const newId = deps.idFactory ?? (() => crypto.randomUUID());
   const t = module.tableName;
+  const identRe = /^[a-z_][a-z0-9_]*$/;
 
   // The SQL strings are interpolated ONCE per factory call. `tableName`
   // comes from the module (registered in code, not from user input) so
   // there is no injection surface — but we still validate the shape to
   // catch typos at boot, not at first request.
-  if (!/^[a-z_][a-z0-9_]*$/.test(t)) {
+  if (!identRe.test(t)) {
     throw new Error(`entity-store: invalid tableName '${t}' for kind '${module.kind}'`);
+  }
+
+  // Per-kind indexed columns. The store writes the value returned by
+  // `extract(payload)` into the named column on every insert/update,
+  // alongside the JSON payload. `name` is interpolated into SQL, so we
+  // validate the shape at boot — same treatment as `tableName`.
+  const indexed: readonly EntityIndexedColumn<Payload>[] = module.indexedColumns ?? [];
+  const indexedNames = indexed.map((c) => c.name);
+  for (const name of indexedNames) {
+    if (!identRe.test(name)) {
+      throw new Error(`entity-store: invalid indexed column '${name}' for kind '${module.kind}'`);
+    }
+  }
+  const reservedColumns = new Set([
+    'id',
+    'layer_id',
+    'slug',
+    'title',
+    'searchable_text',
+    'original_locale',
+    'payload_json',
+    'created_at',
+    'created_by',
+    'updated_at',
+    'updated_by',
+    'deleted_at',
+    'deleted_by',
+    'version',
+  ]);
+  for (const name of indexedNames) {
+    if (reservedColumns.has(name)) {
+      throw new Error(
+        `entity-store: indexed column '${name}' for kind '${module.kind}' collides with a reserved column`,
+      );
+    }
+  }
+  // Detect duplicates inside `indexedColumns` itself — easier to spot
+  // here than from a confusing SQLite "duplicate column" error later.
+  if (new Set(indexedNames).size !== indexedNames.length) {
+    throw new Error(`entity-store: duplicate indexed column names for kind '${module.kind}'`);
   }
 
   const selectCols =
     'id, layer_id, slug, title, searchable_text, original_locale, payload_json, ' +
     'created_at, created_by, updated_at, updated_by, deleted_at, deleted_by, version';
 
-  const insertRow = db.query<
-    unknown,
-    [string, string, string, string, string, string, string, string, string, string, string]
-  >(
+  const insertExtraCols = indexedNames.map((n) => `, ${n}`).join('');
+  const insertExtraPlaceholders = indexedNames.map(() => ', ?').join('');
+  const insertRow = db.query<unknown, IndexedSqlArgs>(
     `INSERT INTO ${t}
        (id, layer_id, slug, title, searchable_text, original_locale,
-        payload_json, created_at, created_by, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        payload_json, created_at, created_by, updated_at, updated_by${insertExtraCols})
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${insertExtraPlaceholders})`,
   );
+
+  function extractIndexedValues(payload: Payload): IndexedValue[] {
+    return indexed.map((col) => col.extract(payload));
+  }
 
   const selectById = db.query<KindRow, [string]>(`SELECT ${selectCols} FROM ${t} WHERE id = ?`);
   const selectBySlug = db.query<KindRow, [string, string]>(
@@ -352,6 +411,7 @@ export function createEntityStore<Payload>(
       const payloadJson = JSON.stringify(input.payload);
       const searchableText = module.searchableText(input.payload);
 
+      const extraValues = extractIndexedValues(input.payload);
       const tx = db.transaction(() => {
         insertRow.run(
           id,
@@ -365,6 +425,7 @@ export function createEntityStore<Payload>(
           input.actorId,
           nowIso,
           input.actorId,
+          ...extraValues,
         );
         const row = selectById.get(id);
         if (row === null) {
@@ -402,14 +463,24 @@ export function createEntityStore<Payload>(
       const previousVersion = before.version;
       const title = input.title ?? before.title;
 
-      const updateStmt = db.query<unknown, [string, string, string, string, string, string]>(
+      const updateExtraSet = indexedNames.map((n) => `, ${n} = ?`).join('');
+      const updateStmt = db.query<unknown, IndexedSqlArgs>(
         `UPDATE ${t}
             SET title = ?, searchable_text = ?, payload_json = ?,
-                updated_at = ?, updated_by = ?, version = version + 1
+                updated_at = ?, updated_by = ?, version = version + 1${updateExtraSet}
           WHERE id = ?`,
       );
+      const extraValues = extractIndexedValues(input.payload);
       const writeAndLog = db.transaction(() => {
-        updateStmt.run(title, searchableText, payloadJson, nowIso, input.actorId, input.id);
+        updateStmt.run(
+          title,
+          searchableText,
+          payloadJson,
+          nowIso,
+          input.actorId,
+          ...extraValues,
+          input.id,
+        );
         const row = selectById.get(input.id);
         if (row === null) {
           throw new Error(`entity-store: ${module.kind} ${input.id} missing after update`);

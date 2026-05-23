@@ -24,6 +24,15 @@ import type { EntityConnector } from './connectors/base';
  *  - `searchableText` — short, denormalized text used by summary search
  *    and (later) embedding. Must NOT contain secrets; the connector
  *    base scrubs every external link payload separately.
+ *  - `indexedColumns` — optional list of kind-specific columns the
+ *    per-kind migration adds in addition to the shared shape (e.g.
+ *    `companies.kvk_number`, `calendar_events.starts_at`,
+ *    `todos.due_at`). Each entry tells the `EntityStore` how to derive
+ *    the value from `payload` so the generic insert/update writes the
+ *    denormalized column alongside the JSON payload. Added in 4a.1 —
+ *    needed by every per-kind table that wants an indexable column,
+ *    designed once instead of patched per kind. See §4.3 question 1 in
+ *    `docs/dev/plans/phase-04-first-entities.md`.
  *  - `connectors` — optional list of `EntityConnector` instances. The
  *    registry holds them so phase 5 / 6 can enumerate every connector
  *    in the system.
@@ -52,12 +61,31 @@ export interface EntityModule<Payload> {
     readonly title: string;
   }): EntitySummary;
   searchableText(payload: Payload): string;
+  readonly indexedColumns?: readonly EntityIndexedColumn<Payload>[];
   readonly connectors?: readonly EntityConnector<Payload>[];
   readonly scheduledJobs?: readonly EntityScheduledJob[];
   readonly onCreate?: EntityLifecycleHook<Payload>;
   readonly onUpdate?: EntityLifecycleHook<Payload>;
   readonly onSoftDelete?: EntityLifecycleHook<Payload>;
   readonly onRestore?: EntityLifecycleHook<Payload>;
+}
+
+/**
+ * Declarative descriptor for a per-kind indexed column.
+ *
+ * The `EntityStore` writes the value returned by `extract(payload)` into
+ * the column on every insert/update, alongside the JSON payload. SQLite
+ * stores `null`, strings, and finite numbers natively; that is the only
+ * value space we promise. Modules that need a richer shape should keep
+ * the canonical value in `payload` and project a primitive here.
+ *
+ * `name` MUST match `/^[a-z_][a-z0-9_]*$/` — the store interpolates it
+ * into SQL once at factory time, and the validator rejects anything
+ * else at boot, not at first request.
+ */
+export interface EntityIndexedColumn<Payload> {
+  readonly name: string;
+  extract(payload: Payload): string | number | null;
 }
 
 /** Lifecycle context shared by all per-module hooks. */
