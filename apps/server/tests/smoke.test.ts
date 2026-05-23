@@ -121,7 +121,8 @@ afterAll(() => {
     process.env['BUNNY2_DATA_DIR'] = prevDataDir;
   }
   try {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    // Windows holds the WAL/SHM file briefly after db.close(); retry a few times.
+    fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   } catch {
     /* best-effort */
   }

@@ -59,7 +59,8 @@ afterEach(() => {
   } catch {
     /* already closed */
   }
-  fs.rmSync(dir, { recursive: true, force: true });
+  // Windows holds the WAL/SHM file briefly after db.close(); retry a few times.
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 describe('group-resolver — isUserInGroup', () => {

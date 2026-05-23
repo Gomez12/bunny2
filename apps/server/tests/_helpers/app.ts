@@ -128,7 +128,8 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
         /* already closed */
       }
       try {
-        fs.rmSync(dir, { recursive: true, force: true });
+        // Windows holds the WAL/SHM file briefly after db.close(); retry a few times.
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       } catch {
         /* best effort */
       }
@@ -204,7 +205,8 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
         /* already closed */
       }
       try {
-        fs.rmSync(dir, { recursive: true, force: true });
+        // Windows holds the WAL/SHM file briefly after db.close(); retry a few times.
+        fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
       } catch {
         /* best effort */
       }
