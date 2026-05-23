@@ -49,6 +49,14 @@
       "upstream": "The LLM provider returned an error. Please try again.",
       "badRequest": "The message could not be sent. Please check the input and try again.",
       "empty": "Please enter a message before sending."
+    },
+    "auth": {
+      "invalidCredentials": "Invalid username or password.",
+      "unauthorized": "You are not signed in.",
+      "mustChangePassword": "You must change your password before continuing.",
+      "weakPassword": "Password must be at least 12 characters and include a non-letter.",
+      "invalidCurrentPassword": "Current password is incorrect.",
+      "badRequest": "The request could not be processed. Please check the input and try again."
     }
   }
 }

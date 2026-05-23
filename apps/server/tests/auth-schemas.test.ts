@@ -62,7 +62,11 @@ describe('@bunny2/shared auth schemas', () => {
   });
 
   it('LoginResponse round-trips', () => {
-    const r = { user: validUser, mustChangePassword: true };
+    const r = {
+      user: validUser,
+      mustChangePassword: true,
+      sessionExpiresAt: '2026-01-15T00:00:00.000Z',
+    };
     expect(LoginResponseSchema.parse(r)).toEqual(r);
   });
 

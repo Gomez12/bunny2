@@ -192,25 +192,44 @@ to reconstruct the full flow. The LLM telemetry row (in `llm_calls`)
 carries the same `correlationId` and `flowId`, so cross-table joins
 are direct.
 
-## 9. Phase 2 — upcoming auth events
+## 9. Phase 2 events
 
 Phases 2.1 and 2.2 add the `users`, `groups`, `sessions` tables, the
 repositories that write them, the session service, the cookie helpers,
 and the auth middleware. None of that emits new event types: the repos
 are pure DB writes, and the auth middleware reads sessions per
-request without publishing. In particular, `session.created` /
-`session.expired` are **not** emitted in 2.2 — they land in 2.3
-alongside the login / logout routes that own session lifecycle from
-the user's perspective.
+request without publishing.
 
-Phase 2.3 introduces the auth domain events; they will be added to this
-document at that time. The planned set is `user.created`, `user.updated`,
-`user.password_changed`, `user.deleted`, `user.login.succeeded`,
-`user.login.failed`, `session.created`, `session.expired`,
-`group.created`, `group.updated`, `group.deleted`, `group.member_added`,
-`group.member_removed`. See
-`docs/dev/plans/phase-02-users-and-groups.md` §2 for the list and the
-seed-event behavior.
+Phase **2.3** introduces the auth domain events listed below. The
+remaining `user.updated`, `user.deleted`, `group.updated`,
+`group.deleted`, and `group.member_removed` types arrive with the
+CRUD endpoints in 2.4 and 2.5.
+
+| Type                    | When                                           | Payload                                                                                 |
+| ----------------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `user.created`          | Admin seed (2.3); user CRUD (2.5)              | `{ userId, username, seeded? }`                                                         |
+| `user.password_changed` | `POST /auth/password` success                  | `{ userId }`                                                                            |
+| `user.login.succeeded`  | `POST /auth/login` success                     | `{ userId, sessionId }`                                                                 |
+| `user.login.failed`     | `POST /auth/login` 401 (every failure branch)  | `{ userId? \| username, reason: 'unknown_user' \| 'soft_deleted' \| 'wrong_password' }` |
+| `session.created`       | `POST /auth/login` success                     | `{ sessionId, userId, expiresAt }`                                                      |
+| `session.expired`       | `POST /auth/logout` when a session was revoked | `{ sessionId, userId, reason: 'logout' }`                                               |
+| `group.created`         | Admin seed (2.3); group CRUD (2.4)             | `{ groupId, slug, name, seeded? }`                                                      |
+| `group.member_added`    | Admin seed (2.3); membership endpoints (2.4)   | `{ groupId, userId, seeded? }`                                                          |
+
+Anti-leak invariants:
+
+- `user.login.*` payloads carry the attempted **username** or the
+  resolved **userId**, never the supplied password.
+- The admin seed prints the initial password to stdout exactly once.
+  No bus event ever carries password material (the seed event
+  carries only `userId`, `username`, and the `seeded: true` flag).
+- `correlationId` is assigned per HTTP request and shared across
+  every publish that request makes (e.g. `session.created` and
+  `user.login.succeeded` share an id for a single login). Mirrors
+  the chat-route pattern from phase 1.5.
+
+See [`auth-and-sessions.md`](./auth-and-sessions.md) for the cross-
+event narrative (login → session → password rotation → logout).
 
 ## 10. Future extensions (not in phase 1.3)
 

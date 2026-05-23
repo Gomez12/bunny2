@@ -31,7 +31,7 @@ describe('GET /status', () => {
         lancedb: { ready: true, tables: [] },
         bus: { adapter: 'in-memory', events: 0 },
         llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
-        auth: { sessions: 0, users: 0, groups: 0 },
+        auth: { sessions: 0, users: 0, groups: 0, adminSeeded: false },
       };
 
       const app = createApp({
@@ -47,7 +47,7 @@ describe('GET /status', () => {
       const json = (await res.json()) as StatusBody;
       expect(json).toEqual(body);
       expect(json.phase).toBe('2.2');
-      expect(json.auth).toEqual({ sessions: 0, users: 0, groups: 0 });
+      expect(json.auth).toEqual({ sessions: 0, users: 0, groups: 0, adminSeeded: false });
     } finally {
       db.close();
     }

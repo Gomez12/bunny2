@@ -2,11 +2,13 @@ import { Hono } from 'hono';
 import type { AppDeps, HonoVariables } from './types';
 import { createDevCors } from './cors';
 import { createAuthMiddleware, DEFAULT_PUBLIC_PATHS } from './middleware/auth';
+import { requirePasswordCurrent } from './middleware/password-gate';
 import { createSessionService } from '../auth/sessions';
 import { createSessionsRepo } from '../repos/sessions-repo';
 import { createUsersRepo } from '../repos/users-repo';
 import { mountStatusRoute } from './routes/status';
 import { mountChatRoute } from './routes/chat';
+import { registerAuthRoutes } from './routes/auth';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -47,9 +49,21 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
       publicPaths: DEFAULT_PUBLIC_PATHS,
     }),
   );
+  // The password-rotation gate runs AFTER auth so it can read
+  // `c.var.user.mustChangePassword`. It is a no-op for unauthenticated
+  // (public) routes and for the exempt rotation/logout endpoints; every
+  // other route returns 409 with `errors.auth.mustChangePassword` when
+  // the active user still needs to rotate.
+  app.use('*', requirePasswordCurrent());
 
   mountStatusRoute(app, deps);
   mountChatRoute(app, deps);
+  registerAuthRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
+    auth: deps.auth,
+    sessions: sessionService,
+  });
   return app;
 }
 

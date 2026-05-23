@@ -108,6 +108,40 @@ checklist after building, see
 
 ---
 
+## First-run admin password
+
+On the **first** `bun run dev:server` against a fresh data-dir (or the
+first launch of a packaged build), `apps/server/src/auth/seed.ts`
+creates the `admin` group, the `admin` user, and prints the initial
+password to stdout exactly once. The framed block looks like this:
+
+```
+════════════════════════════════════════════════════════════
+ bunny2 initial admin credentials (this is the only time
+ you will see this — write it down)
+
+   username: admin
+   password: <24-char random string>
+
+ Log in to the UI and change the password immediately.
+════════════════════════════════════════════════════════════
+```
+
+The seed is gated by `kv_meta.admin_seed_done`; subsequent boots are
+no-ops and never reprint. Confirm via `GET /status.auth.adminSeeded`
+(`true` once the seed has run).
+
+If you lose the password before logging in, delete the data-dir (see
+[Resetting state](#resetting-state)) and start over — there is no
+"reseed admin" path by design. After the first login the `admin` user
+must immediately rotate via the change-password screen; until they do,
+every other route returns 409 `errors.auth.mustChangePassword`.
+
+See [`docs/dev/architecture/auth-and-sessions.md`](../architecture/auth-and-sessions.md)
+for the deeper narrative.
+
+---
+
 ## Resetting state
 
 bunny2 owns its state entirely under the data-dir. To reset:

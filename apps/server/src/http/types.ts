@@ -29,6 +29,13 @@ export interface StatusBody {
     readonly sessions: number;
     readonly users: number;
     readonly groups: number;
+    /**
+     * `true` once the one-shot admin seed has run on this data-dir
+     * (`kv_meta.admin_seed_done === 'true'`). Read by the renderer to
+     * decide whether to surface a "first run" banner; never gates any
+     * server-side behaviour itself.
+     */
+    readonly adminSeeded: boolean;
   };
 }
 

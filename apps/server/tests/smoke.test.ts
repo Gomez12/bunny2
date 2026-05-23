@@ -46,7 +46,9 @@ import {
 } from '../src/llm';
 import { createApp } from '../src/http/router';
 import type { StatusBody } from '../src/http/router';
-import { seedUserAndSession } from './_helpers/auth';
+import { seedAdminAndLogin } from './_helpers/auth';
+import { ADMIN_SEED_DONE_KEY } from '../src/auth/seed';
+import { getMeta } from '../src/storage/kv-meta';
 
 interface ChatSuccessBody {
   content: string;
@@ -113,16 +115,19 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     expect(loaded.config.llm.endpoint).toBe('mock://echo');
 
     // 2. Real SQLite, real migrations, real LanceDB scaffolding.
-    db = openDatabase(loaded.dataDir);
+    // Narrow into a local non-nullable handle for the rest of the test;
+    // the suite-scoped `db` exists only so `afterAll` can close it.
+    const database = openDatabase(loaded.dataDir);
+    db = database;
     const lance = await openLanceDB(loaded.dataDir);
     const lanceTables = await lance.tableNames();
-    const schemaVersion = currentSchemaVersion(db);
+    const schemaVersion = currentSchemaVersion(database);
     expect(schemaVersion).not.toBeNull();
     expect(fs.existsSync(path.join(loaded.dataDir, 'bunny2.sqlite'))).toBe(true);
     expect(fs.existsSync(path.join(loaded.dataDir, 'lancedb'))).toBe(true);
 
     // 3. Real bus + event log + middleware chain (matches index.ts).
-    const eventLog = createSqliteEventLog(db);
+    const eventLog = createSqliteEventLog(database);
     const bus = new InMemoryMessageBus({
       middlewares: [
         correlationIdMiddleware,
@@ -134,7 +139,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     });
 
     // 4. Real LLM client + telemetry wrapper against `mock://echo`.
-    const callLog: LlmCallLog = createSqliteLlmCallLog(db);
+    const callLog: LlmCallLog = createSqliteLlmCallLog(database);
     const rawClient = createLlmClient({
       endpoint: loaded.config.llm.endpoint,
       apiKey: loaded.config.llm.apiKey,
@@ -151,7 +156,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     const status = (): StatusBody => ({
       app: 'bunny2',
       version: '0.0.0',
-      phase: '1.7',
+      phase: '2.3',
       ok: true,
       dataDir: loaded.dataDir,
       configFile: loaded.configFile,
@@ -163,38 +168,71 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
         defaultModel: llmClient.defaultModel,
         calls: callLog.count(),
       },
-      auth: { sessions: 0, users: 0, groups: 0 },
+      auth: {
+        sessions: 0,
+        users: 0,
+        groups: 0,
+        adminSeeded: getMeta(database, ADMIN_SEED_DONE_KEY) === 'true',
+      },
     });
-    const app = createApp({ bus, llmClient, status, db, auth: loaded.config.auth });
-    // Auth gate is live from 2.2: seed a user + session so the `/chat`
-    // round-trip below carries a valid Bearer token. `/status` is public
-    // and does not need the header. Smoke does not assert specific
-    // session counts so the hardcoded `auth` block above stays valid
-    // for the structural-equality checks.
-    const seeded = seedUserAndSession(db);
+    const app = createApp({ bus, llmClient, status, db: database, auth: loaded.config.auth });
 
-    // 6. GET /status (before any chat) — asserts structural fields the
-    //    plan calls out explicitly.
+    // 6a. Run the admin seed via the test helper so we capture the
+    //     one-time printed password and log in as admin. The login
+    //     succeeds even with `mustChangePassword=true` — the gate fires
+    //     on the NEXT protected request.
+    const admin = await seedAdminAndLogin({ db: database, bus, app });
+    expect(admin.mustChangePassword).toBe(true);
+
+    // 6b. The password gate blocks /chat until we rotate.
+    const blocked = await app.fetch(
+      new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${admin.token}`,
+        },
+        body: JSON.stringify({ message: 'before-rotate' }),
+      }),
+    );
+    expect(blocked.status).toBe(409);
+
+    // 6c. Rotate the admin password through the standard endpoint.
+    const rotate = await app.fetch(
+      new Request('http://localhost/auth/password', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${admin.token}`,
+        },
+        body: JSON.stringify({ newPassword: 'smoke-test-rotation-2026!' }),
+      }),
+    );
+    expect(rotate.status).toBe(200);
+
+    // 7. GET /status (before any chat) — structural fields the plan calls
+    //    out explicitly. After the seed, `adminSeeded` is `true`.
     const statusBefore = await app.fetch(new Request('http://localhost/status'));
     expect(statusBefore.status).toBe(200);
     const statusBeforeBody = (await statusBefore.json()) as StatusBody;
     expect(statusBeforeBody.ok).toBe(true);
-    expect(statusBeforeBody.phase).toBe('1.7');
+    expect(statusBeforeBody.phase).toBe('2.3');
     expect(statusBeforeBody.sqlite.schemaVersion).toBe(schemaVersion);
     expect(statusBeforeBody.lancedb.ready).toBe(true);
     expect(statusBeforeBody.bus.adapter).toBe('in-memory');
     expect(statusBeforeBody.llm.endpoint).toBe('mock://echo');
     expect(statusBeforeBody.llm.calls).toBe(0);
+    expect(statusBeforeBody.auth.adminSeeded).toBe(true);
 
-    // 7. POST /chat against the deterministic mock provider. Carries
-    //    the seeded Bearer token — the 2.2 auth middleware gates this
-    //    route and rejects unauthenticated calls with 401.
+    // 8. POST /chat against the deterministic mock provider. Carries
+    //    the admin Bearer token — the 2.2 auth middleware + 2.3 gate
+    //    both let it through now that the password has rotated.
     const chatRes = await app.fetch(
       new Request('http://localhost/chat', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${seeded.token}`,
+          authorization: `Bearer ${admin.token}`,
         },
         body: JSON.stringify({ message: 'hello' }),
       }),
@@ -207,25 +245,58 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     expect(chatBody.tokensOut).toBeGreaterThan(0);
     expect(chatBody.correlationId).toBeTruthy();
 
-    // 8. GET /status (after chat) — `llm.calls` ticks from 0 to 1,
-    //    `bus.events` ticks from 0 to 2 (chat.requested + chat.responded).
+    // 9. POST /auth/logout, then a second /chat must return 401.
+    const logoutRes = await app.fetch(
+      new Request('http://localhost/auth/logout', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${admin.token}` },
+      }),
+    );
+    expect(logoutRes.status).toBe(200);
+    const postLogoutChat = await app.fetch(
+      new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${admin.token}`,
+        },
+        body: JSON.stringify({ message: 'after-logout' }),
+      }),
+    );
+    expect(postLogoutChat.status).toBe(401);
+
+    // 10. `llm.calls` ticked from 0 to 1.
     const statusAfter = await app.fetch(new Request('http://localhost/status'));
     const statusAfterBody = (await statusAfter.json()) as StatusBody;
     expect(statusAfterBody.llm.calls).toBe(1);
-    expect(statusAfterBody.bus.events).toBe(2);
 
-    // 9. Direct SQLite read — assert the two event rows and the single
-    //    llm_calls row share the same correlation id.
-    const events = db
+    // 11. Direct SQLite read — chat events carry the response's
+    //     correlationId; the broader event stream also contains login /
+    //     password / session events. We assert structurally rather than
+    //     with strict equality on the full set.
+    const events = database
       .query<EventRow, []>('SELECT type, correlation_id, flow_id FROM events ORDER BY rowid ASC')
       .all();
-    expect(events.map((e) => e.type)).toEqual(['chat.requested', 'chat.responded']);
-    expect(events[0]?.correlation_id).toBe(chatBody.correlationId);
-    expect(events[1]?.correlation_id).toBe(chatBody.correlationId);
-    expect(events[0]?.flow_id).toBeTruthy();
-    expect(events[0]?.flow_id).toBe(events[1]?.flow_id);
+    const chatEvents = events.filter(
+      (e) => e.type === 'chat.requested' || e.type === 'chat.responded',
+    );
+    expect(chatEvents.map((e) => e.type)).toEqual(['chat.requested', 'chat.responded']);
+    expect(chatEvents[0]?.correlation_id).toBe(chatBody.correlationId);
+    expect(chatEvents[1]?.correlation_id).toBe(chatBody.correlationId);
+    expect(chatEvents[0]?.flow_id).toBeTruthy();
+    expect(chatEvents[0]?.flow_id).toBe(chatEvents[1]?.flow_id);
 
-    const calls = db
+    // Auth-domain events landed too.
+    const types = events.map((e) => e.type);
+    expect(types).toContain('user.created');
+    expect(types).toContain('group.created');
+    expect(types).toContain('group.member_added');
+    expect(types).toContain('user.login.succeeded');
+    expect(types).toContain('session.created');
+    expect(types).toContain('user.password_changed');
+    expect(types).toContain('session.expired');
+
+    const calls = database
       .query<
         LlmCallRow,
         []
@@ -239,6 +310,6 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     expect(call?.model).toBe(loaded.config.llm.defaultModel);
     expect(call?.endpoint).toBe('mock://echo');
     expect(call?.correlation_id).toBe(chatBody.correlationId);
-    expect(call?.flow_id).toBe(events[0]?.flow_id);
+    expect(call?.flow_id).toBe(chatEvents[0]?.flow_id);
   });
 });

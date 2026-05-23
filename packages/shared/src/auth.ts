@@ -57,9 +57,33 @@ export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 export const LoginResponseSchema = z.object({
   user: UserSchema,
   mustChangePassword: z.boolean(),
+  sessionExpiresAt: z.string(),
 });
 export type LoginResponse = z.infer<typeof LoginResponseSchema>;
 
+/**
+ * Response shape for `GET /auth/me`. The `isAdmin` flag reflects direct
+ * admin-group membership in phase 2.3; phase 2.4 switches to transitive
+ * resolution. Callers should treat the flag as the source of truth and
+ * not re-derive it from the user's group list.
+ */
+export const MeResponseSchema = z.object({
+  user: UserSchema,
+  mustChangePassword: z.boolean(),
+  isAdmin: z.boolean(),
+  sessionExpiresAt: z.string(),
+});
+export type MeResponse = z.infer<typeof MeResponseSchema>;
+
+/**
+ * Structural schema for the change-password request. The minimum-length
+ * floor here (8) is a structural sanity check; the policy floor (length
+ * 12 + non-letter) is enforced in the `/auth/password` route handler and
+ * returns the `errors.auth.weakPassword` i18n key on rejection. We keep
+ * the structural check loose so a 2.5 admin-set initial password can
+ * share the same `min(8)` floor without tightening this schema for
+ * everyone — see `docs/dev/architecture/auth-and-sessions.md`.
+ */
 export const ChangePasswordRequestSchema = z.object({
   currentPassword: z.string().min(1).optional(),
   newPassword: z.string().min(8),

@@ -21,6 +21,8 @@ import type { StatusBody } from './http/router';
 import { createUsersRepo } from './repos/users-repo';
 import { createGroupsRepo } from './repos/groups-repo';
 import { createSessionsRepo } from './repos/sessions-repo';
+import { seedAdminIfNeeded, ADMIN_SEED_DONE_KEY } from './auth/seed';
+import { getMeta } from './storage/kv-meta';
 
 const { config, configFile, dataDir } = loadConfig();
 const db = openDatabase(dataDir);
@@ -62,7 +64,7 @@ const status = (): StatusBody => {
   return {
     app: appName,
     version: appVersion,
-    phase: '2.2',
+    phase: '2.3',
     ok: true,
     dataDir,
     configFile,
@@ -78,9 +80,15 @@ const status = (): StatusBody => {
       sessions: sessionsRepo.countActiveSessions(now),
       users: usersRepo.countActive(),
       groups: groupsRepo.countActive(),
+      adminSeeded: getMeta(db, ADMIN_SEED_DONE_KEY) === 'true',
     },
   };
 };
+
+// One-shot admin bootstrap. Must complete BEFORE `Bun.serve` starts
+// accepting connections — otherwise the very first login attempt could
+// race the seed and observe a missing user.
+await seedAdminIfNeeded({ db, bus });
 
 const app = createApp({ bus, llmClient, status, db, auth: config.auth });
 

@@ -137,6 +137,8 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
 - Code: `apps/server/src/http/`.
 - Router: Hono on Bun. See [ADR 0006](../decisions/0006-http-router-choice.md).
 - Endpoints (phase 1): `GET /status`, `POST /chat`.
+- Endpoints (phase 2.3 onward): `POST /auth/login`, `POST /auth/logout`,
+  `GET /auth/me`, `POST /auth/password`.
 - The factory shape (`createApp(deps)`) returns a Hono app and lets
   tests run the full pipeline in-process via `app.fetch(req)` — that
   is exactly what the smoke test and the chat tests do.
@@ -149,6 +151,19 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
   `bunny2_session` HttpOnly cookie, validates it through the session
   service, and attaches `c.var.session` + `c.var.user`. See
   [ADR 0008](../decisions/0008-session-strategy.md).
+- Password-rotation gate (from phase 2.3): a second middleware
+  (`requirePasswordCurrent`) runs after auth and returns
+  `409 errors.auth.mustChangePassword` on every protected route
+  except `POST /auth/password` and `POST /auth/logout` when the
+  signed-in user still needs to rotate (e.g. the seeded admin on
+  first login). Full narrative in
+  [`auth-and-sessions.md`](./auth-and-sessions.md).
+- Admin bootstrap (from phase 2.3): on first start against a fresh
+  data-dir, `apps/server/src/auth/seed.ts` creates the `admin` group
+  and the `admin` user, prints the initial password to stdout
+  exactly once, and stamps `kv_meta.admin_seed_done = 'true'`. The
+  seed runs before `Bun.serve` accepts the first request, and is
+  idempotent on every subsequent boot.
 
 ### 2.7 Renderer
 

@@ -24,7 +24,7 @@ function mkAppFixture() {
   const status = (): StatusBody => ({
     app: 'bunny2',
     version: '0.0.0',
-    phase: '2.2',
+    phase: '2.3',
     ok: true,
     dataDir: '/tmp/test',
     configFile: null,
@@ -32,7 +32,7 @@ function mkAppFixture() {
     lancedb: { ready: true, tables: [] },
     bus: { adapter: 'in-memory', events: 0 },
     llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
-    auth: { sessions: 0, users: 0, groups: 0 },
+    auth: { sessions: 0, users: 0, groups: 0, adminSeeded: false },
   });
   const app = createApp({
     bus,

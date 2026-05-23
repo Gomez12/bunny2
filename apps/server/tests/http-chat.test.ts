@@ -65,7 +65,7 @@ function status(): StatusBody {
     lancedb: { ready: true, tables: [] },
     bus: { adapter: 'in-memory', events: 0 },
     llm: { endpoint: 'mock://echo', defaultModel: 'mock-default', calls: 0 },
-    auth: { sessions: 0, users: 0, groups: 0 },
+    auth: { sessions: 0, users: 0, groups: 0, adminSeeded: false },
   };
 }
 
