@@ -38,11 +38,15 @@ export interface StatusBody {
      */
     readonly adminSeeded: boolean;
     /**
-     * `true` once the transitive group resolver successfully read the
-     * `admin_group_id` from `kv_meta` at startup. Mirrors `adminSeeded`
-     * for the purposes of admin-route enablement: when this is `false`
-     * every `/admin/*` route returns 503 (the `requireAdmin` middleware
-     * cannot answer "is user in admin group?" without the group id).
+     * `true` if `kv_meta.admin_group_id` is currently populated. The
+     * `requireAdmin` middleware reads the same key ONCE at factory
+     * construction; a freshly-booted server therefore stays in the
+     * "503 admin not seeded" state for the lifetime of the process if
+     * the seed lands AFTER `createApp` (which only happens in
+     * unusual test wiring — production seeds before `Bun.serve`).
+     * Status is a per-request live read, so the two values can briefly
+     * disagree across that race; use `adminSeeded` for the strict
+     * "seed has run on this data-dir" answer.
      */
     readonly adminGroupResolved: boolean;
   };
