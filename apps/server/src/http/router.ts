@@ -4,6 +4,7 @@ import { createDevCors } from './cors';
 import { createAuthMiddleware, DEFAULT_PUBLIC_PATHS } from './middleware/auth';
 import { requirePasswordCurrent } from './middleware/password-gate';
 import { createRequireAdmin } from './middleware/admin';
+import { withEffectiveLayers } from './middleware/layer';
 import { createSessionService } from '../auth/sessions';
 import { createSessionsRepo } from '../repos/sessions-repo';
 import { createUsersRepo } from '../repos/users-repo';
@@ -12,6 +13,9 @@ import { mountChatRoute } from './routes/chat';
 import { registerAuthRoutes } from './routes/auth';
 import { registerAdminGroupsRoutes } from './routes/admin-groups';
 import { registerAdminUsersRoutes } from './routes/admin-users';
+import { registerMeLayersRoute } from './routes/me-layers';
+import { registerLayersRoutes } from './routes/layers';
+import { registerSystemLocalesRoute } from './routes/system-locales';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -63,6 +67,18 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
   // the active user still needs to rotate.
   app.use('*', requirePasswordCurrent());
 
+  // Phase 3.3 — every authenticated request gets its effective layer
+  // set computed exactly once and attached as `c.var.effectiveLayers`.
+  // Public routes leave `c.var.user` undefined, so the middleware is a
+  // no-op there. Layer-scoped routes (3.4) mount `createRequireLayer()`
+  // which reads from `c.var.effectiveLayers` — no double resolver call.
+  app.use(
+    '*',
+    withEffectiveLayers({
+      resolver: deps.layerResolver,
+    }),
+  );
+
   // `requireAdmin` is mounted on the `/admin/*` prefix only. It runs
   // after `requireAuth` (which already attached `c.var.user`) and after
   // `requirePasswordCurrent`, so the seeded admin must rotate before any
@@ -97,6 +113,19 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     resolver: deps.resolver,
     sessions: sessionService,
   });
+
+  // Phase 3.4 — layer-scoped HTTP surface. Per-route authz lives in
+  // `canEditLayer`; there is no router-level admin gate on `/layers/*`.
+  registerMeLayersRoute(app);
+  registerLayersRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
+    resolver: deps.resolver,
+    layerResolver: deps.layerResolver,
+    locales: deps.locales,
+  });
+  registerSystemLocalesRoute(app, { locales: deps.locales });
+
   return app;
 }
 

@@ -2,8 +2,8 @@
 
 - Status: open
 - Created: 2026-05-23
-- Updated: 2026-05-23 (phase 2.6)
-- Phases referencing it: 1.5 (origin), 2.6 (deferred again)
+- Updated: 2026-05-23 (phase 3.5)
+- Phases referencing it: 1.5 (origin), 2.6 (deferred again), 3.5 (extended scope)
 
 ## What remains
 
@@ -27,6 +27,27 @@ component-level tests for the now-existing pages:
   `apps/web/tests/chat-page.test.tsx` — the original phase-1.5
   stretch goals (loading / success / error renders, Enter vs
   Shift+Enter, error key mapping).
+
+Phase 3.5 added the layer UI; once the DOM runtime is present the
+following also belong here (see plan §6):
+
+- `apps/web/tests/layer-switcher.test.tsx` — keyboard nav
+  (Arrow Down opens, Arrow keys move focus, Enter selects, Escape
+  closes), `aria-current` on the matching row, navigates to
+  `/l/<new>/<sub>`.
+- `apps/web/tests/my-layers-page.test.tsx` — row click navigates to
+  `/l/:slug/dashboard`; create-layer dialog focus trap.
+- `apps/web/tests/layer-settings-page.test.tsx` — Members / Visibility
+  / Locales / Attachments tabs render read-only for a non-owner and
+  editable for an owner.
+- `apps/web/tests/layer-dashboard-page.test.tsx` — empty state copy +
+  `aria-disabled="true"` on the configure-widgets link when
+  `canEdit === false`.
+
+Phase 3.5 currently covers the pure helpers under
+`apps/web/tests/layer-helpers.test.ts` (computeCanEdit,
+subpathFromLocation, pickPersonalLayer, toast queue) — enough to
+catch logic regressions, but not the rendering / a11y matrix.
 
 Stretch: add an axe-core smoke check in test to catch a11y regressions.
 

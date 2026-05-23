@@ -239,6 +239,18 @@ plan only fixes the **order**, **goal per phase**, and
 - Per-layer locale subset selection from system locales.
 - Per-layer dashboard shell (empty widgets, filled in later phases).
 - **Exit:** users can navigate layers and see scope context everywhere.
+- **Status (as of 2026-05-23):** sub-phases 3.1–3.6 are all `done`.
+  The plan is archived at
+  [`done/phase-03-layers.md`](./done/phase-03-layers.md); see its
+  §14 for the per-DoD walkthrough, the four open follow-ups, the
+  final 404-vs-403 visibility-leak decision, and the gated CI-matrix
+  row. ADRs [`0009`](../decisions/0009-layer-model.md) (layer model)
+  and [`0010`](../decisions/0010-layer-resolver-and-invalidation.md)
+  (resolver + invalidation) are accepted; the developer-side
+  narrative lives in
+  [`architecture/layers-and-auth.md`](../architecture/layers-and-auth.md)
+  and the user-facing guide is at
+  [`docs/user/guides/working-with-layers.md`](../../user/guides/working-with-layers.md).
 
 ### Phase 4 — First entities (sub-phased, one entity at a time)
 

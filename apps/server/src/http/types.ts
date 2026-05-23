@@ -2,9 +2,11 @@ import type { Database } from 'bun:sqlite';
 import type { MessageBus } from '@bunny2/bus';
 import type { User as SafeUser } from '@bunny2/shared';
 import type { LlmClient } from '../llm';
-import type { AuthConfig } from '../config/schema';
+import type { AuthConfig, LocalesConfig } from '../config/schema';
 import type { Session } from '../repos/sessions-repo';
 import type { GroupResolver } from '../auth/group-resolver';
+import type { Layer } from '../repos/layers-repo';
+import type { LayerResolver } from '../layers/resolver';
 
 /**
  * Snapshot returned by `GET /status`. Built by `index.ts` and passed as a
@@ -50,6 +52,21 @@ export interface StatusBody {
      */
     readonly adminGroupResolved: boolean;
   };
+  /**
+   * Phase 3.2 — layer-domain status. Optional so any caller that builds
+   * a `StatusBody` for tests in phases 1/2 keeps compiling; production
+   * always populates this block from `index.ts` after the layer seed.
+   */
+  readonly layers?: {
+    readonly total: number;
+    readonly byType: {
+      readonly personal: number;
+      readonly project: number;
+      readonly group: number;
+      readonly everyone: number;
+    };
+    readonly withDeleted: number;
+  };
 }
 
 /**
@@ -74,6 +91,23 @@ export interface AppDeps {
    * `_helpers/app.ts`.
    */
   readonly resolver: GroupResolver;
+  /**
+   * Phase 3.3 — effective-layer-set resolver. Consumed by the
+   * `withEffectiveLayers` middleware (chained after `requireAuth`) to
+   * attach `c.var.effectiveLayers` to every authenticated request, and
+   * indirectly by the per-route `requireLayer` helper that reads from
+   * `c.var.effectiveLayers`. Built once in `index.ts` against the same
+   * bus that emits `layer.*` invalidation events; tests construct a
+   * minimal fixture (or an injectable fake) via `_helpers/app.ts`.
+   */
+  readonly layerResolver: LayerResolver;
+  /**
+   * Phase 3.4 — system-configured locale list, served by
+   * `GET /system/locales` and consulted by `POST /layers/:slug/locales`
+   * to validate each requested locale against the deployment-allowed
+   * set. Defaults match the web bundle (`en`, `nl` with `en` default).
+   */
+  readonly locales: LocalesConfig;
 }
 
 /**
@@ -88,4 +122,20 @@ export interface AppDeps {
 export interface HonoVariables {
   session: Session;
   user: SafeUser;
+  /**
+   * Phase 3.3 — frozen, sorted, deduped set of layers visible to the
+   * authenticated caller. Attached by `withEffectiveLayers` AFTER
+   * `requireAuth` populates `c.var.user`. Public routes (status, login,
+   * logout, OPTIONS) skip the middleware so this is `undefined` there;
+   * handlers gated by `requireAuth` may read it without a defined check.
+   * Typed as optional to match the runtime contract; handlers must not
+   * read it from a public route.
+   */
+  effectiveLayers?: readonly Layer[];
+  /**
+   * Phase 3.3 — set by `requireLayer` after a successful per-route slug
+   * lookup against `effectiveLayers`. Only present on routes mounted
+   * with `requireLayer`; readers in other handlers must not assume it.
+   */
+  layer?: Layer;
 }

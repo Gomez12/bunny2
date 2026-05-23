@@ -24,6 +24,9 @@ import { createSessionsRepo } from './repos/sessions-repo';
 import { seedAdminIfNeeded, ADMIN_SEED_DONE_KEY, ADMIN_GROUP_ID_KEY } from './auth/seed';
 import { createGroupResolver } from './auth/group-resolver';
 import { getMeta } from './storage/kv-meta';
+import { seedLayersIfNeeded } from './layers/seed';
+import { createLayerResolver } from './layers/resolver';
+import { registerLayerSubscribers } from './layers/subscribers';
 
 const { config, configFile, dataDir } = loadConfig();
 const db = openDatabase(dataDir);
@@ -69,12 +72,44 @@ await seedAdminIfNeeded({ db, bus });
 
 const resolver = createGroupResolver({ db, bus });
 
+// Phase 3.2 — layer seed runs AFTER the admin/group seed and the
+// transitive group resolver are ready (it needs `expandUserGroups` to
+// wire personal→group edges), and BEFORE the layer resolver subscribes
+// or `Bun.serve` accepts requests. Idempotent: subsequent boots fast-
+// path on `kv_meta.layers_seed_done`.
+await seedLayersIfNeeded({ db, bus, transitiveGroups: resolver });
+
+const layerResolver = createLayerResolver({ db, transitiveGroups: resolver });
+registerLayerSubscribers({ db, bus, resolver: layerResolver, transitiveGroups: resolver });
+
+interface LayerStatusCountsRow {
+  type: 'personal' | 'project' | 'group' | 'everyone';
+  n: number;
+}
+
+function layerStatus(): NonNullable<StatusBody['layers']> {
+  const active = db
+    .query<LayerStatusCountsRow, []>(
+      `SELECT type, COUNT(*) AS n FROM layers
+        WHERE deleted_at IS NULL GROUP BY type`,
+    )
+    .all();
+  const byType = { personal: 0, project: 0, group: 0, everyone: 0 };
+  let total = 0;
+  for (const row of active) {
+    byType[row.type] = row.n;
+    total += row.n;
+  }
+  const withDeleted = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM layers').get()?.n ?? 0;
+  return { total, byType, withDeleted };
+}
+
 const status = (): StatusBody => {
   const now = new Date().toISOString();
   return {
     app: appName,
     version: appVersion,
-    phase: '2.7',
+    phase: '3.6',
     ok: true,
     dataDir,
     configFile,
@@ -93,10 +128,20 @@ const status = (): StatusBody => {
       adminSeeded: getMeta(db, ADMIN_SEED_DONE_KEY) === 'true',
       adminGroupResolved: getMeta(db, ADMIN_GROUP_ID_KEY) !== null,
     },
+    layers: layerStatus(),
   };
 };
 
-const app = createApp({ bus, llmClient, status, db, auth: config.auth, resolver });
+const app = createApp({
+  bus,
+  llmClient,
+  status,
+  db,
+  auth: config.auth,
+  resolver,
+  layerResolver,
+  locales: config.locales,
+});
 
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);

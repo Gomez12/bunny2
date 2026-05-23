@@ -12,13 +12,54 @@
     "required": "verplicht",
     "optional": "optioneel",
     "copy": "Kopiëren",
-    "copied": "Gekopieerd"
+    "copied": "Gekopieerd",
+    "notFound": "We konden niet vinden waar je naar zocht.",
+    "backHome": "Terug naar start"
   },
   "nav": {
     "status": "Status",
     "chat": "Chat",
+    "layers": "Lagen",
     "adminUsers": "Beheer · Gebruikers",
     "adminGroups": "Beheer · Groepen"
+  },
+  "layer": {
+    "switcher": {
+      "label": "Laag wisselen",
+      "currentLabel": "Huidige laag",
+      "empty": "Je hebt nog geen zichtbare lagen.",
+      "fallback": {
+        "notVisible": "Die laag is niet langer zichtbaar — overgeschakeld naar je persoonlijke laag.",
+        "noPersonal": "Je persoonlijke laag is niet beschikbaar — laat de lagenlijst zien."
+      }
+    },
+    "type": {
+      "personal": "Persoonlijk",
+      "project": "Project",
+      "group": "Groep",
+      "everyone": "Iedereen"
+    },
+    "dashboard": {
+      "title": "{{name}} · Dashboard",
+      "configureWidgets": "Widgets instellen",
+      "empty": {
+        "title": "Nog geen widgets",
+        "description": "Dit dashboard is leeg. Widgets en koppelingen komen in een latere fase — voor nu is alleen de scope van de laag klaar."
+      }
+    }
+  },
+  "admin": {
+    "layers": {
+      "create": {
+        "title": "Projectlaag maken",
+        "name": "Naam",
+        "slug": "Slug",
+        "slugHint": "Alleen kleine letters, cijfers en streepjes.",
+        "description": "Omschrijving (optioneel)",
+        "submit": "Laag aanmaken",
+        "success": "Projectlaag aangemaakt."
+      }
+    }
   },
   "auth": {
     "login": {

@@ -7,10 +7,11 @@ import { createApp } from '../src/http/router';
 import type { StatusBody } from '../src/http/router';
 import { createLlmClient } from '../src/llm/client';
 import { openDatabase } from '../src/storage/sqlite';
-import { AuthConfigSchema } from '../src/config/schema';
+import { AuthConfigSchema, LocalesConfigSchema } from '../src/config/schema';
 import { createUsersRepo } from '../src/repos/users-repo';
 import { SESSION_COOKIE_NAME } from '../src/auth/cookie';
 import { createGroupResolver } from '../src/auth/group-resolver';
+import { createLayerResolver } from '../src/layers/resolver';
 import { seedUserAndSession } from './_helpers/auth';
 
 function mkAppFixture() {
@@ -42,6 +43,7 @@ function mkAppFixture() {
     },
   });
   const resolver = createGroupResolver({ db, bus });
+  const layerResolver = createLayerResolver({ db, transitiveGroups: resolver });
   const app = createApp({
     bus,
     llmClient,
@@ -49,6 +51,8 @@ function mkAppFixture() {
     db,
     auth: AuthConfigSchema.parse({}),
     resolver,
+    layerResolver,
+    locales: LocalesConfigSchema.parse({}),
   });
   return { db, app };
 }

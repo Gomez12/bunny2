@@ -68,12 +68,23 @@ while the gate is armed.
 CORS preflight short-circuit
   → createAuthMiddleware (2.2)        — session resolve (Bearer ∨ cookie)
     → requirePasswordCurrent (2.3)    — mustChangePassword gate
-      → requireAdmin (2.4, /admin/*)  — transitive admin-group check
-        → route handler
+      → withEffectiveLayers (3.3)     — attaches c.var.effectiveLayers
+        → requireAdmin (2.4, /admin/*)  — transitive admin-group check
+          → route handler
 ```
 
 A route is public iff its `(method, path)` is in `DEFAULT_PUBLIC_PATHS`
 (see §4). Everything else inherits the full chain in the order above.
+Phase 3.3 ends the chain in `withEffectiveLayers`, which calls
+`layerResolver.effectiveLayers(user.id)` once per authenticated request
+and attaches the frozen result as `c.var.effectiveLayers`; the per-route
+`requireLayer` helper (mounted by layer-scoped routes from 3.4 onward)
+reads from that same array to validate `:slug` and return
+`404 errors.layer.notVisible` on a miss (404, not 403, so a non-member
+cannot probe slug existence). Full layer-domain narrative — the model,
+the resolver, the per-layer authz table, the URL strategy, and the
+phase-4+ inheritance contract — lives in
+[`layers-and-auth.md`](./layers-and-auth.md) (phase 3.6 close-out).
 
 ---
 

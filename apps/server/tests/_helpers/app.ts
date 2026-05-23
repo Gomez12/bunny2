@@ -14,10 +14,12 @@ import type { StatusBody } from '../../src/http/router';
 import { createLlmClient } from '../../src/llm/client';
 import { createSqliteEventLog } from '../../src/bus/event-log';
 import { openDatabase } from '../../src/storage/sqlite';
-import { AuthConfigSchema } from '../../src/config/schema';
+import { AuthConfigSchema, LocalesConfigSchema } from '../../src/config/schema';
 import { createGroupResolver, type GroupResolver } from '../../src/auth/group-resolver';
 import { ADMIN_GROUP_ID_KEY, seedAdminIfNeeded } from '../../src/auth/seed';
 import { getMeta } from '../../src/storage/kv-meta';
+import { createLayerResolver, type LayerResolver } from '../../src/layers/resolver';
+import { seedLayersIfNeeded } from '../../src/layers/seed';
 
 /**
  * Test fixture: temp data-dir, real SQLite + migrations, real bus with the
@@ -37,6 +39,7 @@ export interface TestApp {
   readonly db: Database;
   readonly bus: InMemoryMessageBus;
   readonly resolver: GroupResolver;
+  readonly layerResolver: LayerResolver;
   readonly app: { fetch: (req: Request) => Response | Promise<Response> };
   /**
    * Captured `seedAdminIfNeeded` log lines when `seedAdmin: true`; empty
@@ -85,7 +88,7 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
   const status = (): StatusBody => ({
     app: 'bunny2',
     version: '0.0.0',
-    phase: '2.7',
+    phase: '3.6',
     ok: true,
     dataDir: dir,
     configFile: null,
@@ -102,6 +105,12 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
     },
   });
   const resolver = createGroupResolver({ db, bus });
+  // Phase 3.3 — the auth chain now ends in `withEffectiveLayers`, which
+  // calls `layerResolver.effectiveLayers(user.id)` once per authenticated
+  // request. Tests that do not pre-seed the layer schema still get a
+  // working resolver — `effectiveLayers` returns an empty frozen array
+  // when no layers exist for the user, and the middleware attaches it.
+  const layerResolver = createLayerResolver({ db, transitiveGroups: resolver });
   const app = createApp({
     bus,
     llmClient,
@@ -109,6 +118,8 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
     db,
     auth: AuthConfigSchema.parse({}),
     resolver,
+    layerResolver,
+    locales: LocalesConfigSchema.parse({}),
   });
   if (opts.seedAdmin === true) {
     throw new Error(
@@ -120,6 +131,7 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
     db,
     bus,
     resolver,
+    layerResolver,
     app,
     seedLog: captured,
     cleanup() {
@@ -162,10 +174,16 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
   const captured: string[] = [];
   await seedAdminIfNeeded({ db, bus, log: (l) => captured.push(l) });
 
+  // Phase 3.3 — seed layers after the admin so the resolver has
+  // `personal-admin`, `group-admin`, and `everyone` to hand to the
+  // enrichment middleware.
+  const groupResolverForSeed = createGroupResolver({ db, bus });
+  await seedLayersIfNeeded({ db, bus, transitiveGroups: groupResolverForSeed });
+
   const status = (): StatusBody => ({
     app: 'bunny2',
     version: '0.0.0',
-    phase: '2.7',
+    phase: '3.6',
     ok: true,
     dataDir: dir,
     configFile: null,
@@ -182,6 +200,7 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
     },
   });
   const resolver = createGroupResolver({ db, bus });
+  const layerResolver = createLayerResolver({ db, transitiveGroups: resolver });
   const app = createApp({
     bus,
     llmClient,
@@ -189,6 +208,8 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
     db,
     auth: AuthConfigSchema.parse({}),
     resolver,
+    layerResolver,
+    locales: LocalesConfigSchema.parse({}),
   });
 
   return {
@@ -196,6 +217,7 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
     db,
     bus,
     resolver,
+    layerResolver,
     app,
     seedLog: captured,
     cleanup() {

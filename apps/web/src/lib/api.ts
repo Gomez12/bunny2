@@ -14,6 +14,8 @@
  */
 
 import type {
+  AddLayerMemberPayload,
+  AddLayerVisibilityPayload,
   AdminGroupDetailResponse,
   AdminGroupListResponse,
   AdminGroupRow,
@@ -23,12 +25,23 @@ import type {
   AdminUserListResponse,
   AdminUserRow,
   CreateGroupPayload,
+  CreateLayerPayload,
   CreateUserPayload,
+  Layer,
+  LayerAttachment,
+  LayerDetailResponse,
+  LayerListResponse,
+  LayerLocale,
+  ListLayersQuery,
   LoginResponse,
   MeResponse,
+  RegisterLayerAttachmentPayload,
   SafeGroup,
   SafeUser,
+  SetLayerLocalesPayload,
+  SystemLocalesResponse,
   UpdateGroupPayload,
+  UpdateLayerPayload,
   UpdateUserPayload,
 } from './api-types';
 
@@ -331,4 +344,112 @@ export async function removeAdminGroupMember(
     `/admin/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(memberId)}?kind=${kind}`,
     { method: 'DELETE' },
   );
+}
+
+// ---------- layers (phase 3.5) ---------------------------------------------
+
+/** `GET /me/layers` — caller's effective layer set, for the switcher. */
+export async function getMyLayers(): Promise<readonly Layer[]> {
+  const res = await request<LayerListResponse>('/me/layers');
+  return res.layers;
+}
+
+/** `GET /layers` — same set as `/me/layers` with filter/sort knobs. */
+export async function listLayers(params: ListLayersQuery = {}): Promise<readonly Layer[]> {
+  const qs = new URLSearchParams();
+  if (params.type !== undefined) qs.set('type', params.type);
+  if (params.search !== undefined && params.search.length > 0) qs.set('search', params.search);
+  if (params.includeDeleted === true) qs.set('includeDeleted', 'true');
+  const suffix = qs.toString();
+  const res = await request<LayerListResponse>(`/layers${suffix.length > 0 ? `?${suffix}` : ''}`);
+  return res.layers;
+}
+
+export async function getLayer(slug: string): Promise<Layer> {
+  const res = await request<LayerDetailResponse>(`/layers/${encodeURIComponent(slug)}`);
+  return res.layer;
+}
+
+export async function createLayer(body: CreateLayerPayload): Promise<Layer> {
+  const res = await request<LayerDetailResponse>('/layers', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.layer;
+}
+
+export async function updateLayer(slug: string, body: UpdateLayerPayload): Promise<Layer> {
+  const res = await request<LayerDetailResponse>(`/layers/${encodeURIComponent(slug)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return res.layer;
+}
+
+export async function deleteLayer(slug: string): Promise<void> {
+  await request<{ ok: true }>(`/layers/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+}
+
+export async function addLayerMember(slug: string, body: AddLayerMemberPayload): Promise<void> {
+  await request<{ ok: true }>(`/layers/${encodeURIComponent(slug)}/members`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function removeLayerMember(slug: string, memberId: string): Promise<void> {
+  await request<{ ok: true }>(
+    `/layers/${encodeURIComponent(slug)}/members/${encodeURIComponent(memberId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function addLayerVisibility(
+  slug: string,
+  body: AddLayerVisibilityPayload,
+): Promise<void> {
+  await request<{ ok: true }>(`/layers/${encodeURIComponent(slug)}/visibility`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function removeLayerVisibility(slug: string, parentSlug: string): Promise<void> {
+  await request<{ ok: true }>(
+    `/layers/${encodeURIComponent(slug)}/visibility/${encodeURIComponent(parentSlug)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function setLayerLocales(
+  slug: string,
+  body: SetLayerLocalesPayload,
+): Promise<readonly LayerLocale[]> {
+  const res = await request<{ ok: true; locales: readonly LayerLocale[] }>(
+    `/layers/${encodeURIComponent(slug)}/locales`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  return res.locales;
+}
+
+export async function registerLayerAttachment(
+  slug: string,
+  body: RegisterLayerAttachmentPayload,
+): Promise<LayerAttachment> {
+  const res = await request<{ attachment: LayerAttachment }>(
+    `/layers/${encodeURIComponent(slug)}/attachments`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  return res.attachment;
+}
+
+export async function removeLayerAttachment(slug: string, attachmentId: string): Promise<void> {
+  await request<{ ok: true }>(
+    `/layers/${encodeURIComponent(slug)}/attachments/${encodeURIComponent(attachmentId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function getSystemLocales(): Promise<SystemLocalesResponse> {
+  return request<SystemLocalesResponse>('/system/locales');
 }

@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0002_users_groups');
+      expect(currentSchemaVersion(db)).toBe('0004_layer_locale_default');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -31,6 +31,14 @@ describe('migrations', () => {
       expect(tables).toContain('user_group_memberships');
       expect(tables).toContain('group_group_memberships');
       expect(tables).toContain('sessions');
+      // 0003 tables
+      expect(tables).toContain('layers');
+      expect(tables).toContain('layer_visibility_edges');
+      expect(tables).toContain('layer_user_members');
+      expect(tables).toContain('layer_group_members');
+      expect(tables).toContain('layer_locales');
+      expect(tables).toContain('layer_attachments');
+      expect(tables).toContain('layer_dashboard_widgets');
 
       const indexes = db
         .query<{ name: string }, []>(
@@ -44,6 +52,13 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_group_group_memberships_child');
       expect(indexes).toContain('idx_sessions_user');
       expect(indexes).toContain('idx_sessions_expires');
+      // 0003 indexes
+      expect(indexes).toContain('idx_layers_type');
+      expect(indexes).toContain('idx_layers_deleted_at');
+      expect(indexes).toContain('idx_layer_visibility_child');
+      // 0004 index — partial-unique-index for "exactly one default
+      // locale per layer".
+      expect(indexes).toContain('idx_layer_locales_one_default');
     } finally {
       db.close();
     }
@@ -58,7 +73,12 @@ describe('migrations', () => {
       const applied = db2
         .query<{ id: string }, []>('SELECT id FROM schema_migrations ORDER BY id')
         .all();
-      expect(applied.map((r) => r.id)).toEqual(['0001_init', '0002_users_groups']);
+      expect(applied.map((r) => r.id)).toEqual([
+        '0001_init',
+        '0002_users_groups',
+        '0003_layers',
+        '0004_layer_locale_default',
+      ]);
     } finally {
       db2.close();
     }

@@ -105,3 +105,113 @@ export interface UpdateGroupPayload {
   readonly name?: string;
   readonly description?: string | null;
 }
+
+// ---------- layers (phase 3.5) ---------------------------------------------
+
+export type LayerType = 'personal' | 'project' | 'group' | 'everyone';
+export type LayerVisibilityDirection = 'top_down' | 'bottom_up' | 'both';
+export type LayerAttachmentKind = 'agent' | 'skill' | 'mcp_server';
+
+export interface Layer {
+  readonly id: string;
+  readonly type: LayerType;
+  readonly slug: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly ownerUserId: string | null;
+  readonly ownerGroupId: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly deletedAt: string | null;
+  readonly version: number;
+}
+
+export interface LayerListResponse {
+  readonly layers: readonly Layer[];
+}
+
+export interface LayerDetailResponse {
+  readonly layer: Layer;
+}
+
+export interface LayerUserMember {
+  readonly layerId: string;
+  readonly userId: string;
+  readonly role: string;
+  readonly createdAt: string;
+}
+
+export interface LayerGroupMember {
+  readonly layerId: string;
+  readonly groupId: string;
+  readonly role: string;
+  readonly createdAt: string;
+}
+
+export interface LayerLocale {
+  readonly layerId: string;
+  readonly locale: string;
+  readonly isDefault: boolean;
+  readonly createdAt: string;
+}
+
+export interface LayerAttachment {
+  readonly id: string;
+  readonly layerId: string;
+  readonly kind: LayerAttachmentKind;
+  readonly refId: string;
+  readonly config: Record<string, unknown>;
+  readonly createdAt: string;
+}
+
+export interface LayerVisibilityEdge {
+  readonly parentLayerId: string;
+  readonly childLayerId: string;
+  readonly direction: LayerVisibilityDirection;
+  readonly createdAt: string;
+}
+
+export interface CreateLayerPayload {
+  readonly type: 'project';
+  readonly slug: string;
+  readonly name: string;
+  readonly description?: string;
+}
+
+export interface UpdateLayerPayload {
+  readonly name?: string;
+  readonly description?: string | null;
+}
+
+export interface AddLayerMemberPayload {
+  readonly userId?: string;
+  readonly groupId?: string;
+  readonly role?: 'member' | 'owner';
+}
+
+export interface AddLayerVisibilityPayload {
+  readonly parentSlug: string;
+  readonly direction: 'bottom_up';
+}
+
+export interface SetLayerLocalesPayload {
+  readonly locales: readonly string[];
+  readonly defaultLocale?: string;
+}
+
+export interface RegisterLayerAttachmentPayload {
+  readonly kind: LayerAttachmentKind;
+  readonly refId: string;
+  readonly config?: Record<string, unknown>;
+}
+
+export interface SystemLocalesResponse {
+  readonly locales: readonly string[];
+  readonly default: string;
+}
+
+export interface ListLayersQuery {
+  readonly type?: LayerType;
+  readonly search?: string;
+  readonly includeDeleted?: boolean;
+}

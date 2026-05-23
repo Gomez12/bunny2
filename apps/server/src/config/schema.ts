@@ -43,15 +43,35 @@ export const AuthConfigSchema = z.object({
     .default(60 * 24),
 });
 
+/**
+ * Phase 3.4 — system locale list.
+ *
+ * Authoritative answer to "which locales is this deployment willing to
+ * accept on a `POST /layers/:slug/locales` call". Defaults mirror the
+ * web bundle in `apps/web/src/i18n/index.ts` (`en`, `nl` with `en` as
+ * the fallback). Operators may narrow the list per deployment; out of
+ * v1 scope (phase-3 plan §11.5) is a DB-backed locales table.
+ */
+export const LocalesConfigSchema = z
+  .object({
+    supported: z.array(z.string().min(1)).min(1).default(['en', 'nl']),
+    default: z.string().min(1).default('en'),
+  })
+  .refine((v) => v.supported.includes(v.default), {
+    message: 'locales.default must be one of locales.supported',
+  });
+
 export const AppConfigSchema = z.object({
   dataDir: z.string().default('./.data'),
   http: HttpConfigSchema.default({}),
   llm: LlmConfigSchema.default({}),
   auth: AuthConfigSchema.default({}),
+  locales: LocalesConfigSchema.default({ supported: ['en', 'nl'], default: 'en' }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
 export type HttpConfig = z.infer<typeof HttpConfigSchema>;
 export type LlmConfig = z.infer<typeof LlmConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
+export type LocalesConfig = z.infer<typeof LocalesConfigSchema>;
 export type ModelPricing = z.infer<typeof ModelPricingSchema>;

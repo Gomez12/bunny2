@@ -96,6 +96,23 @@ This is printed **once** — copy it before launching the UI.
 
 After that you land on the main app.
 
+### Your personal layer
+
+bunny2 organises everything by **layer** (a scope that owns its
+content, members, locales, and — later — AI helpers). On first
+login the app lands you on your **personal layer**
+(`/l/personal-<you>/dashboard`) — your private scratch space, only
+visible to you. The layer name shows in the app header, and the
+**Layer Switcher** next to your account chip lists every other
+layer you have access to (your group layers, the
+company-wide `Everyone` layer, and any project layers you've been
+added to).
+
+The current layer is always part of the URL, so bookmarks and the
+browser back / forward buttons "just work". For the full tour
+(creating a project layer, managing members, switching between
+layers), see [`working-with-layers.md`](./working-with-layers.md).
+
 If you administer bunny2 for others — creating extra users, managing
 groups, resetting forgotten passwords — see the admin guide:
 [`admin-managing-users.md`](./admin-managing-users.md).

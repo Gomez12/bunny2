@@ -243,7 +243,56 @@ Anti-leak invariants:
 See [`auth-and-sessions.md`](./auth-and-sessions.md) for the cross-
 event narrative (login → session → password rotation → logout).
 
-## 10. Future extensions (not in phase 1.3)
+## 10. Phase 3 events — layers
+
+Phase 3 introduces the `layers` table and its visibility / membership
+/ locale / attachment siblings, and a request-time
+effective-layer-set resolver. The `layer.*` event family is the
+external surface the resolver's bus subscriber listens on; see
+[`layers-and-auth.md`](./layers-and-auth.md) §6 for the producer
+narrative and ADRs
+[`0009`](../decisions/0009-layer-model.md) /
+[`0010`](../decisions/0010-layer-resolver-and-invalidation.md) for
+the why.
+
+| Type                          | When                                                                                       | Payload                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `layer.created`               | Layer seed (3.2); `POST /layers` (3.4); `user.created` / `group.created` subscribers (3.2) | `{ layerId, type, slug, name, ownerUserId?, ownerGroupId?, seeded? }`                      |
+| `layer.updated`               | `PATCH /layers/:slug` (3.4)                                                                | `{ layerId, slug }`                                                                        |
+| `layer.deleted`               | `DELETE /layers/:slug` (3.4); `user.deleted` / `group.deleted` subscribers (3.2)           | `{ layerId, slug, type, ownerUserId?, ownerGroupId? }`                                     |
+| `layer.visibility.added`      | Layer seed (3.2); `POST /layers/:slug/visibility` (3.4); `POST /layers` (`everyone` edge)  | `{ parentLayerId, childLayerId, direction: 'top_down' \| 'bottom_up' \| 'both', seeded? }` |
+| `layer.visibility.removed`    | `DELETE /layers/:slug/visibility/:parentSlug` (3.4)                                        | `{ parentLayerId, childLayerId }`                                                          |
+| `layer.member.added`          | `POST /layers/:slug/members` (3.4); `POST /layers` (owner row)                             | `{ layerId, kind: 'user' \| 'group', role, userId? \| groupId? }`                          |
+| `layer.member.removed`        | `DELETE /layers/:slug/members/:memberId` (3.4)                                             | `{ layerId, kind, userId? \| groupId? }`                                                   |
+| `layer.locale.set`            | `POST /layers/:slug/locales` (3.4)                                                         | `{ layerId, locales[], defaultLocale }`                                                    |
+| `layer.attachment.registered` | `POST /layers/:slug/attachments` (3.4)                                                     | `{ layerId, attachmentId, kind, refId, configPreview }` (≤500 chars)                       |
+| `layer.attachment.removed`    | `DELETE /layers/:slug/attachments/:id` (3.4)                                               | `{ layerId, attachmentId, kind, refId }`                                                   |
+
+`apps/server/src/layers/events.ts` exports the
+`ALL_LAYER_EVENT_TYPES` constant so the resolver's subscriber list
+stays machine-checkable: a new type cannot land without a
+subscription decision.
+
+The resolver's bus subscriber
+(`apps/server/src/layers/subscribers.ts`) reacts to:
+
+- every `layer.*` type → broad `invalidate()` (layers change rarely,
+  so the cheap-when-rare cost beats per-user enumeration).
+- `user.created` → seed personal layer + broad invalidate.
+- `user.deleted` → soft-delete the user's personal layer +
+  `invalidate(userId)`.
+- `group.created` → seed group layer + broad invalidate.
+- `group.deleted` → soft-delete the group layer + broad invalidate.
+- `group.member_added` / `group.member_removed` → targeted
+  `invalidate(affectedUserId)` for `kind: 'user'`; for `kind:
+'group'` enumerate the transitive user set under the affected
+  child branch and invalidate per-user.
+
+Routes also invalidate the caller's entry inline before returning
+so the very next handler in the same process sees the new state
+without depending on subscriber ordering.
+
+## 11. Future extensions
 
 - Wildcard subscriptions (`'*'`) — currently the replay script manages
   this via per-type subscription on demand.

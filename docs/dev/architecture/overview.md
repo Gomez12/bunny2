@@ -49,8 +49,13 @@ file; if you have an hour, follow the links.
 |  HTTP API (Hono on Bun.serve)                                  |
 |    ├── CORS (dev allowlist)                                    |
 |    ├── Auth middleware (opaque session, cookie + Bearer)       |
+|    ├── Password-rotation gate (mustChangePassword)             |
+|    ├── Layer enrichment (c.var.effectiveLayers, 3.3)           |
+|    ├── Admin gate (/admin/*)                                   |
+|    ├── Layer scope (requireLayer on /layers/:slug, /l/:slug)   |
 |    ├── GET  /status   (public)                                 |
-|    └── POST /chat     (auth-gated from 2.2)                    |
+|    ├── POST /chat     (auth-gated from 2.2)                    |
+|    └── GET  /me/layers, /layers, /system/locales (3.4)         |
 +----------------------------------------------------------------+
                                  ^
                                  | HTTP (CORS-allowlisted in dev)
@@ -187,6 +192,27 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
   (they must use `POST /auth/password`). Sessions of a deleted or
   reset-target user are revoked through the session service, which
   publishes `session.expired { reason }` per killed row.
+- Layer model + per-request enrichment (from phase 3): the `layers`
+  table and its visibility / membership / locales / attachments
+  siblings live in
+  `apps/server/src/storage/migrations/0003_layers.sql`. The
+  effective-layer-set resolver
+  (`apps/server/src/layers/resolver.ts`) returns the deduped set of
+  layers a `userId` may see, walking personal + transitive groups +
+  `everyone` + project membership + visibility edges. The resolver
+  is backed by an in-process LRU keyed on `userId` and invalidated
+  by an explicit subscriber list on `layer.*`, `group.member_*`,
+  `user.created/deleted`. The auth middleware chain ends in
+  `withEffectiveLayers` (`apps/server/src/http/middleware/layer.ts`)
+  which calls the resolver once per authenticated request and
+  attaches `c.var.effectiveLayers`. Layer-scoped routes nest a
+  `requireLayer` per-route middleware that reads `:slug` from the
+  URL and returns `404 errors.layer.notVisible` on any miss
+  (404, not 403, so a non-member cannot probe slug existence). Full
+  narrative in [`layers-and-auth.md`](./layers-and-auth.md); the
+  decisions are pinned in
+  [ADR 0009](../decisions/0009-layer-model.md) and
+  [ADR 0010](../decisions/0010-layer-resolver-and-invalidation.md).
 
 ### 2.7 Renderer
 
@@ -260,16 +286,21 @@ stack traces, secrets, or internal details to the user.
 
 ## 4. What's not here yet
 
-Phase 1 shipped the foundation and phase 2 layered authentication +
+Phase 1 shipped the foundation, phase 2 layered authentication +
 users + groups on top (see
-[`auth-and-sessions.md`](./auth-and-sessions.md) and the close-out at
+[`auth-and-sessions.md`](./auth-and-sessions.md) and the close-out
+at
 [`docs/dev/plans/done/phase-02-users-and-groups.md`](../plans/done/phase-02-users-and-groups.md)
-§14). The following are phase-3+ deliverables:
+§14), and phase 3 added the layer model + per-request enrichment
+(see [`layers-and-auth.md`](./layers-and-auth.md) and the close-out
+at
+[`docs/dev/plans/done/phase-03-layers.md`](../plans/done/phase-03-layers.md)
+§14). The following are phase-4+ deliverables:
 
-- Layers (personal / project / group / everyone) and per-layer
-  scoping (phase 3).
 - Entities (Companies, Contacts, Calendar, Todos) and the dashboard
-  shell (phase 4).
+  shell (phase 4). Every entity is born inside a layer and inherits
+  the resolver-driven auth filter described in
+  [`layers-and-auth.md`](./layers-and-auth.md) §7.
 - Scheduled tasks UI + retry/backoff (phase 5).
 - Super chat (intent router → entity resolver → retrieval → answerer)
   with auth-aware LanceDB retrieval (phase 6).
@@ -288,10 +319,16 @@ See `docs/dev/plans/overall.md` §8 for the full phased roadmap.
 - `docs/dev/architecture/llm-and-telemetry.md` — LLM client +
   telemetry + retention.
 - `docs/dev/architecture/i18n.md` — i18n pipeline + enforcement.
+- `docs/dev/architecture/auth-and-sessions.md` — phase 2 auth
+  surface (login, sessions, admin gate).
+- `docs/dev/architecture/layers-and-auth.md` — phase 3 layer model
+  - per-request enrichment + resolver.
 - `docs/dev/architecture/packaging.md` — build pipeline + per-OS
   data-dir paths.
 - `docs/dev/testing/phase-01-electron-manual.md` — manual per-OS
   checklist for the packaged Electron path.
-- `docs/dev/decisions/0001`–`0006` — the foundational ADRs.
+- `docs/dev/decisions/0001`–`0010` — the foundational ADRs.
 - `docs/user/guides/getting-started.md` — end-user-facing
+  walkthrough.
+- `docs/user/guides/working-with-layers.md` — end-user layer
   walkthrough.

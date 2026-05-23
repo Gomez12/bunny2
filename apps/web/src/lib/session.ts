@@ -7,24 +7,31 @@
  * a third-party state library — phase 2.6 only needs a small reactive
  * pub/sub.
  *
- * State machine (per `docs/dev/plans/done/phase-02-users-and-groups.md` §4.1):
+ * State machine (per `docs/dev/plans/done/phase-02-users-and-groups.md` §4.1
+ * + phase 3.5 layers extension):
  *
- *   unknown ─bootstrapSession()─▶ loading
- *   loading ─200 /auth/me──────▶ authenticated
- *   loading ─401 /auth/me──────▶ guest
- *   loading ─network err───────▶ guest (with console.warn)
- *   guest   ─applyLogin()──────▶ authenticated
- *   *       ─applyLogout()─────▶ guest
+ *   unknown   ─bootstrapSession()─▶ loading
+ *   loading   ─200 /auth/me─────▶ loading-layers
+ *   loading   ─401 /auth/me─────▶ guest
+ *   loading   ─409 (rotate-gate)▶ authenticated (mustChangePassword)
+ *   loading   ─network err──────▶ guest (with console.warn)
+ *   loading-layers ─/me/layers──▶ authenticated
+ *   guest     ─applyLogin()─────▶ loading-layers
+ *   *         ─applyLogout()────▶ guest
+ *
+ * The intermediate `loading-layers` status prevents App.tsx from rendering
+ * a layer-scoped route before the personal-layer slug is known — see
+ * `personalLayerSlug` on the snapshot.
  *
  * Components never mutate the state object directly — they call the
  * exported transitions or `useSession()` to read.
  */
 
 import { useSyncExternalStore } from 'react';
-import { fetchMe } from './api';
-import type { LoginResponse, SafeUser } from './api-types';
+import { fetchMe, getMyLayers } from './api';
+import type { Layer, LoginResponse, SafeUser } from './api-types';
 
-export type SessionStatus = 'unknown' | 'loading' | 'guest' | 'authenticated';
+export type SessionStatus = 'unknown' | 'loading' | 'loading-layers' | 'guest' | 'authenticated';
 
 export interface SessionState {
   readonly status: SessionStatus;
@@ -32,6 +39,10 @@ export interface SessionState {
   readonly mustChangePassword: boolean;
   readonly isAdmin: boolean;
   readonly sessionExpiresAt: string | null;
+  /** Effective-layer set for the current user — empty until /me/layers loads. */
+  readonly layers: readonly Layer[];
+  /** Slug of the user's personal layer, the default landing target. */
+  readonly personalLayerSlug: string | null;
 }
 
 const initial: SessionState = {
@@ -40,6 +51,8 @@ const initial: SessionState = {
   mustChangePassword: false,
   isAdmin: false,
   sessionExpiresAt: null,
+  layers: [],
+  personalLayerSlug: null,
 };
 
 let current: SessionState = initial;
@@ -69,6 +82,47 @@ export function useSession(): SessionState {
   return useSyncExternalStore(subscribeToSession, getSessionSnapshot, getSessionSnapshot);
 }
 
+/**
+ * Find the caller's personal layer in their effective set. There is
+ * exactly one per user (seeded in phase 3.2). Returns `null` if the
+ * effective set is empty or if seed hasn't propagated yet — App.tsx
+ * treats that case by falling back to the `/layers` page rather than
+ * forcing a path that would loop.
+ */
+export function pickPersonalLayer(layers: readonly Layer[], userId: string): Layer | null {
+  for (const l of layers) {
+    if (l.type === 'personal' && l.ownerUserId === userId) return l;
+  }
+  return null;
+}
+
+async function loadLayersInto(): Promise<void> {
+  // Caller has already set the session to `loading-layers` with the user
+  // populated. We fetch /me/layers and then flip to `authenticated`.
+  try {
+    const layers = await getMyLayers();
+    const personal = current.user !== null ? pickPersonalLayer(layers, current.user.id) : null;
+    setState({
+      ...current,
+      status: 'authenticated',
+      layers,
+      personalLayerSlug: personal?.slug ?? null,
+    });
+  } catch (err) {
+    // Even if /me/layers fails we still consider the user authenticated
+    // — they can navigate to `/layers` which shows an empty/error state.
+    // The forced ChangePasswordPage gate intentionally also lands here:
+    // when the auth gate fires on /me/layers, we just skip with empty.
+    console.warn('[session] /me/layers failed:', err);
+    setState({
+      ...current,
+      status: 'authenticated',
+      layers: [],
+      personalLayerSlug: null,
+    });
+  }
+}
+
 export async function bootstrapSession(): Promise<void> {
   setState({ ...current, status: 'loading' });
   try {
@@ -80,6 +134,8 @@ export async function bootstrapSession(): Promise<void> {
         mustChangePassword: false,
         isAdmin: false,
         sessionExpiresAt: null,
+        layers: [],
+        personalLayerSlug: null,
       });
       return;
     }
@@ -94,17 +150,22 @@ export async function bootstrapSession(): Promise<void> {
         mustChangePassword: true,
         isAdmin: false,
         sessionExpiresAt: current.sessionExpiresAt,
+        layers: [],
+        personalLayerSlug: null,
       });
       return;
     }
     const { me } = result;
     setState({
-      status: 'authenticated',
+      status: 'loading-layers',
       user: me.user,
       mustChangePassword: me.mustChangePassword,
       isAdmin: me.isAdmin,
       sessionExpiresAt: me.sessionExpiresAt,
+      layers: [],
+      personalLayerSlug: null,
     });
+    await loadLayersInto();
   } catch (err) {
     // Network/parse errors on bootstrap fall back to guest so the UI is
     // still usable (the login form will surface a helpful error on submit).
@@ -115,7 +176,25 @@ export async function bootstrapSession(): Promise<void> {
       mustChangePassword: false,
       isAdmin: false,
       sessionExpiresAt: null,
+      layers: [],
+      personalLayerSlug: null,
     });
+  }
+}
+
+/** Re-fetch /me/layers without re-running /auth/me. */
+export async function refreshLayers(): Promise<void> {
+  if (current.user === null) return;
+  try {
+    const layers = await getMyLayers();
+    const personal = pickPersonalLayer(layers, current.user.id);
+    setState({
+      ...current,
+      layers,
+      personalLayerSlug: personal?.slug ?? current.personalLayerSlug,
+    });
+  } catch (err) {
+    console.warn('[session] refreshLayers failed:', err);
   }
 }
 
@@ -125,13 +204,15 @@ export function applyLogin(response: LoginResponse): void {
   // flashing back to LoginPage between the login response and the /me
   // refresh.
   setState({
-    status: 'authenticated',
+    status: 'loading-layers',
     user: response.user,
     mustChangePassword: response.mustChangePassword,
     // Be conservative until /me confirms — admin tabs simply won't render
     // for the few milliseconds it takes the bootstrap to round-trip.
     isAdmin: false,
     sessionExpiresAt: response.sessionExpiresAt,
+    layers: [],
+    personalLayerSlug: null,
   });
   void bootstrapSession();
 }
@@ -143,5 +224,7 @@ export function applyLogout(): void {
     mustChangePassword: false,
     isAdmin: false,
     sessionExpiresAt: null,
+    layers: [],
+    personalLayerSlug: null,
   });
 }

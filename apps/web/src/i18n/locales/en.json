@@ -12,11 +12,14 @@
     "required": "required",
     "optional": "optional",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "notFound": "We couldn’t find what you were looking for.",
+    "backHome": "Back to home"
   },
   "nav": {
     "status": "Status",
     "chat": "Chat",
+    "layers": "Layers",
     "adminUsers": "Admin · Users",
     "adminGroups": "Admin · Groups"
   },
@@ -178,6 +181,119 @@
         "title": "Delete group",
         "body": "Delete the group \"{{name}}\"? Members are not deleted, only their membership in this group."
       }
+    },
+    "layers": {
+      "list": {
+        "title": "Layers",
+        "create": "Create project layer",
+        "empty": "You don’t have any visible layers yet.",
+        "columns": {
+          "name": "Name",
+          "type": "Type",
+          "description": "Description",
+          "members": "Members"
+        }
+      },
+      "create": {
+        "title": "Create project layer",
+        "name": "Name",
+        "slug": "Slug",
+        "slugHint": "Lowercase letters, digits and dashes only.",
+        "description": "Description (optional)",
+        "submit": "Create layer",
+        "success": "Project layer created."
+      },
+      "detail": {
+        "title": "Layer · {{name}}",
+        "tabs": {
+          "ariaLabel": "Layer settings",
+          "general": "General",
+          "members": "Members",
+          "visibility": "Visibility",
+          "locales": "Locales",
+          "attachments": "Attachments"
+        }
+      },
+      "general": {
+        "nameLabel": "Name",
+        "descriptionLabel": "Description",
+        "save": "Save",
+        "saved": "Layer updated.",
+        "noChanges": "No changes to save."
+      },
+      "members": {
+        "derivedNotice": "Membership for this layer type is derived from users and groups — there’s nothing to manage here.",
+        "projectNotice": "Project-layer members can be added by an owner. Use the API in this phase; a picker is coming in 3.6.",
+        "followUp": "A user / group picker is tracked in phase 3.6."
+      },
+      "visibility": {
+        "intro": "Add a parent layer so this layer can see entities created above it. Only bottom-up edges are supported in this version.",
+        "parentLabel": "Parent layer",
+        "parentPlaceholder": "Pick a parent layer",
+        "directionLabel": "Direction",
+        "add": "Add visibility edge",
+        "added": "Visibility edge added.",
+        "remove": "Remove edge",
+        "removed": "Visibility edge removed.",
+        "removeHelp": "Manage existing edges"
+      },
+      "locales": {
+        "intro": "Pick the locales this layer accepts. The system default is {{defaultLocale}}.",
+        "pickedLabel": "Allowed locales",
+        "defaultLabel": "Default locale for this layer",
+        "save": "Save locales",
+        "saved": "Locales updated."
+      },
+      "attachments": {
+        "empty": "No attachments registered yet.",
+        "kindLabel": "Kind",
+        "refIdLabel": "Reference id",
+        "configLabel": "Config (JSON object)",
+        "configHint": "Must be a JSON object — `{}` if you have no settings yet.",
+        "configMustBeObject": "Config must be a JSON object.",
+        "configInvalidJson": "Config is not valid JSON.",
+        "add": "Register attachment",
+        "added": "Attachment registered.",
+        "remove": "Remove",
+        "removed": "Attachment removed.",
+        "kind": {
+          "agent": "Agent",
+          "skill": "Skill",
+          "mcp_server": "MCP server"
+        }
+      }
+    }
+  },
+  "layer": {
+    "switcher": {
+      "label": "Switch layer",
+      "currentLabel": "Current layer",
+      "empty": "You don’t have any visible layers yet.",
+      "fallback": {
+        "notVisible": "That layer is no longer visible to you — switched to your personal layer.",
+        "noPersonal": "Your personal layer isn’t available — showing the layer list."
+      }
+    },
+    "type": {
+      "personal": "Personal",
+      "project": "Project",
+      "group": "Group",
+      "everyone": "Everyone"
+    },
+    "dashboard": {
+      "title": "{{name}} · Dashboard",
+      "configureWidgets": "Configure widgets",
+      "empty": {
+        "title": "No widgets yet",
+        "description": "This dashboard is empty. Widgets and attachments arrive in a later phase — for now the layer’s scope is established and ready."
+      }
+    },
+    "shell": {
+      "pageTitleLabel": "Current page",
+      "subpages": {
+        "dashboard": "Dashboard",
+        "settings": "Settings"
+      }
     }
   },
   "errors": {
@@ -210,6 +326,27 @@
       "cannotResetOwnPassword": "Administrators must change their own password via the account menu, not the admin reset endpoint.",
       "notSeeded": "Admin features are not available yet — the initial admin seed has not run.",
       "badRequest": "The request could not be processed. Please check the input and try again."
+    },
+    "layer": {
+      "badRequest": "The request could not be processed. Please check the input and try again.",
+      "notVisible": "Layer not found.",
+      "forbidden": "You do not have permission to edit this layer.",
+      "notDeletable": "This layer cannot be deleted.",
+      "typeNotCreatable": "Only project layers can be created here.",
+      "slugTaken": "A layer with this slug already exists.",
+      "slugRequired": "A layer slug is required in the URL.",
+      "membersOnProject": "Members can only be added to project layers.",
+      "memberNotFound": "Member not found in this layer.",
+      "memberUserNotFound": "User not found.",
+      "memberGroupNotFound": "Group not found.",
+      "visibilityDirectionNotSupported": "Only bottom_up visibility edges are supported in this version.",
+      "visibilityCycle": "This edge would create a visibility cycle.",
+      "visibilityParentNotFound": "Parent layer not found.",
+      "localeNotConfigured": "Locale is not in the system locale list.",
+      "defaultLocaleNotInSet": "Default locale must be one of the provided locales.",
+      "attachmentConfigInvalid": "Attachment config must be a JSON object.",
+      "attachmentAlreadyRegistered": "This attachment is already registered for the layer.",
+      "attachmentNotFound": "Attachment not found."
     }
   }
 }

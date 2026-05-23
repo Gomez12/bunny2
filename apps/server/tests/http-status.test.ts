@@ -7,8 +7,9 @@ import { createApp } from '../src/http/router';
 import type { StatusBody } from '../src/http/router';
 import { createLlmClient } from '../src/llm/client';
 import { openDatabase } from '../src/storage/sqlite';
-import { AuthConfigSchema } from '../src/config/schema';
+import { AuthConfigSchema, LocalesConfigSchema } from '../src/config/schema';
 import { createGroupResolver } from '../src/auth/group-resolver';
+import { createLayerResolver } from '../src/layers/resolver';
 
 describe('GET /status', () => {
   it('returns the injected status body shape with the auth section and skips auth (public route)', async () => {
@@ -42,6 +43,7 @@ describe('GET /status', () => {
       };
 
       const resolver = createGroupResolver({ db, bus });
+      const layerResolver = createLayerResolver({ db, transitiveGroups: resolver });
       const app = createApp({
         bus,
         llmClient,
@@ -49,6 +51,8 @@ describe('GET /status', () => {
         db,
         auth: AuthConfigSchema.parse({}),
         resolver,
+        layerResolver,
+        locales: LocalesConfigSchema.parse({}),
       });
       // No Authorization header, no cookie — status must still respond.
       const res = await app.fetch(new Request('http://localhost/status'));
