@@ -61,23 +61,23 @@ user-verified gate before activation.
 
 ## 4. Technical Foundation
 
-| Concern             | Choice                                                                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Runtime / package   | **Bun** (per `AGENTS.md`)                                                                                                               |
-| Language            | **TypeScript** end-to-end                                                                                                               |
-| Backend             | Bun HTTP server                                                                                                                         |
-| Frontend            | Vite + React + Tailwind + shadcn/ui                                                                                                     |
-| Desktop wrapper     | Electron — **thin wrapper only**, no business logic                                                                                     |
-| Primary DB          | SQLite (file in data-dir), designed for later Postgres                                                                                  |
-| Vector DB           | LanceDB (file in data-dir), authorization filter applied **before** retrieval                                                           |
-| Messaging           | [`bunqueue`](https://github.com/egeominotti/bunqueue); event-sourced, replayable                                                        |
-| Scheduler           | Internal scheduler for periodic AI enrichment, retries, translations, self-learning                                                     |
-| IDs                 | UUID everywhere (future multi-server federation)                                                                                        |
-| Config              | File next to executable; data-dir co-located, configurable path                                                                         |
-| Multi-platform      | Single portable binary per OS (macOS, Linux, Windows)                                                                                   |
-| LLM                 | **OpenAI-compatible interface**, endpoint + api_keys + models all configurable; one default at system level with per-component override |
-| Telemetry / logging | **100% message logging** on every LLM path (prompt, response, tokens, cost, model); stored in primary SQLite; **6-month retention**     |
-| Auth                | Username + password (**argon2id**) to start; group-based authorization                                                                  |
+| Concern             | Choice                                                                                                                                                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Runtime / package   | **Bun** (per `AGENTS.md`)                                                                                                                                                                                                                        |
+| Language            | **TypeScript** end-to-end                                                                                                                                                                                                                        |
+| Backend             | Bun HTTP server                                                                                                                                                                                                                                  |
+| Frontend            | Vite + React + Tailwind + shadcn/ui                                                                                                                                                                                                              |
+| Desktop wrapper     | Electron — **thin wrapper only**, no business logic                                                                                                                                                                                              |
+| Primary DB          | SQLite (file in data-dir), designed for later Postgres                                                                                                                                                                                           |
+| Vector DB           | LanceDB (file in data-dir), authorization filter applied **before** retrieval                                                                                                                                                                    |
+| Messaging           | Thin internal `MessageBus` (in-memory adapter in phase 1; cross-process / durable transport revisited at phase 5). `bunqueue` was the originally proposed transport; superseded by [ADR 0005](../decisions/0005-event-sourcing-and-bunqueue.md). |
+| Scheduler           | Internal scheduler for periodic AI enrichment, retries, translations, self-learning                                                                                                                                                              |
+| IDs                 | UUID everywhere (future multi-server federation)                                                                                                                                                                                                 |
+| Config              | File next to executable; data-dir co-located, configurable path                                                                                                                                                                                  |
+| Multi-platform      | Single portable binary per OS (macOS, Linux, Windows)                                                                                                                                                                                            |
+| LLM                 | **OpenAI-compatible interface**, endpoint + api_keys + models all configurable; one default at system level with per-component override                                                                                                          |
+| Telemetry / logging | **100% message logging** on every LLM path (prompt, response, tokens, cost, model); stored in primary SQLite; **6-month retention**                                                                                                              |
+| Auth                | Username + password (**argon2id**) to start; group-based authorization                                                                                                                                                                           |
 
 ---
 
@@ -206,6 +206,11 @@ plan only fixes the **order**, **goal per phase**, and
   pipeline end-to-end.
 - **Exit:** a developer can install the portable build, see the UI,
   send a chat message, and find the full prompt/response in the log.
+- **Status (as of 2026-05-23):** sub-phases 1.1–1.5 and 1.7 are
+  `done`; 1.6 (Electron + per-OS portable build) is `needs-testing`
+  on Linux/Windows. The CI matrix
+  (`.github/workflows/release.yml`) is the verification path. See
+  the close-out walkthrough in `phase-01-system-foundation.md` §14.
 
 ### Phase 2 — Users & groups
 
@@ -305,11 +310,15 @@ is delivered as part of 4c / 4d.
 
 ## 10. Decisions (answered open questions)
 
-1. **Message bus** → use [`egeominotti/bunqueue`](https://github.com/egeominotti/bunqueue).
-   Phase 1 detail plan must validate fit (event sourcing, replay,
-   middleware hooks, debounce/coalesce) before locking it in;
-   abstract behind a thin internal interface so it can be replaced
-   without touching call sites.
+1. **Message bus** → thin internal `MessageBus` interface. Phase 1.3
+   shipped an in-memory adapter; a cross-process / durable transport
+   is revisited at phase 5 (general scheduled tasks) when retries,
+   cron, and DLQ semantics earn their keep. `bunqueue` was the
+   originally proposed transport; the phase 1.3 fit-check found it is
+   a job queue, not a pub/sub event bus with a middleware hook, and
+   carries deps unrelated to phase 1 (MCP SDK, zod-4) — superseded by
+   [ADR 0005](../decisions/0005-event-sourcing-and-bunqueue.md). The
+   adapter-shaped interface keeps any future transport additive.
 2. **LLM provider** → **OpenAI-compatible API**. Endpoint, api_keys,
    and model names are all configurable. One default LLM config at
    system level, per-component overrides everywhere. Any provider

@@ -162,13 +162,21 @@ Single `bun run package` script.
 **1.7 — End-to-end smoke test + docs**
 Automated smoke test (Playwright or Bun's test runner driving HTTP):
 launches the server in a temp data-dir against a mock LLM, hits
-`/status`, hits `/chat`, asserts the `llm_calls` row exists.
-Manual checklist in `docs/dev/testing/phase-01-smoke.md` for the
-Electron-wrapped path on each OS.
-Dev docs written: `docs/dev/setup/`, `docs/dev/architecture/overview.md`,
-`docs/dev/architecture/event-bus.md`, `docs/dev/architecture/llm-and-telemetry.md`,
-`docs/dev/architecture/i18n.md`, plus user-facing
-`docs/user/guides/getting-started.md`.
+`/status`, hits `/chat`, asserts the `llm_calls` row exists. Delivered
+as `apps/server/tests/smoke.test.ts`, exposed via `bun run smoke`.
+Manual checklist in `docs/dev/testing/phase-01-electron-manual.md`
+covers the Electron-wrapped path on each OS, including a Results log
+table so each per-OS run is recorded.
+Dev docs written: `docs/dev/setup/installation.md`,
+`docs/dev/setup/running.md`, `docs/dev/architecture/overview.md`,
+`docs/dev/architecture/event-bus.md`,
+`docs/dev/architecture/llm-and-telemetry.md`,
+`docs/dev/architecture/i18n.md`, `docs/dev/architecture/packaging.md`,
+plus user-facing `docs/user/guides/getting-started.md`. ADRs 0001/0002/0003
+authored as phase-1 recap; 0004/0005/0006 already existed from their
+originating sub-phases. CI baseline `.github/workflows/ci.yml` extended
+to the macOS/Linux/Windows matrix; `.github/workflows/release.yml`
+added for per-OS portable artifact builds on tag push.
 
 ---
 
@@ -220,7 +228,7 @@ New docs:
 - `docs/dev/architecture/event-bus.md`
 - `docs/dev/architecture/llm-and-telemetry.md`
 - `docs/dev/architecture/i18n.md`
-- `docs/dev/testing/phase-01-smoke.md`
+- `docs/dev/testing/phase-01-electron-manual.md`
 - `docs/dev/decisions/0001-bun-and-typescript.md`
 - `docs/dev/decisions/0002-sqlite-first-postgres-later.md`
 - `docs/dev/decisions/0003-lancedb.md`
@@ -322,3 +330,31 @@ Per `AGENTS.md` §Done Means Done, plus phase-specific:
 
 Open `docs/dev/tasklist.md`, add the sub-phase rows (1.1 → 1.7) as
 `open`, then start sub-phase **1.1 — Repo + tooling**.
+
+---
+
+## 14. Phase 1 close-out (authored 2026-05-23 at the end of 1.7)
+
+Walkthrough of §12 Definition of Done. Tracked here so a reader does
+not have to chase the tasklist + git history to know what is done and
+what is gated.
+
+| §12 line                                                                              | State   | Evidence / notes                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| All sub-phase tasklist rows are `done`                                                | partial | 1.1–1.5 + 1.7 `done`; **1.6 stays `needs-testing`** (Linux/Windows packaging unverified on the macOS host). The CI matrix (`release.yml`) is the verification path; see `docs/dev/follow-ups/electron-builder-ci-matrix.md`.      |
+| `bun install && bun run dev` brings up server + web (3 OSes)                          | partial | Verified on macOS (host). Linux/Windows pending a green CI matrix.                                                                                                                                                                |
+| `bun run package` produces per-OS portable artifacts                                  | partial | macOS produced locally; matrix authored in `release.yml`; needs to be triggered on GitHub Actions.                                                                                                                                |
+| Round-trip chat against mock LLM works in the Electron app                            | done    | macOS, per the manual checklist's macOS row. Other OS rows pending verification.                                                                                                                                                  |
+| `format:check`, `lint`, `typecheck`, `test`, `build`, `docs:check`, `i18n:check` pass | done    | Run locally at 1.7 close-out; CI workflow runs them on all three OSes too.                                                                                                                                                        |
+| All ADRs listed in §7 exist                                                           | done    | 0001/0002/0003 authored during 1.7 as recap ADRs; 0004/0005/0006 authored during their originating sub-phases.                                                                                                                    |
+| `overall.md` and this file remain accurate                                            | done    | This §14 captures the divergence between the plan as written and reality (1.6 needs-testing, manual file renamed). Overall plan §10.1 already notes the bunqueue supersede via ADR 0005; no further drift to record at close-out. |
+
+**What flips after this commit lands**
+
+- Tasklist row 1.7 → `done`.
+- Tasklist row 1.6 stays `needs-testing` until the CI matrix produces
+  green artifacts per OS and a human runs the manual checklist on
+  each artifact.
+- The plan stays in `docs/dev/plans/` (not `done/`) because row 1.6
+  is still `needs-testing` — per `AGENTS.md` §Plans, the plan moves
+  only when **all** related tasks are `done`.

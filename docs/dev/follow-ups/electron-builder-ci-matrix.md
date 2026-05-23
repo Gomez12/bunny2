@@ -1,35 +1,41 @@
 # Electron builder CI matrix for all three OSes
 
-- Status: open
-- Owner: phase 1.7
+- Status: in-progress
+- Owner: phase 1.7 (authored), verification owner unassigned
 
 ## What remains
 
-Build the per-OS portable artifacts in CI on:
+The workflow is authored as `.github/workflows/release.yml`. It still
+needs to be **exercised on GitHub Actions**:
 
-- macOS (x64 + arm64)
-- Linux (x64 + arm64 if a runner is available; x64 minimum)
-- Windows (x64)
+1. Trigger via `workflow_dispatch` (or push a `v*` tag).
+2. Confirm each matrix leg (macOS, Linux, Windows) finishes green.
+3. Download an artifact per OS and run the manual checklist in
+   `docs/dev/testing/phase-01-electron-manual.md`. Update its
+   Results log table with `pass`/`fail` per OS.
+4. Once all three OS rows are `pass`, flip tasklist row 1.6 from
+   `needs-testing` to `done`.
 
-The CI job should:
+## What was done in 1.7
 
-1. `bun install`
-2. `bun run package:prepare`
-3. `bun run --filter '@bunny2/desktop' package`
-4. Upload the artifacts from `apps/desktop/release/`.
+- `.github/workflows/ci.yml` now runs format/lint/typecheck/test/build
+  on `ubuntu-latest`, `macos-latest`, and `windows-latest`. This
+  catches platform-specific source bugs even before packaging.
+- `.github/workflows/release.yml` runs `bun run package` per OS on
+  `workflow_dispatch` and on `v*` tag push, uploading the artifacts
+  under `apps/desktop/release/`.
 
-## Why not done now
+## Why not flipped to `done` yet
 
-Phase 1.6 produces the bundle + electron-builder config locally; the
-"all three OSes build" guarantee is a phase 1.7 deliverable per
-`phase-01-system-foundation.md` §12.
-
-## Next step
-
-Add a `.github/workflows/package.yml` (or equivalent) with three jobs.
+Triggering the workflow requires repo permissions on GitHub Actions
+and a real run — we cannot fire it from the macOS dev host. The CI
+matrix is the path to verification, not a substitute for it.
 
 ## Related files / docs
 
+- `.github/workflows/ci.yml`
+- `.github/workflows/release.yml`
 - `apps/desktop/electron-builder.yml`
 - `apps/desktop/scripts/prepare-resources.ts`
+- `docs/dev/testing/phase-01-electron-manual.md` (Results log)
 - `docs/dev/plans/phase-01-system-foundation.md` §12

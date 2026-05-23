@@ -1,8 +1,15 @@
-# Phase 1.6 — Manual Electron smoke checklist
+# Phase 1 — Manual Electron smoke checklist
 
-> Phase 1.7 will add an automated smoke test that drives the round-trip
-> via HTTP. Until then this checklist is the source of truth for "does
-> the packaged app actually work on this OS".
+> The automated HTTP round-trip is owned by
+> `apps/server/tests/smoke.test.ts` (added in phase 1.7) and runs as
+> part of `bun test` / `bun run smoke`. **This document covers only the
+> packaged Electron path**, because that path (sidecar lifecycle,
+> per-OS data-dir, code-signing dialog, native LanceDB asset load)
+> cannot be exercised in `bun test` and must be verified by a human on
+> a real machine per OS.
+>
+> Companion: ADR 0004 (`docs/dev/decisions/0004-electron-as-thin-wrapper.md`)
+> and `docs/dev/architecture/packaging.md`.
 
 ---
 
@@ -113,3 +120,24 @@ llm_calls;` returns at least 1.
   orchestrator does not restart the server on source changes. Kill
   the dev session with Ctrl+C and re-run. Tracked in
   `docs/dev/follow-ups/desktop-dev-restart.md`.
+
+---
+
+## Results log
+
+Record one row per verification run. Keep the latest run per OS at
+the top of its section. If a follow-up was filed during the run,
+reference it in the "Notes" column.
+
+| Date       | OS      | Architecture | Tester     | Result | Notes                                                                 |
+| ---------- | ------- | ------------ | ---------- | ------ | --------------------------------------------------------------------- |
+| 2026-05-23 | macOS   | arm64        | maintainer | pass   | Phase 1.6 host verification; Gatekeeper warning bypassed per ADR 0004 |
+| _pending_  | macOS   | x64          | _tbd_      | _tbd_  | Awaiting CI matrix or x64 host                                        |
+| _pending_  | Linux   | x64          | _tbd_      | _tbd_  | Tracked: `docs/dev/follow-ups/electron-builder-ci-matrix.md`          |
+| _pending_  | Linux   | arm64        | _tbd_      | _tbd_  | Optional; only if runner available                                    |
+| _pending_  | Windows | x64          | _tbd_      | _tbd_  | Tracked: `docs/dev/follow-ups/electron-builder-ci-matrix.md`          |
+
+> When a CI matrix run produces an artifact and a human downloads +
+> installs + drives it through the per-OS checklist above, replace the
+> matching `_pending_` row. Once every OS row is `pass`, flip tasklist
+> row 1.6 from `needs-testing` to `done`.

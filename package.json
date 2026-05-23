@@ -23,6 +23,7 @@
     "package": "bun run package:prepare && bun run --filter '@bunny2/desktop' package",
     "docs:check": "bun run scripts/docs-check.ts",
     "replay": "bun run scripts/replay.ts",
+    "smoke": "bun test apps/server/tests/smoke.test.ts",
     "i18n:check": "bun run scripts/i18n-check.ts"
   },
   "devDependencies": {

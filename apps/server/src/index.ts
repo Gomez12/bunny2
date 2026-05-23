@@ -53,7 +53,7 @@ const llmPrune = startLlmRetentionPrune({
 const status = (): StatusBody => ({
   app: appName,
   version: appVersion,
-  phase: '1.5',
+  phase: '1.7',
   ok: true,
   dataDir,
   configFile,

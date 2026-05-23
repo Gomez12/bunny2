@@ -55,7 +55,7 @@ function status(): StatusBody {
   return {
     app: 'bunny2',
     version: '0.0.0',
-    phase: '1.5',
+    phase: '1.7',
     ok: true,
     dataDir: '/tmp/test',
     configFile: null,

@@ -5,7 +5,7 @@ import type { StatusBody } from '../src/http/router';
 import { createLlmClient } from '../src/llm/client';
 
 describe('GET /status', () => {
-  it('returns the injected status body shape with phase 1.5', async () => {
+  it('returns the injected status body shape with phase 1.7', async () => {
     const bus = new InMemoryMessageBus();
     const llmClient = createLlmClient({
       endpoint: 'mock://echo',
@@ -15,7 +15,7 @@ describe('GET /status', () => {
     const body: StatusBody = {
       app: 'bunny2',
       version: '0.0.0',
-      phase: '1.5',
+      phase: '1.7',
       ok: true,
       dataDir: '/tmp/example',
       configFile: null,
@@ -30,6 +30,6 @@ describe('GET /status', () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as StatusBody;
     expect(json).toEqual(body);
-    expect(json.phase).toBe('1.5');
+    expect(json.phase).toBe('1.7');
   });
 });
