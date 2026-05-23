@@ -21,7 +21,7 @@
     "package": "echo 'package script is implemented in phase 1.6' && exit 0",
     "docs:check": "bun run scripts/docs-check.ts",
     "replay": "bun run scripts/replay.ts",
-    "i18n:check": "echo 'i18n:check is implemented in phase 1.5' && exit 0"
+    "i18n:check": "bun run scripts/i18n-check.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.10.0",

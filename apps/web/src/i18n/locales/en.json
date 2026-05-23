@@ -1,0 +1,54 @@
+{
+  "common": {
+    "appName": "bunny2",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "tabs": {
+      "status": "Status",
+      "chat": "Chat"
+    }
+  },
+  "status": {
+    "title": "System status",
+    "healthy": "Healthy",
+    "unhealthy": "Unhealthy",
+    "fields": {
+      "version": "Version",
+      "phase": "Phase",
+      "dataDir": "Data directory",
+      "configFile": "Config file",
+      "configFileNone": "(defaults)",
+      "sqliteSchema": "SQLite schema",
+      "sqliteSchemaNone": "(none)",
+      "lancedbTables": "LanceDB tables",
+      "busEvents": "Bus events",
+      "busAdapter": "Bus adapter",
+      "llmEndpoint": "LLM endpoint",
+      "llmModel": "LLM default model",
+      "llmCalls": "LLM calls"
+    }
+  },
+  "chat": {
+    "title": "Chat",
+    "description": "Send a single-turn message to the configured LLM.",
+    "messageLabel": "Message",
+    "placeholder": "Type your message and press Enter to send. Use Shift+Enter for a new line.",
+    "modelLabel": "Model override (optional)",
+    "modelPlaceholder": "Leave blank to use the configured default",
+    "send": "Send",
+    "sending": "Sending…",
+    "responseTitle": "Response",
+    "metaModel": "Model",
+    "metaTokensIn": "Tokens in",
+    "metaTokensOut": "Tokens out",
+    "metaCorrelationId": "Correlation ID"
+  },
+  "errors": {
+    "network": "Could not reach the server. Please try again.",
+    "chat": {
+      "upstream": "The LLM provider returned an error. Please try again.",
+      "badRequest": "The message could not be sent. Please check the input and try again.",
+      "empty": "Please enter a message before sending."
+    }
+  }
+}

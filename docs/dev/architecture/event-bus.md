@@ -172,7 +172,27 @@ the log alone.
 
 ---
 
-## 8. Future extensions (not in phase 1.3)
+## 8. Event types in phase 1
+
+Phase 1.5 introduces the first three real domain events. They are emitted
+by `apps/server/src/http/routes/chat.ts` and consumed (today) only by
+the telemetry middleware that writes them to the `events` table —
+future phases will add real subscribers.
+
+| Type             | When                                               | Payload shape                                                                                                                                       |
+| ---------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chat.requested` | At the start of `POST /chat`, before the LLM call. | `{ message: string; model: string \| null }` — `model` is the per-call override, or `null` when the configured default is used.                     |
+| `chat.responded` | After a successful LLM round-trip.                 | `{ content: string; model: string; tokensIn: number; tokensOut: number; latencyMs: number }`. Token counts come from the LLM client, not estimated. |
+| `chat.failed`    | When the LLM call throws.                          | `{ model: string \| null; error: string }`. The HTTP response is 502 with body `{ error: 'errors.chat.upstream', correlationId }`.                  |
+
+Every event in a single chat round-trip shares the same
+`correlationId` and `flowId` (UUID v4, generated at the start of the
+handler), so a downstream consumer can join `events` rows on either id
+to reconstruct the full flow. The LLM telemetry row (in `llm_calls`)
+carries the same `correlationId` and `flowId`, so cross-table joins
+are direct.
+
+## 9. Future extensions (not in phase 1.3)
 
 - Wildcard subscriptions (`'*'`) — currently the replay script manages
   this via per-type subscription on demand.

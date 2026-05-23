@@ -16,6 +16,8 @@ import {
   startLlmRetentionPrune,
   withTelemetry,
 } from './llm';
+import { createApp } from './http/router';
+import type { StatusBody } from './http/router';
 
 const { config, configFile, dataDir } = loadConfig();
 const db = openDatabase(dataDir);
@@ -48,6 +50,25 @@ const llmPrune = startLlmRetentionPrune({
   retentionDays: config.llm.retentionDays,
 });
 
+const status = (): StatusBody => ({
+  app: appName,
+  version: appVersion,
+  phase: '1.5',
+  ok: true,
+  dataDir,
+  configFile,
+  sqlite: { schemaVersion },
+  lancedb: { ready: true, tables: lanceTables },
+  bus: { adapter: busAdapterName, events: eventLog.count() },
+  llm: {
+    endpoint: llmClient.endpoint,
+    defaultModel: llmClient.defaultModel,
+    calls: llmCallLog.count(),
+  },
+});
+
+const app = createApp({ bus, llmClient, status });
+
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);
 console.log(`[${appName}] sqlite:      schema=${schemaVersion ?? '(none)'}`);
@@ -57,36 +78,13 @@ console.log(
   `[${appName}] llm:         ${llmClient.endpoint} (default=${llmClient.defaultModel}, calls=${llmCallLog.count()})`,
 );
 
-// Bind so they are reachable from later sub-phases (chat handler in 1.5).
-void bus;
-void llmClient;
+// Keep the prune handle reachable so the GC does not collect its interval.
 void llmPrune;
 
 const server = Bun.serve({
   port: config.http.port,
   hostname: config.http.host,
-  fetch(req) {
-    const url = new URL(req.url);
-    if (url.pathname === '/status') {
-      return Response.json({
-        app: appName,
-        version: appVersion,
-        phase: '1.4',
-        ok: true,
-        dataDir,
-        configFile,
-        sqlite: { schemaVersion },
-        lancedb: { ready: true, tables: lanceTables },
-        bus: { adapter: busAdapterName, events: eventLog.count() },
-        llm: {
-          endpoint: llmClient.endpoint,
-          defaultModel: llmClient.defaultModel,
-          calls: llmCallLog.count(),
-        },
-      });
-    }
-    return new Response('Not Found', { status: 404 });
-  },
+  fetch: app.fetch,
 });
 
 console.log(`[${appName}] listening on http://${server.hostname}:${server.port}`);

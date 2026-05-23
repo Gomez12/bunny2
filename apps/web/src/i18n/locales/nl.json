@@ -1,0 +1,28 @@
+{
+  "common": {
+    "appName": "bunny2",
+    "loading": "Laden…",
+    "retry": "Opnieuw proberen",
+    "tabs": {
+      "status": "Status",
+      "chat": "Chat"
+    }
+  },
+  "status": {
+    "title": "Systeemstatus",
+    "healthy": "Gezond"
+  },
+  "chat": {
+    "title": "Chat",
+    "placeholder": "Typ je bericht en druk op Enter om te verzenden.",
+    "send": "Verzenden",
+    "sending": "Bezig met verzenden…",
+    "responseTitle": "Antwoord"
+  },
+  "errors": {
+    "network": "Kan de server niet bereiken. Probeer het opnieuw.",
+    "chat": {
+      "upstream": "De LLM-provider gaf een fout. Probeer het opnieuw."
+    }
+  }
+}
