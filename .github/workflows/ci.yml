@@ -17,7 +17,19 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows is currently non-blocking: `bun:sqlite` leaks the DB
+        # file handle on close and tempdir cleanup hits EBUSY. Tracked
+        # in `docs/dev/follow-ups/windows-bun-sqlite-ebusy.md`. Revisit
+        # when Bun ships a fix or we move to a non-WAL test strategy.
+        include:
+          - os: windows-latest
+            continue_on_error: true
+          - os: ubuntu-latest
+            continue_on_error: false
+          - os: macos-latest
+            continue_on_error: false
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.continue_on_error }}
     steps:
       - uses: actions/checkout@v4
 
