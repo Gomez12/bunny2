@@ -104,6 +104,10 @@ out/
 # local data-dir for development
 .data/
 
+# local tooling
+.claude/
+.understand-anything/
+
 # Gatsby files
 .cache/
 # Comment in the public line in if your project uses Gatsby and *not* Next.js
