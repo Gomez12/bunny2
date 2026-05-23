@@ -20,6 +20,7 @@ import { registerSystemLocalesRoute } from './routes/system-locales';
 // (4a..4d) registers its module and mounts its routes via a small
 // helper exported from `apps/server/src/entities/<kind>/index.ts`.
 import { mountCompanyRoutes, registerCompanyModule } from '../entities/companies';
+import { mountContactRoutes, registerContactModule } from '../entities/contacts';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -136,6 +137,17 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
   // `apps/server/src/entities/companies/index.ts`.
   registerCompanyModule();
   mountCompanyRoutes(app, {
+    db: deps.db,
+    bus: deps.bus,
+    llm: deps.llmClient,
+  });
+
+  // Phase 4b.1 — contacts entity. Same idempotent registration pattern
+  // as companies so `makeTestApp`-driven tests can rebuild the app any
+  // number of times without resetting the registry; see
+  // `apps/server/src/entities/contacts/index.ts`.
+  registerContactModule();
+  mountContactRoutes(app, {
     db: deps.db,
     bus: deps.bus,
     llm: deps.llmClient,

@@ -384,6 +384,14 @@
         "saveFailed": "Could not save the company. Please check the input and try again.",
         "linkAddFailed": "Could not link this number. Please verify it and try again.",
         "validation": "The company could not be saved. Please check the input and try again."
+      },
+      "contacts": {
+        "loadFailed": "Could not load this contact. Please try again.",
+        "saveFailed": "Could not save the contact. Please check the input and try again.",
+        "validation": "The contact could not be saved. Please check the input and try again.",
+        "slugTaken": "A contact with this slug already exists in this layer.",
+        "emailDuplicate": "Each email address can only be added once.",
+        "companyNotFound": "The linked company does not exist in this layer."
       }
     },
     "connectors": {
@@ -469,6 +477,29 @@
       "enrichmentSummary": "The AI enrichment job fills this field automatically when a KvK link or sufficient context exists.",
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the name."
+    },
+    "contacts": {
+      "listTitle": "{{name}} · Contacts",
+      "listEmpty": "No contacts in this layer yet. Create the first one to get started.",
+      "listLoading": "Loading contacts…",
+      "listError": "Could not load contacts.",
+      "createCta": "Create contact",
+      "fieldGivenName": "Given name",
+      "fieldFamilyName": "Family name",
+      "fieldDisplayName": "Display name",
+      "fieldEmails": "Email addresses",
+      "fieldPhones": "Phone numbers",
+      "fieldJobTitle": "Job title",
+      "fieldCompany": "Company",
+      "fieldNotes": "Notes",
+      "fieldBirthday": "Birthday",
+      "fieldEmailLabel": "Label",
+      "fieldEmailPrimary": "Primary email",
+      "fieldPhoneLabel": "Label",
+      "fieldPhonePrimary": "Primary phone",
+      "save": "Save",
+      "cancel": "Cancel",
+      "deleteCta": "Delete contact"
     }
   }
 }

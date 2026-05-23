@@ -1358,3 +1358,89 @@ support multiple connector kinds per module); 4b.3 declares the
 slot 4a.3 introduced; 4b.4 attaches a `ContactsWidget` to the
 client-side widget registry; 4b.5 mounts the UI; 4b.6 reuses the
 4a.6 smoke template.
+
+### 4b.1 shipped (2026-05-24)
+
+**What landed**
+
+- Migration `apps/server/src/storage/migrations/0008_contacts.sql` —
+  the second per-kind table. Follows §5 shape exactly: shared columns
+  (`id`, `layer_id`, `slug`, `title`, `searchable_text`,
+  `original_locale`, `payload_json`, audit columns, `version`) plus
+  three nullable indexed columns — `primary_email`, `primary_phone`,
+  `company_entity_id`. Indexes: `idx_contacts_layer`,
+  `idx_contacts_deleted_at`, `idx_contacts_primary_email` (sparse),
+  `idx_contacts_company` (sparse). `company_entity_id` is NOT a
+  `FOREIGN KEY` — keeping the link soft so it survives a company's
+  soft delete and so future kinds can reuse the slot (4b.3's contact↔
+  company validator lives in the route handler, not the SQL layer).
+  `apps/server/tests/migrations.test.ts` asserts the new schema lands
+  on a fresh DB and the migration list ends at `0008_contacts`.
+- Cross-package zod schemas in `packages/shared/src/contacts.ts`:
+  `ContactEmailSchema` (z.string().email() + label + isPrimary),
+  `ContactPhoneSchema` (free-form value max 64 + label + isPrimary),
+  `ContactPayloadSchema` (givenName / familyName / displayName /
+  emails[≤16] / phones[≤16] / companyEntityId (uuid) / jobTitle / notes
+  / birthday (YYYY-MM-DD), every field optional, emails deduplicated
+  by lowercased value), `CreateContactRequestSchema`,
+  `UpdateContactRequestSchema`. Slug validation matches the
+  `CreateCompanyRequestSchema` rule (`^[a-z0-9-]+$`). Re-exported from
+  `packages/shared/src/index.ts`.
+- `contactModule` (`apps/server/src/entities/contacts/module.ts`) with
+  `kind = 'contact'`, `tableName = 'contacts'`, the three-entry
+  `indexedColumns` declaration, a lowercase searchable-text digest,
+  and a `subtitle` that picks primary email → primary phone →
+  jobTitle. Exposed as both the singleton `contactModule` and the
+  `createContactModule(opts)` factory so 4b.2 (vCard import) and 4b.3
+  (AI enrichment) stay additive.
+- Wire-up helper `apps/server/src/entities/contacts/index.ts` exports
+  `registerContactModule()` (idempotent — short-circuits when any
+  contact module is already registered) and
+  `mountContactRoutes(app, { db, bus, llm })`. Wired into the
+  production app from `apps/server/src/http/router.ts` alongside the
+  4a.1 companies wiring.
+- Contract suite for the kind:
+  `apps/server/tests/entities/contacts-contract.test.ts` runs the
+  §4.0 reusable suite against `contactModule` and adds per-kind
+  assertions for the three indexed columns (`isPrimary=true` wins;
+  first-entry fallback applies; clearing the payload writes `NULL`
+  across the board) plus a `toSummary` subtitle precedence check.
+- i18n: new `entity.contacts.*` block (listTitle / listEmpty /
+  listLoading / listError / createCta / field* / save / cancel /
+  deleteCta) and new `errors.entity.contacts.*`block (loadFailed /
+saveFailed / validation / slugTaken / emailDuplicate /
+companyNotFound) in both`en.json`and`nl.json` with real Dutch
+  translations.
+- Docs: `docs/dev/architecture/entities.md` §10e "Second consumer:
+  contacts (4b.1)" documents the registered module shape, the soft
+  `company_entity_id` link rule, and explicitly records that ZERO
+  foundation tweaks were needed — the empirical confirmation the
+  contract takes a clean second adoption with only the four
+  extension slots already shipped in the 4a block.
+
+**Foundation tweaks**
+
+- **None.** The four extension slots (`indexedColumns`,
+  `getConnector` / dispatcher / runner, `enrichmentJobs`,
+  `statsProvider`) introduced during the 4a block were sufficient.
+  4b.1 declares `indexedColumns` only; the connector / enrichment /
+  stats slots stay empty and ship in 4b.2 / 4b.3 / 4b.4.
+
+**Notable for 4b.2 (vCard import)**
+
+- The 4a.2 connector base + dispatcher already supports multiple
+  connector kinds per module (§10b "Wire layout"). 4b.2 builds a
+  `vcardConnector` and passes it via `createContactModule({
+connectors: [vcardConnector] })`. The `CreateContactModuleOptions`
+  interface in `apps/server/src/entities/contacts/module.ts` is the
+  natural slot for that injection — currently empty, will grow a
+  `connectors?: readonly EntityConnector<ContactPayload>[]` field
+  in 4b.2 the same way `createCompanyModule` did for KvK.
+- vCard parsing is the only new server-side concern in 4b.2; the
+  dispatcher path (`POST /external-links` → `entity.connector.sync.
+requested` → `connector.pull` → patch applied) is identical to
+  the KvK flow. The 4a.6 smoke construction pattern reuses cleanly.
+- The route segment is singular (`/l/:slug/contact/*`) per the §4.0
+  router naming, mirroring the 4a.1 follow-up. The 4b.5 web UI
+  surfaces a plural `/l/:slug/contacts` page (singular ↔ plural seam
+  stays client-side, as per the 4a.5 close-out).

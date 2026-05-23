@@ -700,6 +700,60 @@ and layout) is a follow-up.
 
 ---
 
+## 10e. Second consumer: contacts (4b.1)
+
+`contactModule` (`apps/server/src/entities/contacts/module.ts`) is the
+second concrete `EntityModule` to land on the §4.0 foundation. It
+registers under `kind = 'contact'`, writes to the `contacts` table
+created by `0008_contacts.sql`, and declares three indexed columns
+projected from the JSON payload:
+
+```ts
+export const contactModule: EntityModule<ContactPayload> = createContactModule();
+// ⇒ kind: 'contact', tableName: 'contacts',
+//   payloadSchema: ContactPayloadSchema,
+//   indexedColumns: [
+//     { name: 'primary_email',     extract: (p) => primaryEmailOf(p) },
+//     { name: 'primary_phone',     extract: (p) => primaryPhoneOf(p) },
+//     { name: 'company_entity_id', extract: (p) => p.companyEntityId ?? null },
+//   ],
+//   toSummary: subtitle = primaryEmail ?? primaryPhone ?? jobTitle ?? null,
+//   searchableText: lowercased digest of names + emails + phones + jobTitle + notes
+```
+
+`primary_email` / `primary_phone` follow the same derivation rule: the
+first entry whose `isPrimary` is `true` wins; otherwise the first
+entry overall; otherwise `null`. The sparse indexes
+`idx_contacts_primary_email` / `idx_contacts_company` skip the `NULL`
+rows so listings stay cheap.
+
+`company_entity_id` is a **soft** link to a `companies.id`. The
+migration deliberately does NOT model it as a `FOREIGN KEY` so the
+link survives a company soft delete and remains usable across future
+kinds (the slot is generic — `entity_id`, not `company_id`). Phase
+4b.3 validates the link at write time at the route-handler level;
+the SQL layer stays kind-agnostic.
+
+Contacts pass the §4.0 contract suite verbatim
+(`apps/server/tests/entities/contacts-contract.test.ts` →
+`runEntityContractSuite(...)`). The same file adds extra checks for
+the indexed-column projection: `isPrimary=true` wins; first-entry
+fallback applies when nothing is flagged; clearing the payload writes
+`NULL` across the board.
+
+**Zero foundation tweaks landed in 4b.1.** The four extension slots
+(`indexedColumns`, `getConnector` / dispatcher / runner,
+`enrichmentJobs`, `statsProvider`) introduced during the 4a block
+were enough to absorb the second consumer cleanly — empirical
+confirmation that the §4.0 contract generalizes beyond the kind it
+was extracted with. No `connectors`, `enrichmentJobs`, or
+`statsProvider` ship in 4b.1: the vCard import is 4b.2, the
+contact↔company suggestion is 4b.3, the dashboard widget is 4b.4.
+The `createContactModule(opts)` factory is in place so each of those
+sub-phases stays additive.
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit

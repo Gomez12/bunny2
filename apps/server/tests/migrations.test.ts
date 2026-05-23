@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0007_layer_attachments_connector_kind');
+      expect(currentSchemaVersion(db)).toBe('0008_contacts');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -46,6 +46,8 @@ describe('migrations', () => {
       expect(tables).toContain('entity_souls');
       // 0006 — first concrete entity kind (phase 4a.1).
       expect(tables).toContain('companies');
+      // 0008 — second concrete entity kind (phase 4b.1).
+      expect(tables).toContain('contacts');
 
       const indexes = db
         .query<{ name: string }, []>(
@@ -74,6 +76,11 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_companies_layer');
       expect(indexes).toContain('idx_companies_deleted_at');
       expect(indexes).toContain('idx_companies_kvk');
+      // 0008 indexes — contacts.
+      expect(indexes).toContain('idx_contacts_layer');
+      expect(indexes).toContain('idx_contacts_deleted_at');
+      expect(indexes).toContain('idx_contacts_primary_email');
+      expect(indexes).toContain('idx_contacts_company');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -113,6 +120,7 @@ describe('migrations', () => {
         '0005_entities_base',
         '0006_companies',
         '0007_layer_attachments_connector_kind',
+        '0008_contacts',
       ]);
     } finally {
       db2.close();

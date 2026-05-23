@@ -165,6 +165,14 @@
         "saveFailed": "Kon het bedrijf niet opslaan. Controleer de invoer en probeer het opnieuw.",
         "linkAddFailed": "Kon dit nummer niet koppelen. Controleer het en probeer het opnieuw.",
         "validation": "Het bedrijf kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw."
+      },
+      "contacts": {
+        "loadFailed": "Kon dit contact niet laden. Probeer het opnieuw.",
+        "saveFailed": "Kon het contact niet opslaan. Controleer de invoer en probeer het opnieuw.",
+        "validation": "Het contact kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
+        "slugTaken": "Er bestaat al een contact met deze slug in deze laag.",
+        "emailDuplicate": "Elk e-mailadres kan maar één keer worden toegevoegd.",
+        "companyNotFound": "Het gekoppelde bedrijf bestaat niet in deze laag."
       }
     },
     "connectors": {
@@ -250,6 +258,29 @@
       "enrichmentSummary": "De AI-verrijking vult dit veld automatisch wanneer er een KvK-koppeling of voldoende context is.",
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de naam."
+    },
+    "contacts": {
+      "listTitle": "{{name}} · Contacten",
+      "listEmpty": "Nog geen contacten in deze laag. Maak het eerste contact aan om te starten.",
+      "listLoading": "Contacten laden…",
+      "listError": "Kon contacten niet laden.",
+      "createCta": "Contact aanmaken",
+      "fieldGivenName": "Voornaam",
+      "fieldFamilyName": "Achternaam",
+      "fieldDisplayName": "Weergavenaam",
+      "fieldEmails": "E-mailadressen",
+      "fieldPhones": "Telefoonnummers",
+      "fieldJobTitle": "Functie",
+      "fieldCompany": "Bedrijf",
+      "fieldNotes": "Notities",
+      "fieldBirthday": "Geboortedatum",
+      "fieldEmailLabel": "Label",
+      "fieldEmailPrimary": "Primair e-mailadres",
+      "fieldPhoneLabel": "Label",
+      "fieldPhonePrimary": "Primair telefoonnummer",
+      "save": "Opslaan",
+      "cancel": "Annuleren",
+      "deleteCta": "Contact verwijderen"
     }
   }
 }
