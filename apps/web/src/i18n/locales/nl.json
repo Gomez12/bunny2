@@ -154,8 +154,7 @@
       "connectorUnknown": "De gekozen connector is niet beschikbaar op deze server.",
       "statsUnavailable": "Dashboardstatistieken zijn niet beschikbaar voor dit itemtype.",
       "enrichment": {
-        "failed": "AI-verrijking kon niet worden voltooid. Probeer het later opnieuw.",
-        "rateLimited": "AI-verrijking is tijdelijk beperkt voor deze laag. Het probeert het binnenkort opnieuw."
+        "failed": "AI-verrijking kon niet worden voltooid. Probeer het later opnieuw."
       },
       "companies": {
         "kvkInvalid": "Het KvK-nummer moet uit precies 8 cijfers bestaan.",
@@ -164,10 +163,7 @@
         "descriptionTooLong": "De beschrijving is te lang.",
         "loadFailed": "Kon dit bedrijf niet laden. Probeer het opnieuw.",
         "saveFailed": "Kon het bedrijf niet opslaan. Controleer de invoer en probeer het opnieuw.",
-        "deleteFailed": "Kon het bedrijf niet verwijderen. Probeer het opnieuw.",
         "linkAddFailed": "Kon dit nummer niet koppelen. Controleer het en probeer het opnieuw.",
-        "linkRefreshFailed": "Kon de koppelingsstatus niet vernieuwen. Probeer het opnieuw.",
-        "slugTaken": "Een bedrijf met deze slug bestaat al in deze laag.",
         "validation": "Het bedrijf kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw."
       }
     },
@@ -201,37 +197,7 @@
       "addExternalLink": "Extern systeem koppelen",
       "removeExternalLink": "Koppeling verwijderen"
     },
-    "enrichment": {
-      "running": "Bezig met verrijken…",
-      "idle": "Bijgewerkt.",
-      "deferred": "Ingepland — wacht op limietvenster.",
-      "failed": "Verrijking mislukt.",
-      "summary": "Samenvatting",
-      "fillFields": "Ontbrekende velden invullen"
-    },
     "companies": {
-      "title": "Bedrijven",
-      "singular": "Bedrijf",
-      "create": "Nieuw bedrijf",
-      "edit": "Bedrijf bewerken",
-      "empty": "Nog geen bedrijven.",
-      "search": "Bedrijven zoeken",
-      "fields": {
-        "legalName": "Statutaire naam",
-        "tradeName": "Handelsnaam",
-        "kvkNumber": "KvK-nummer",
-        "website": "Website",
-        "address": "Adres",
-        "addressStreet": "Straat",
-        "addressHouseNumber": "Huisnummer",
-        "addressPostalCode": "Postcode",
-        "addressCity": "Plaats",
-        "addressCountry": "Land",
-        "phone": "Telefoon",
-        "email": "E-mail",
-        "industry": "Branche",
-        "description": "Beschrijving"
-      },
       "subtitle": {
         "noDetails": "Nog geen KvK-nummer of website."
       },
@@ -271,7 +237,6 @@
       "deleted": "Bedrijf verwijderd.",
       "externalLinksTitle": "Externe koppelingen",
       "externalLinksEmpty": "Nog geen externe koppelingen.",
-      "linkKvkCta": "KvK-nummer koppelen",
       "linkKvkNumberLabel": "KvK-nummer",
       "linkKvkAdd": "KvK koppelen",
       "linkConnectorLabel": "{{connector}} · {{externalId}}",
@@ -284,19 +249,7 @@
       "linkSyncRefresh": "Status vernieuwen",
       "enrichmentSummary": "De AI-verrijking vult dit veld automatisch wanneer er een KvK-koppeling of voldoende context is.",
       "slug": "Slug",
-      "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de naam.",
-      "originalLocale": "Oorspronkelijke taal"
-    }
-  },
-  "connectors": {
-    "kvk": {
-      "label": "KvK (Kamer van Koophandel)",
-      "description": "Haalt Basisprofiel-gegevens (statutaire naam, handelsnaam, adres, website, branche) op via een KvK-nummer.",
-      "fields": {
-        "apiKey": "API-sleutel",
-        "endpoint": "Endpoint-URL (optioneel)",
-        "pollIntervalMinutes": "Polling-interval (minuten)"
-      }
+      "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de naam."
     }
   }
 }

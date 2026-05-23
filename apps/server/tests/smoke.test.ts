@@ -72,6 +72,19 @@ import { getMeta } from '../src/storage/kv-meta';
 import { createGroupResolver } from '../src/auth/group-resolver';
 import { seedLayersIfNeeded } from '../src/layers/seed';
 import { createLayerResolver } from '../src/layers/resolver';
+import {
+  __resetEntityRegistryForTests,
+  createConnectorDispatcher,
+  createEnrichmentRunner,
+  createEntityStore,
+  registerEntityModule,
+  type EntityStore,
+} from '../src/entities';
+import { createCompanyModule, createKvkConnector } from '../src/entities/companies';
+import type { ChatRequest, ChatResponse, LlmClient } from '../src/llm';
+import type { EntityExternalLink } from '@bunny2/shared';
+import type { CompanyPayload } from '@bunny2/shared';
+import type { BusEvent } from '@bunny2/bus';
 
 interface ChatSuccessBody {
   content: string;
@@ -709,5 +722,449 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     expect(call?.endpoint).toBe('mock://echo');
     expect(call?.correlation_id).toBe(chatBody.correlationId);
     expect(call?.flow_id).toBe(chatEvents[0]?.flow_id);
+
+    // -----------------------------------------------------------------
+    // 12. Phase 4a.6 — canonical Companies entity flow (template for
+    //     every later entity smoke: 4b.6 / 4c.6 / 4d.7). Drives the
+    //     full vertical: create → patch → external-link → connector
+    //     dispatch (stubbed KvK) → enrichment runner (fake LLM) →
+    //     list → stats → soft-delete.
+    //
+    //     The KvK connector's `fetch` is captured at module import
+    //     (see `apps/server/src/entities/companies/kvk-connector.ts`),
+    //     so we cannot patch `globalThis.fetch` to swap it in. Instead
+    //     we pre-register a stub-fetched `companyModule` variant in
+    //     the entity registry. The dispatcher resolves connectors via
+    //     `getConnector(kind, id)` which reads from the registry, so
+    //     `dispatcher.handle(...)` invokes the stub. The HTTP routes'
+    //     `EntityStore` keeps its own copy of the production module
+    //     (captured by `createApp` above); CRUD goes through that
+    //     store, which is identical to the stub for `indexedColumns`
+    //     / `searchableText` / `toSummary` — only the connector
+    //     differs.
+    //
+    //     The enrichment runner gets a deterministic fake LLM (no
+    //     `mock://echo`) so the summary it writes is reproducible and
+    //     `llm.calls` stays at 1 (the fake LLM is not the
+    //     telemetry-wrapped client the smoke's `/chat` step used).
+    //
+    //     The smoke does NOT exercise the connector poll runner — the
+    //     dispatcher is driven synchronously via `dispatcher.handle`.
+    // -----------------------------------------------------------------
+
+    // 12a. Fresh admin login (the earlier session was revoked in step
+    //      9). The seed printed the initial password; the rotation
+    //      step set it to `smoke-test-rotation-2026!`.
+    const adminLogin2 = await app.fetch(
+      new Request('http://localhost/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: 'smoke-test-rotation-2026!' }),
+      }),
+    );
+    expect(adminLogin2.status).toBe(200);
+    const adminCookie2 = adminLogin2.headers.get('set-cookie') ?? '';
+    const adminToken2 = /bunny2_session=([^;]+)/.exec(adminCookie2)?.[1] ?? '';
+    expect(adminToken2).not.toBe('');
+
+    // 12b. Resolve admin's personal layer via `GET /me/layers`. The
+    //      seed creates `personal-admin`; we pick it explicitly so a
+    //      future change to seed ordering does not silently shift the
+    //      test onto a different layer.
+    interface MeLayersBody {
+      readonly layers: ReadonlyArray<{ slug: string; type: string }>;
+    }
+    const meLayers = await app.fetch(
+      new Request('http://localhost/me/layers', {
+        headers: { authorization: `Bearer ${adminToken2}` },
+      }),
+    );
+    expect(meLayers.status).toBe(200);
+    const meLayersBody = (await meLayers.json()) as MeLayersBody;
+    const personal = meLayersBody.layers.find(
+      (l) => l.type === 'personal' && l.slug === 'personal-admin',
+    );
+    expect(personal).toBeDefined();
+    const personalSlug = personal!.slug;
+    const personalLayerRow = database
+      .query<{ id: string }, [string]>('SELECT id FROM layers WHERE slug = ?')
+      .get(personalSlug);
+    if (personalLayerRow === null) throw new Error(`smoke: layer ${personalSlug} not found`);
+    const personalLayerId = personalLayerRow.id;
+
+    // 12c. Swap in a stub-fetched company module so the dispatcher
+    //      uses a deterministic KvK response. We reset the registry
+    //      first so the default `companyModule` (registered by
+    //      `createApp` above) does not collide.
+    const STUB_KVK_API_KEY = 'smoke-kvk-key-do-not-leak';
+    const SAMPLE_BASISPROFIEL = {
+      kvkNummer: '12345678',
+      handelsnaam: 'AMI Trade',
+      statutaireNaam: 'AMI BV',
+      _embedded: {
+        hoofdvestiging: {
+          websites: ['ami.example'],
+          sbiActiviteiten: [{ sbiOmschrijving: 'Software development' }],
+          adressen: [
+            {
+              type: 'bezoekadres',
+              straatnaam: 'Hoofdweg',
+              huisnummer: 12,
+              postcode: '1011AA',
+              plaats: 'Amsterdam',
+              land: 'NL',
+            },
+          ],
+        },
+      },
+    };
+    const kvkFetchCalls: string[] = [];
+    const stubKvkFetch = ((req: string | URL | Request) => {
+      const url = typeof req === 'string' ? req : req instanceof URL ? req.href : req.url;
+      kvkFetchCalls.push(url);
+      return Promise.resolve(
+        new Response(JSON.stringify(SAMPLE_BASISPROFIEL), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    }) as typeof fetch;
+    __resetEntityRegistryForTests();
+    const stubKvkConnector = createKvkConnector({ fetch: stubKvkFetch });
+    const stubCompanyModule = createCompanyModule({ connectors: [stubKvkConnector] });
+    registerEntityModule(stubCompanyModule);
+
+    // 12d. Build a fake LLM client for the enrichment runner. Two flow
+    //      ids drive the summary / fillFields jobs — match them by
+    //      `metadata.flowId` (the same shape
+    //      `companies-enrichment.test.ts` uses).
+    const llmCalls: { messages: string; flowId: string | undefined }[] = [];
+    const fakeLlm: LlmClient = {
+      endpoint: 'mock://smoke-enrichment',
+      defaultModel: 'mock-default',
+      async chat(req: ChatRequest): Promise<ChatResponse> {
+        const flowId = typeof req.metadata?.flowId === 'string' ? req.metadata.flowId : undefined;
+        llmCalls.push({
+          messages: req.messages.map((m) => m.content).join('\n'),
+          flowId,
+        });
+        const content =
+          flowId === 'enrichment:companies.fillFields'
+            ? JSON.stringify({
+                legalName: 'AMI BV',
+                tradeName: 'AMI Trade',
+                industry: 'Software development',
+                description: null,
+              })
+            : 'AMI BV is a software-development company in Amsterdam.';
+        return {
+          id: crypto.randomUUID(),
+          model: 'mock-default',
+          content,
+          tokensIn: 16,
+          tokensOut: 9,
+          raw: null,
+        };
+      },
+    };
+
+    // 12e. Subscribe to the connector + enrichment events directly on
+    //      the shared bus so we can assert publication without racing
+    //      through the SQLite event log read at the end of the test.
+    const companyBusEvents: BusEvent[] = [];
+    const unsubRequested = bus.subscribe('entity.connector.sync.requested', (ev) => {
+      companyBusEvents.push(ev);
+    });
+    const unsubSucceeded = bus.subscribe('entity.connector.sync.succeeded', (ev) => {
+      companyBusEvents.push(ev);
+    });
+
+    // 12f. Wire the dispatcher + enrichment runner against the same
+    //      `db` and `bus` the app uses. Both are start()/stop() guarded
+    //      so a mid-step failure does not leave subscribers attached.
+    const dispatcher = createConnectorDispatcher({ db: database, bus });
+    const stubStore = createEntityStore<CompanyPayload>({
+      module: stubCompanyModule,
+      db: database,
+      bus,
+      llm: fakeLlm,
+    });
+    const enrichmentRunner = createEnrichmentRunner({
+      db: database,
+      bus,
+      llm: fakeLlm,
+      pricing: loaded.config.llm.pricing,
+      resolveStore: () => stubStore as EntityStore<unknown>,
+    });
+    // Note: we do NOT `dispatcher.start()` — the POST
+    // `/external-links` route publishes `sync.requested` and the
+    // started subscriber would re-run the connector once more, racing
+    // our synchronous `dispatcher.handle(...)` below. The smoke
+    // drives the dispatcher manually instead.
+    enrichmentRunner.start();
+    try {
+      // 12g. Attach the KvK connector config to the personal layer via
+      //      the production attachments endpoint.
+      const attachRes = await app.fetch(
+        new Request(`http://localhost/layers/${personalSlug}/attachments`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            kind: 'connector',
+            refId: 'kvk',
+            config: { apiKey: STUB_KVK_API_KEY, pollIntervalMinutes: 1440 },
+          }),
+        }),
+      );
+      expect(attachRes.status).toBe(201);
+
+      // 12.1 POST /l/:slug/company — create "AMI BV". Include
+      //      `kvkNumber` in the payload so `withKvk` is 1 immediately;
+      //      the connector-driven enrichment will reaffirm it later.
+      const createRes = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'AMI BV',
+            slug: 'ami-bv',
+            originalLocale: 'en',
+            payload: { kvkNumber: '12345678' },
+          }),
+        }),
+      );
+      expect(createRes.status).toBe(201);
+      const createdBody = (await createRes.json()) as {
+        entity: { id: string; slug: string; meta: { version: number; originalLocale: string } };
+      };
+      expect(createdBody.entity.slug).toBe('ami-bv');
+      const companyId = createdBody.entity.id;
+
+      // 12.2 GET detail — assert version=1, originalLocale set,
+      //      deleted_at null (entity returns meta.deletedAt = null).
+      const getRes = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company/ami-bv`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(getRes.status).toBe(200);
+      const getBody = (await getRes.json()) as {
+        entity: { meta: { version: number; originalLocale: string; deletedAt: string | null } };
+      };
+      expect(getBody.entity.meta.version).toBe(1);
+      expect(getBody.entity.meta.originalLocale).toBe('en');
+      expect(getBody.entity.meta.deletedAt).toBeNull();
+
+      // 12.3 PATCH — update the description. Version must advance.
+      const updatedAtBefore = (getBody as unknown as { entity: { meta: { updatedAt: string } } })
+        .entity.meta.updatedAt;
+      // Pause one millisecond so the new updatedAt strictly differs.
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      const patchRes = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company/ami-bv`, {
+          method: 'PATCH',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            payload: {
+              kvkNumber: '12345678',
+              description: 'A hand-edited description.',
+            },
+          }),
+        }),
+      );
+      expect(patchRes.status).toBe(200);
+      const patchBody = (await patchRes.json()) as {
+        entity: { meta: { version: number; updatedAt: string } };
+      };
+      expect(patchBody.entity.meta.version).toBe(2);
+      expect(patchBody.entity.meta.updatedAt > updatedAtBefore).toBe(true);
+
+      // 12.4 POST external-link → link persists at `sync_state='idle'`
+      //      and `entity.connector.sync.requested` published.
+      const linkRes = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company/ami-bv/external-links`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({ connector: 'kvk', externalId: '12345678' }),
+        }),
+      );
+      expect(linkRes.status).toBe(201);
+      const linkBody = (await linkRes.json()) as { externalLink: EntityExternalLink };
+      expect(linkBody.externalLink.syncState).toBe('idle');
+      expect(linkBody.externalLink.connector).toBe('kvk');
+      expect(linkBody.externalLink.externalId).toBe('12345678');
+      const requestedEvents = companyBusEvents.filter(
+        (e) => e.type === 'entity.connector.sync.requested',
+      );
+      expect(requestedEvents.length).toBeGreaterThanOrEqual(1);
+
+      // 12.5 Drive the dispatcher synchronously. The link transitions
+      //      to `idle` with `synced_at` set; `succeeded` is published.
+      await dispatcher.handle({
+        ref: {
+          id: companyId,
+          kind: 'company',
+          layerId: personalLayerId,
+          slug: 'ami-bv',
+        },
+        connector: 'kvk',
+        externalId: '12345678',
+      });
+      expect(kvkFetchCalls.length).toBe(1);
+      // Re-fetch the entity from the HTTP layer; the link's
+      // `syncState` must be `idle` with `synced_at` non-null.
+      const afterDispatch = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company/ami-bv`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const afterDispatchBody = (await afterDispatch.json()) as {
+        entity: { externalLinks: ReadonlyArray<EntityExternalLink> };
+      };
+      const refreshedLink = afterDispatchBody.entity.externalLinks.find(
+        (l) => l.id === linkBody.externalLink.id,
+      );
+      expect(refreshedLink?.syncState).toBe('idle');
+      expect(refreshedLink?.syncedAt).not.toBeNull();
+      const succeededEvents = companyBusEvents.filter(
+        (e) => e.type === 'entity.connector.sync.succeeded',
+      );
+      expect(succeededEvents.length).toBe(1);
+
+      // 12.6 Drive the enrichment runner via `tickOnce()`. The summary
+      //      job fires on `created` (event was emitted at step 12.1)
+      //      and the fillFields job fires on `sync.succeeded` (from
+      //      step 12.5); both apply patches. `payload.description`
+      //      must come from the fake LLM (not from the user's PATCH
+      //      step, which the runner's "do not overwrite non-empty"
+      //      policy preserves UNLESS the trigger is `updated` /
+      //      `sync.succeeded` and the field is `description` — see
+      //      the 4a.3 close-out's overwrite exception). After two
+      //      ticks (one for create + update debounce, one for
+      //      sync.succeeded), the version is strictly higher than 2.
+      const versionBeforeEnrichment = patchBody.entity.meta.version;
+      await enrichmentRunner.tickOnce();
+      const afterEnrichment = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company/ami-bv`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const afterEnrichmentBody = (await afterEnrichment.json()) as {
+        entity: {
+          payload: CompanyPayload;
+          meta: { version: number };
+        };
+      };
+      expect(typeof afterEnrichmentBody.entity.payload.description).toBe('string');
+      expect((afterEnrichmentBody.entity.payload.description ?? '').length).toBeGreaterThan(0);
+      expect(afterEnrichmentBody.entity.meta.version).toBeGreaterThan(versionBeforeEnrichment);
+      // The fake LLM was invoked for at least the summary job; the
+      // call ledger (`llm.calls` from the telemetry-wrapped chat
+      // client) remains 1 because the fake LLM bypasses telemetry.
+      expect(llmCalls.length).toBeGreaterThan(0);
+
+      // 12.7 GET list — assert "AMI BV" appears.
+      const listRes = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(listRes.status).toBe(200);
+      const listBody = (await listRes.json()) as {
+        entities: ReadonlyArray<{ slug: string; title: string }>;
+      };
+      expect(listBody.entities.some((e) => e.slug === 'ami-bv' && e.title === 'AMI BV')).toBe(true);
+
+      // 12.8 GET stats — assert the four counts. `total` 1, `withKvk`
+      //      1 (kvkNumber set), `recentlyEnriched` 1 (enrichment
+      //      stamped entity_souls), `missingDescription` 0 (fake LLM
+      //      wrote the description).
+      const statsRes = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company/_stats`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(statsRes.status).toBe(200);
+      const statsBody = (await statsRes.json()) as {
+        stats: {
+          total: number;
+          withKvk: number;
+          recentlyEnriched: number;
+          missingDescription: number;
+        };
+      };
+      expect(statsBody.stats).toEqual({
+        total: 1,
+        withKvk: 1,
+        recentlyEnriched: 1,
+        missingDescription: 0,
+      });
+
+      // 12.9 DELETE — soft-delete. Subsequent list omits the row;
+      //      detail returns 404.
+      const deleteRes = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company/ami-bv`, {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(deleteRes.status).toBe(200);
+
+      const listAfterDelete = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const listAfterDeleteBody = (await listAfterDelete.json()) as {
+        entities: ReadonlyArray<{ slug: string }>;
+      };
+      expect(listAfterDeleteBody.entities.some((e) => e.slug === 'ami-bv')).toBe(false);
+
+      // Soft-deleted entities stay reachable by slug (so a restore
+      // flow can read the prior payload) but carry `meta.deletedAt`
+      // set. The list endpoint omits them — that's what step 12.9b
+      // above just asserted.
+      const detailAfterDelete = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company/ami-bv`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(detailAfterDelete.status).toBe(200);
+      const detailAfterDeleteBody = (await detailAfterDelete.json()) as {
+        entity: { meta: { deletedAt: string | null } };
+      };
+      expect(detailAfterDeleteBody.entity.meta.deletedAt).not.toBeNull();
+
+      // Secret-strip invariant: the configured KvK apiKey never
+      // surfaces on any bus event payload or any LLM prompt during
+      // the smoke flow.
+      const eventHaystack = JSON.stringify(
+        companyBusEvents.map((e) => ({ type: e.type, payload: e.payload, metadata: e.metadata })),
+      );
+      expect(eventHaystack).not.toContain(STUB_KVK_API_KEY);
+      for (const c of llmCalls) {
+        expect(c.messages).not.toContain(STUB_KVK_API_KEY);
+      }
+    } finally {
+      enrichmentRunner.stop();
+      unsubRequested();
+      unsubSucceeded();
+      // Restore the default-registered company module so later test
+      // files in the same `bun test` run that expect the production
+      // module are unaffected.
+      __resetEntityRegistryForTests();
+    }
   });
 });

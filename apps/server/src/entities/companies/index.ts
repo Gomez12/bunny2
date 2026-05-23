@@ -56,17 +56,20 @@ export interface MountCompanyRoutesDeps {
 /**
  * Idempotent: safe to call multiple times per process. The §4.0
  * registry throws on duplicate `kind`; tests build the app many times
- * per file via `makeTestApp`, so we short-circuit when the same module
- * instance is already registered. A different module under the same
- * kind is still a programming error and propagates the registry's
- * exception.
+ * per file via `makeTestApp`, so we short-circuit when ANY company
+ * module is already registered. This deliberately allows the 4a.6
+ * smoke (and any future per-fixture wiring) to pre-register a
+ * stub-fetched variant BEFORE `createApp(...)` runs — `createApp` then
+ * calls `registerCompanyModule()` with the production default, sees
+ * the pre-registered stub, and no-ops. Production has a single caller
+ * (in `createApp`), so the short-circuit never fires there.
  *
  * Pass `module` to register a per-test variant (e.g. with a stubbed
  * KvK connector). Defaults to the production `companyModule`.
  */
 export function registerCompanyModule(module: EntityModule<CompanyPayload> = companyModule): void {
   const existing = getEntityModule(module.kind);
-  if (existing === module) return;
+  if (existing !== null) return;
   registerEntityModule(module);
 }
 

@@ -54,9 +54,11 @@ export function CompaniesWidget({ layerSlug }: WidgetProps): JSX.Element {
   }, [layerSlug]);
 
   const view = companiesWidgetView(input);
-  // Placeholder hrefs — real routes ship in 4a.5.
+  // Canonical deep-links from 4a.5. The list page resolves `/companies`
+  // to the table view; `/companies/new` mounts the same page with the
+  // create dialog auto-opened (see `CompaniesListPage`).
   const viewAllHref = `/l/${layerSlug}/companies`;
-  const createHref = `/l/${layerSlug}/companies?new=1`;
+  const createHref = `/l/${layerSlug}/companies/new`;
   const titleId = `companies-widget-title-${layerSlug}`;
 
   return (

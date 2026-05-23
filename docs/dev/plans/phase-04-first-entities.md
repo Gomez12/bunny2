@@ -1185,3 +1185,176 @@ updatedAt`; surfacing city + enrichment status is tracked in
   navigates to the list page where the dialog stays closed unless
   the `/new` path matches. Updating the widget to the
   `/companies/new` deep link is a one-line follow-up in 4a.6.
+
+### 4a.6 shipped (2026-05-24)
+
+**What landed**
+
+- `apps/server/tests/smoke.test.ts` extended with the canonical
+  Companies entity flow (step 12). Logs in fresh as the seeded admin
+  (after the phase-3.6 logout in step 9), resolves the personal
+  layer via `GET /me/layers`, attaches the KvK connector config via
+  `POST /layers/:slug/attachments { kind: 'connector', refId: 'kvk',
+config: { apiKey, pollIntervalMinutes } }`, then walks:
+  - `POST /l/personal-admin/company` — creates "AMI BV" with
+    `originalLocale='en'` and `payload.kvkNumber='12345678'`. Asserts
+    201, version=1, originalLocale set, deleted_at null.
+  - `PATCH /l/.../company/ami-bv` — sets description; asserts
+    version=2 and `updatedAt` advanced.
+  - `POST /l/.../company/ami-bv/external-links` — known connector,
+    201 with `sync_state='idle'`, captures the
+    `entity.connector.sync.requested` event off the bus.
+  - `dispatcher.handle(...)` driven synchronously against the
+    stub-fetched KvK connector (returns a Basisprofiel JSON). Asserts
+    the link transitions to `idle` with `synced_at` set and one
+    `entity.connector.sync.succeeded` event published.
+  - `enrichmentRunner.tickOnce()` against a deterministic fake
+    `LlmClient`. Asserts `payload.description` is set by the LLM and
+    the entity version is strictly higher than the post-PATCH value.
+  - `GET /l/.../company` — lists AMI BV.
+  - `GET /l/.../company/_stats` — asserts `{ total: 1, withKvk: 1,
+recentlyEnriched: 1, missingDescription: 0 }`.
+  - `DELETE /l/.../company/ami-bv` → 200. List omits the row; detail
+    GET still returns 200 with `meta.deletedAt !== null` (the §4.0
+    contract keeps soft-deleted rows reachable by slug for the
+    future restore flow — `listSummaries` is the surface that hides
+    them).
+  - Secret-strip invariant: the configured KvK apiKey appears in NO
+    bus-event payload and in NO LLM prompt across the entire
+    sub-flow.
+- The smoke construction pattern (pre-register a stub-fetched
+  `companyModule` via `__resetEntityRegistryForTests()` +
+  `registerEntityModule`, drive `dispatcher.handle` synchronously,
+  build a fake `LlmClient` for `createEnrichmentRunner`) is the
+  template every later entity smoke reuses (4b.6 / 4c.6 / 4d.7).
+- One small wiring tweak in
+  `apps/server/src/entities/companies/index.ts`:
+  `registerCompanyModule()` is now truly idempotent — short-circuits
+  when ANY company module is already registered, instead of throwing
+  when a pre-registered module is a different instance. This lets
+  the smoke pre-register a stub-fetched variant BEFORE `createApp`
+  runs without colliding with `createApp`'s default registration.
+  Production has a single caller (`createApp`), so the short-circuit
+  never fires there.
+- Dashboard widget deep-link fix:
+  `apps/web/src/dashboard/CompaniesWidget.tsx` now points the
+  "Create company" CTA at `/l/:slug/companies/new` instead of
+  `/l/:slug/companies?new=1`. The canonical create deep-link from
+  4a.5 finally lights up.
+- i18n sweep (English primary, Dutch parity in scope namespaces):
+  - All in-scope keys under `entity.companies.*`,
+    `entity.enrichment.*`, `errors.entity.companies.*`,
+    `errors.entity.enrichment.*`, `connectors.kvk.*`,
+    `errors.connectors.kvk.*`, `layer.dashboard.widgets.companies.*`
+    are present in BOTH `en.json` and `nl.json`. Every Dutch value
+    is a real translation, not an English placeholder.
+  - Removed truly-orphan UI label keys with zero references anywhere
+    in `apps/server/src`, `apps/web/src`, or `packages/`: - `entity.enrichment.{running, idle, deferred, failed, summary,
+fillFields}` (no UI surface consumes them; the bus event types
+    live in `apps/server/src/entities/events.ts` as code
+    constants, not i18n keys). - `entity.companies.{title, singular, create, edit, empty,
+search, fields.*, linkKvkCta, originalLocale}` — duplicates of
+    the `entity.companies.field*` / `createCta` / `listEmpty`
+    / `linkKvkAdd` keys the 4a.5 UI actually renders, left over
+    from the 4a.1 schema commit. - `errors.entity.enrichment.rateLimited` and
+    `errors.entity.companies.{deleteFailed, linkRefreshFailed,
+slugTaken}` — defined in the i18n catalogue but never
+    emitted by the server and never referenced by the web. The
+    catch-all `errors.entity.slugTaken` (emitted by the generic
+    `mountEntityRoutes`) still covers the companies case. - `connectors.kvk.{label, description, fields.apiKey,
+fields.endpoint, fields.pollIntervalMinutes}` — admin-UI
+    metadata for a connectors picker that does not exist yet.
+    Re-add alongside the picker when 4c.2 (Google Calendar)
+    lands the second connector and motivates a picker UI.
+  - `bun run i18n:check` ends green; the remaining warnings are
+    out-of-scope (`status.*`, `chat.*`, etc. from earlier phases).
+- Follow-up triage:
+  - `docs/dev/follow-ups/companies-list-columns.md` stays open. The
+    `EntityModule.summaryColumns?` slot is correctly deferred to
+    whichever entity (4b.5 / 4c.5) first needs it; opening it now
+    would couple a 4a fix to two unfinished sub-phases.
+  - `docs/dev/follow-ups/web-component-tests.md` stays open. The
+    DOM-driven harness is a separate, generic concern.
+  - Both follow-ups live in `docs/dev/follow-ups/` (not
+    `docs/dev/follow-ups/done/`).
+
+**Foundation tweaks**
+
+- None. The four foundation extensions (`indexedColumns`,
+  `getConnector` + dispatcher + runner, `enrichmentJobs`,
+  `statsProvider`) already cover the smoke flow.
+- The `registerCompanyModule` idempotence change is a per-kind wiring
+  helper tweak, not a foundation extension. It does NOT change the
+  `EntityModule<Payload>` contract, the registry contract, or the
+  router/store factories.
+
+**Tests**
+
+- `apps/server/tests/smoke.test.ts` extended with the canonical
+  Companies flow (described above). 1 test, 127 expect() calls.
+- All prior tests stay green: 432 pass, 0 fail, 68 files,
+  1300 expect() calls.
+
+**Docs**
+
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out
+  and the 4a-block recap section below.
+- `docs/dev/tasklist.md` 4a.6 row → `done`. 4a parent row → `done`.
+
+**Follow-ups noted**
+
+- The `dispatcher.handle()` synchronous-test seam: 4a.6 drives the
+  dispatcher manually without calling `dispatcher.start()` to avoid
+  double-dispatching the same `sync.requested` event. The pattern
+  is correct for tests but a tiny gotcha for new contributors —
+  document in `apps/server/src/entities/connector-dispatcher.ts`
+  the next time we touch the file.
+
+---
+
+## 4a — Companies block: shipped
+
+The 4a PR block (4a.1 → 4a.6) completes the first concrete entity
+on top of the §4.0 foundation. The six sub-phases land additively:
+
+| Sub-phase | What shipped                                                                                                                            | Foundation extension                                           |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 4a.1      | `0006_companies.sql`, `companyModule`, `packages/shared/src/companies.ts` payload, contract suite assertions for indexed-column path    | `EntityModule.indexedColumns?` slot                            |
+| 4a.2      | KvK connector + per-process dispatcher + interval poll runner + `LayerAttachment` kind `'connector'`                                    | `getConnector` / `listConnectorsForKind` + dispatcher + runner |
+| 4a.3      | Generic enrichment runner + `companies.summary` + `companies.fillFields` + `entity.enrichment.*` event taxonomy                         | `EntityModule.enrichmentJobs?` slot                            |
+| 4a.4      | `companyStatsProvider` + `GET /l/:slug/<kind>/_stats` route + `CompaniesWidget` + client-side `widget-registry.ts`                      | `EntityModule.statsProvider?` slot                             |
+| 4a.5      | Web UI: list, detail, create, KvK link, soft-delete; singular↔plural URL helper in `apps/web/src/lib/companies-routes.ts`               | None — singular↔plural seam stays client-side                  |
+| 4a.6      | Smoke flow (canonical create-edit-delete-search), i18n sweep, dashboard widget deep-link fix, idempotent `registerCompanyModule` helper | None — purely test + docs + wiring polish                      |
+
+**ADRs landed in the 4a block**
+
+- `docs/dev/decisions/0011-entity-contract.md` — the §4.0 universal
+  entity contract (per-kind table + shared cross-cutting tables,
+  module registry, connector pattern, translation lifecycle).
+- `docs/dev/decisions/0012-kvk-connector.md` — KvK connector design:
+  where connector config lives, sync vs. async dispatch, who polls,
+  secret-stripping invariants.
+- `docs/dev/decisions/0013-entity-enrichment.md` — per-kind vs.
+  generic runner, event-driven vs. polling, where the connector
+  patch lives, how cost surfaces.
+
+**Open follow-ups remaining**
+
+- `docs/dev/follow-ups/companies-list-columns.md` — extend
+  `EntityModule.summaryColumns?` (or change the list contract) so
+  the list page can surface city / enrichment-status / relative
+  time. Triggered when 4b.5 / 4c.5 land.
+- `docs/dev/follow-ups/web-component-tests.md` — DOM-driven render
+  tests for `CompaniesWidget` and the 4a.5 pages. Separate harness
+  day.
+
+**Next**
+
+The 4b block (Contacts) opens on this foundation: 4b.1 lands the
+per-kind table + `contactModule`; 4b.2 adds the vCard-import
+connector (the §4.0 connector base + 4a.2 dispatcher both already
+support multiple connector kinds per module); 4b.3 declares the
+`contact.companyLink` enrichment job on the same `enrichmentJobs`
+slot 4a.3 introduced; 4b.4 attaches a `ContactsWidget` to the
+client-side widget registry; 4b.5 mounts the UI; 4b.6 reuses the
+4a.6 smoke template.

@@ -373,8 +373,7 @@
       "connectorUnknown": "The selected connector is not available on this server.",
       "statsUnavailable": "Dashboard stats are not available for this item kind.",
       "enrichment": {
-        "failed": "AI enrichment could not be completed. Please try again later.",
-        "rateLimited": "AI enrichment is temporarily rate-limited for this layer. It will retry soon."
+        "failed": "AI enrichment could not be completed. Please try again later."
       },
       "companies": {
         "kvkInvalid": "The KvK number must be exactly 8 digits.",
@@ -383,10 +382,7 @@
         "descriptionTooLong": "The description is too long.",
         "loadFailed": "Could not load this company. Please try again.",
         "saveFailed": "Could not save the company. Please check the input and try again.",
-        "deleteFailed": "Could not delete the company. Please try again.",
         "linkAddFailed": "Could not link this number. Please verify it and try again.",
-        "linkRefreshFailed": "Could not refresh the link status. Please try again.",
-        "slugTaken": "A company with this slug already exists in this layer.",
         "validation": "The company could not be saved. Please check the input and try again."
       }
     },
@@ -420,37 +416,7 @@
       "addExternalLink": "Link external system",
       "removeExternalLink": "Remove link"
     },
-    "enrichment": {
-      "running": "Enriching…",
-      "idle": "Up to date.",
-      "deferred": "Scheduled — waiting for rate limit window.",
-      "failed": "Enrichment failed.",
-      "summary": "Summary",
-      "fillFields": "Fill missing fields"
-    },
     "companies": {
-      "title": "Companies",
-      "singular": "Company",
-      "create": "New company",
-      "edit": "Edit company",
-      "empty": "No companies yet.",
-      "search": "Search companies",
-      "fields": {
-        "legalName": "Legal name",
-        "tradeName": "Trade name",
-        "kvkNumber": "KvK number",
-        "website": "Website",
-        "address": "Address",
-        "addressStreet": "Street",
-        "addressHouseNumber": "House number",
-        "addressPostalCode": "Postal code",
-        "addressCity": "City",
-        "addressCountry": "Country",
-        "phone": "Phone",
-        "email": "Email",
-        "industry": "Industry",
-        "description": "Description"
-      },
       "subtitle": {
         "noDetails": "No KvK number or website yet."
       },
@@ -490,7 +456,6 @@
       "deleted": "Company deleted.",
       "externalLinksTitle": "External links",
       "externalLinksEmpty": "No external links yet.",
-      "linkKvkCta": "Link KvK number",
       "linkKvkNumberLabel": "KvK number",
       "linkKvkAdd": "Link KvK",
       "linkConnectorLabel": "{{connector}} · {{externalId}}",
@@ -503,19 +468,7 @@
       "linkSyncRefresh": "Refresh status",
       "enrichmentSummary": "The AI enrichment job fills this field automatically when a KvK link or sufficient context exists.",
       "slug": "Slug",
-      "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the name.",
-      "originalLocale": "Original locale"
-    }
-  },
-  "connectors": {
-    "kvk": {
-      "label": "KvK (Dutch Chamber of Commerce)",
-      "description": "Pulls Basisprofiel data (legal name, trade name, address, website, industry) by KvK number.",
-      "fields": {
-        "apiKey": "API key",
-        "endpoint": "Endpoint URL (optional)",
-        "pollIntervalMinutes": "Poll interval (minutes)"
-      }
+      "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the name."
     }
   }
 }
