@@ -10,9 +10,10 @@
  * with their respective phases.
  */
 import { readdir, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = new URL('..', import.meta.url).pathname;
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const plansDir = join(repoRoot, 'docs/dev/plans');
 const tasklistPath = join(repoRoot, 'docs/dev/tasklist.md');
 

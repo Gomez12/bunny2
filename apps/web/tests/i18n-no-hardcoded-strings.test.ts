@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Runs the repo-level `scripts/i18n-check.ts` as a subprocess and asserts
@@ -14,11 +15,11 @@ import * as path from 'node:path';
  * matches how the script runs in CI / `bun run i18n:check`.
  */
 
-const repoRoot = path.resolve(new URL('.', import.meta.url).pathname, '..', '..', '..');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 describe('i18n discipline', () => {
   it('passes the repo-wide i18n-check script with zero violations', () => {
-    const result = spawnSync('bun', ['run', 'scripts/i18n-check.ts'], {
+    const result = spawnSync(process.execPath, ['run', 'scripts/i18n-check.ts'], {
       cwd: repoRoot,
       encoding: 'utf8',
     });

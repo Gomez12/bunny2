@@ -24,9 +24,10 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-const repoRoot = path.resolve(new URL('.', import.meta.url).pathname, '..');
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const webSrc = path.join(repoRoot, 'apps', 'web', 'src');
 const enPath = path.join(webSrc, 'i18n', 'locales', 'en.json');
 const nlPath = path.join(webSrc, 'i18n', 'locales', 'nl.json');

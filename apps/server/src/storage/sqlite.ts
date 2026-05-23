@@ -1,9 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Database } from 'bun:sqlite';
 import { applyMigrations, type Migration } from './migrations';
 
-const migrationsDir = path.join(new URL('.', import.meta.url).pathname, 'migrations');
+// `new URL('.').pathname` returns e.g. `/D:/repo/...` on Windows, which
+// breaks `fs` calls. `fileURLToPath` decodes to a real OS path.
+const migrationsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations');
 
 function loadMigrationsFromDisk(): Migration[] {
   const entries = fs
