@@ -22,6 +22,8 @@ import { AdminGroupsPage } from './pages/admin/AdminGroupsPage';
 import { MyLayersPage } from './pages/MyLayersPage';
 import { LayerSettingsPage } from './pages/LayerSettingsPage';
 import { LayerDashboardPage } from './pages/LayerDashboardPage';
+import { CompaniesListPage } from './pages/CompaniesListPage';
+import { CompanyDetailPage } from './pages/CompanyDetailPage';
 import { bootstrapSession, useSession } from './lib/session';
 
 /**
@@ -213,6 +215,9 @@ function AppShell(): JSX.Element {
           {isAdmin ? <Route path="/admin/groups" element={<AdminGroupsPage />} /> : null}
           <Route path="/l/:layerSlug/dashboard" element={<LayerDashboardPage />} />
           <Route path="/l/:layerSlug/settings" element={<LayerSettingsPage />} />
+          <Route path="/l/:layerSlug/companies" element={<CompaniesListPage />} />
+          <Route path="/l/:layerSlug/companies/new" element={<CompaniesListPage />} />
+          <Route path="/l/:layerSlug/companies/:companySlug" element={<CompanyDetailPage />} />
           <Route path="/l/:layerSlug" element={<LayerSlugIndexRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -257,6 +262,7 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
     const sub = parts[3];
     if (sub === 'dashboard') return t('layer.shell.subpages.dashboard');
     if (sub === 'settings') return t('layer.shell.subpages.settings');
+    if (sub === 'companies') return t('layer.shell.subpages.companies');
     return null;
   }
   if (pathname.startsWith('/layers')) return t('admin.layers.list.title');

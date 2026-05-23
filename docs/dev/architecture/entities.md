@@ -400,6 +400,23 @@ create / update, and clearing the payload writes `NULL` so the sparse
 No connectors / scheduled jobs / lifecycle hooks ship in 4a.1; the KvK
 connector and the AI enrichment job follow in 4a.2 / 4a.3.
 
+### 10a.i Routing: singular server URL ↔ plural web URL (4a.5)
+
+The §4.0 generic router mounts `/l/:slug/<kind>/*` directly on the
+module's `kind`, so the server-side companies surface lives under the
+singular `/l/:slug/company` (e.g. `GET /l/:slug/company`,
+`GET /l/:slug/company/_stats`, `POST /l/:slug/company/:companySlug/external-links`).
+The web UI shipped in 4a.5 uses the plural `/l/:slug/companies` (list,
+detail, create) because that reads more naturally for end users. The
+singular↔plural translation lives entirely on the client in
+`apps/web/src/lib/companies-routes.ts` (`companiesListWebRoute`,
+`companyDetailWebRoute`, `companiesServerBase`, `companyServerDetail`,
+`companyServerExternalLinks`, ...). The 4a.1 close-out explicitly
+deferred exposing an optional `routeSegment` override on
+`EntityModule` until a second entity needs a different mapping —
+keeping the helper client-side is the cheaper of the two paths and
+isolates the seam to a single file.
+
 ---
 
 ## 10b. Connectors (4a.2) — dispatch + poll runner + secret-stripping

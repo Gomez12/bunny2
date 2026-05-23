@@ -306,7 +306,8 @@
       "pageTitleLabel": "Current page",
       "subpages": {
         "dashboard": "Dashboard",
-        "settings": "Settings"
+        "settings": "Settings",
+        "companies": "Companies"
       }
     }
   },
@@ -379,7 +380,14 @@
         "kvkInvalid": "The KvK number must be exactly 8 digits.",
         "websiteInvalid": "The website must be a valid URL.",
         "emailInvalid": "The email address is not valid.",
-        "descriptionTooLong": "The description is too long."
+        "descriptionTooLong": "The description is too long.",
+        "loadFailed": "Could not load this company. Please try again.",
+        "saveFailed": "Could not save the company. Please check the input and try again.",
+        "deleteFailed": "Could not delete the company. Please try again.",
+        "linkAddFailed": "Could not link this number. Please verify it and try again.",
+        "linkRefreshFailed": "Could not refresh the link status. Please try again.",
+        "slugTaken": "A company with this slug already exists in this layer.",
+        "validation": "The company could not be saved. Please check the input and try again."
       }
     },
     "connectors": {
@@ -445,7 +453,58 @@
       },
       "subtitle": {
         "noDetails": "No KvK number or website yet."
-      }
+      },
+      "listTitle": "{{name}} · Companies",
+      "listLoading": "Loading companies…",
+      "listEmpty": "No companies in this layer yet. Create the first one to get started.",
+      "listError": "Could not load companies.",
+      "createCta": "Create company",
+      "createDialogTitle": "Create company",
+      "colTitle": "Name",
+      "colSubtitle": "KvK / website",
+      "colUpdatedAt": "Updated",
+      "detailTitle": "Company · {{title}}",
+      "detailFallbackTitle": "Company",
+      "fieldTitle": "Name",
+      "fieldLegalName": "Legal name",
+      "fieldTradeName": "Trade name",
+      "fieldKvkNumber": "KvK number",
+      "fieldWebsite": "Website",
+      "fieldEmail": "Email",
+      "fieldPhone": "Phone",
+      "fieldIndustry": "Industry",
+      "fieldDescription": "Description",
+      "fieldAddressLegend": "Address",
+      "fieldAddressStreet": "Street",
+      "fieldAddressHouseNumber": "House number",
+      "fieldAddressPostalCode": "Postal code",
+      "fieldAddressCity": "City",
+      "fieldAddressCountry": "Country",
+      "save": "Save",
+      "cancel": "Cancel",
+      "saved": "Company saved.",
+      "created": "Company created.",
+      "deleteCta": "Delete company",
+      "deleteConfirmTitle": "Delete company",
+      "deleteConfirmBody": "Delete this company? It will be soft-deleted and can be restored by an administrator.",
+      "deleted": "Company deleted.",
+      "externalLinksTitle": "External links",
+      "externalLinksEmpty": "No external links yet.",
+      "linkKvkCta": "Link KvK number",
+      "linkKvkNumberLabel": "KvK number",
+      "linkKvkAdd": "Link KvK",
+      "linkConnectorLabel": "{{connector}} · {{externalId}}",
+      "linkRemove": "Remove link",
+      "linkAdded": "External link added — syncing.",
+      "linkRemoved": "External link removed.",
+      "linkSyncIdle": "Idle",
+      "linkSyncSyncing": "Syncing…",
+      "linkSyncError": "Sync failed",
+      "linkSyncRefresh": "Refresh status",
+      "enrichmentSummary": "The AI enrichment job fills this field automatically when a KvK link or sufficient context exists.",
+      "slug": "Slug",
+      "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the name.",
+      "originalLocale": "Original locale"
     }
   },
   "connectors": {

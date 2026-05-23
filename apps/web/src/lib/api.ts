@@ -14,6 +14,7 @@
  */
 
 import type {
+  AddCompanyExternalLinkPayload,
   AddLayerMemberPayload,
   AddLayerVisibilityPayload,
   AdminGroupDetailResponse,
@@ -24,9 +25,13 @@ import type {
   AdminUserDetailResponse,
   AdminUserListResponse,
   AdminUserRow,
+  Company,
+  CreateCompanyPayload,
   CreateGroupPayload,
   CreateLayerPayload,
   CreateUserPayload,
+  EntityExternalLink,
+  EntitySummary,
   Layer,
   LayerAttachment,
   LayerDetailResponse,
@@ -40,10 +45,17 @@ import type {
   SafeUser,
   SetLayerLocalesPayload,
   SystemLocalesResponse,
+  UpdateCompanyPayload,
   UpdateGroupPayload,
   UpdateLayerPayload,
   UpdateUserPayload,
 } from './api-types';
+import {
+  companiesServerBase,
+  companyServerDetail,
+  companyServerExternalLink,
+  companyServerExternalLinks,
+} from './companies-routes';
 
 interface BunnyBridge {
   readonly apiBase: string;
@@ -474,4 +486,89 @@ export async function getCompanyStats(slug: string): Promise<CompanyStatsRespons
     `/l/${encodeURIComponent(slug)}/company/_stats`,
   );
   return res.stats;
+}
+
+// ---------- companies CRUD (phase 4a.5) ------------------------------------
+//
+// Web URLs use the plural `/l/:slug/companies` segment (see
+// `apps/web/src/lib/companies-routes.ts`) but the server router mounts
+// the singular `/l/:slug/company` per the §4.0 entity contract. Every
+// helper below routes through the singular paths assembled in
+// `companies-routes.ts` so the singular ↔ plural seam lives in one
+// place. The 4a.1 close-out explicitly deferred a `routeSegment`
+// override on `EntityModule` until a second entity needs a different
+// mapping.
+
+export async function listCompanies(layerSlug: string): Promise<readonly EntitySummary[]> {
+  const res = await request<{ entities: readonly EntitySummary[] }>(companiesServerBase(layerSlug));
+  return res.entities;
+}
+
+export async function getCompany(layerSlug: string, companySlug: string): Promise<Company> {
+  const res = await request<{ entity: Company }>(companyServerDetail(layerSlug, companySlug));
+  return res.entity;
+}
+
+export async function createCompany(
+  layerSlug: string,
+  body: CreateCompanyPayload,
+): Promise<Company> {
+  const res = await request<{ entity: Company }>(companiesServerBase(layerSlug), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function updateCompany(
+  layerSlug: string,
+  companySlug: string,
+  body: UpdateCompanyPayload,
+): Promise<Company> {
+  const res = await request<{ entity: Company }>(companyServerDetail(layerSlug, companySlug), {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function softDeleteCompany(layerSlug: string, companySlug: string): Promise<void> {
+  await request<{ ok: true }>(companyServerDetail(layerSlug, companySlug), { method: 'DELETE' });
+}
+
+/**
+ * External links are nested under the company detail: a fresh
+ * `getCompany(...)` returns them on `entity.externalLinks`. This
+ * helper exists for code paths that want to re-poll links without
+ * re-fetching the full company (e.g. the "Refresh" button next to a
+ * KvK link). It re-uses the detail endpoint and projects the array.
+ */
+export async function listCompanyExternalLinks(
+  layerSlug: string,
+  companySlug: string,
+): Promise<readonly EntityExternalLink[]> {
+  const company = await getCompany(layerSlug, companySlug);
+  return company.externalLinks;
+}
+
+export async function addCompanyExternalLink(
+  layerSlug: string,
+  companySlug: string,
+  body: AddCompanyExternalLinkPayload,
+): Promise<EntityExternalLink> {
+  const res = await request<{ externalLink: EntityExternalLink }>(
+    companyServerExternalLinks(layerSlug, companySlug),
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  return res.externalLink;
+}
+
+export async function removeCompanyExternalLink(
+  layerSlug: string,
+  companySlug: string,
+  linkId: string,
+): Promise<void> {
+  await request<{ ok: true }>(companyServerExternalLink(layerSlug, companySlug, linkId), {
+    method: 'DELETE',
+  });
 }

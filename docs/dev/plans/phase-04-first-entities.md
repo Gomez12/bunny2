@@ -1051,3 +1051,137 @@ statMissingDescription, statRecentlyEnriched}`.
   is blocked on `docs/dev/follow-ups/web-component-tests.md`. The
   existing pure reducer + registry tests catch the logic
   regressions in the meantime.
+
+### 4a.5 shipped (2026-05-24)
+
+**What landed**
+
+- `apps/web/src/lib/companies-routes.ts` — the canonical home for the
+  singular-server-URL ↔ plural-web-URL mapping. Exposes
+  `companiesListWebRoute`, `companyDetailWebRoute`,
+  `companiesNewWebRoute`, `companiesServerBase`,
+  `companyServerDetail`, `companyServerExternalLinks`,
+  `companyServerExternalLink`, and the `slugifyCompanyTitle` helper
+  that matches `CreateCompanyRequestSchema`'s `^[a-z0-9-]+$` rule.
+- `apps/web/src/lib/api-types.ts` extended with the entity envelope
+  types (`EntityMeta`, `EntitySyncState`, `EntityExternalLink`,
+  `EntitySummary`, `Entity<P>`) and the companies-specific shapes
+  (`CompanyAddress`, `CompanyPayload`, `Company`,
+  `CreateCompanyPayload`, `UpdateCompanyPayload`,
+  `AddCompanyExternalLinkPayload`). Hand-written interfaces per the
+  file-level rule: keeps the web bundle off `zod`.
+- `apps/web/src/lib/api.ts` extended with `listCompanies`,
+  `getCompany`, `createCompany`, `updateCompany`,
+  `softDeleteCompany`, `listCompanyExternalLinks`,
+  `addCompanyExternalLink`, `removeCompanyExternalLink`. Every helper
+  routes through `companies-routes.ts` so the singular ↔ plural seam
+  stays in one place.
+- `apps/web/src/pages/CompaniesListPage.tsx` — list page at
+  `/l/:layerSlug/companies`. Fetches `GET /l/:layerSlug/company` and
+  renders the three columns the summary actually carries: title,
+  subtitle (KvK / website projection from `companyModule.subtitle`),
+  and `meta.updatedAt`. Empty state surfaces the same `Create
+company` CTA as the dashboard widget. Create flow opens an inline
+  `<Dialog>` bound to `CreateCompanyRequestSchema` with auto-slug
+  derivation from the title. The `/l/:layerSlug/companies/new`
+  route reuses the same component and auto-opens the dialog so the
+  dashboard widget's deep link works without a separate page.
+- `apps/web/src/pages/CompanyDetailPage.tsx` — detail + edit page at
+  `/l/:layerSlug/companies/:companySlug`. Bound to
+  `UpdateCompanyRequestSchema`; save calls PATCH; cancel reverts to
+  the last loaded payload. KvK link section POSTs to
+  `/external-links` with `{ connector: 'kvk', externalId }`,
+  surfaces the resulting `sync_state` with a manual refresh button
+  (no SSE / polling — see ADR 0012's deferred follow-up). Destructive
+  delete uses the existing `ConfirmDialog` and the destructive
+  button variant.
+- `apps/web/src/pages/companies-page-state.ts` — pure-logic helpers
+  factored out for testability: `companiesListView`,
+  `companyDetailView`, `validateCompanyForm`,
+  `buildCreateCompanyRequest`, `buildUpdateCompanyRequest`,
+  `draftFromCompany`, `emptyCompanyFormDraft`,
+  `linkSyncStateBadgeKey`. Same pattern as
+  `dashboard/companies-widget-state.ts`.
+- Router wiring in `apps/web/src/App.tsx`: three new routes
+  (`/l/:layerSlug/companies`, `/l/:layerSlug/companies/new`,
+  `/l/:layerSlug/companies/:companySlug`) plus a `companies` entry in
+  `pageTitleFor` so the header surface shows the page name. The
+  dashboard widget's existing `/l/:slug/companies` and
+  `/l/:slug/companies?new=1` placeholder links from 4a.4 now resolve.
+- i18n: `entity.companies.*` extended with the listTitle / listEmpty
+  / listLoading / listError / createCta / createDialogTitle /
+  field* / save / cancel / saved / created / delete* / externalLinks*
+  / linkKvk* / linkSync* / linkConnectorLabel / enrichmentSummary /
+  slug / slugHint / colTitle / colSubtitle / colUpdatedAt / detail*
+  keys, in both `en.json` and `nl.json`. `errors.entity.companies.*`
+  extended with `loadFailed`, `saveFailed`, `deleteFailed`,
+  `linkAddFailed`, `linkRefreshFailed`, `slugTaken`, `validation`,
+  in both locales. `layer.shell.subpages.companies` added so the
+  header label maps to "Companies".
+
+**Foundation tweaks**
+
+- None. The `EntityModule.summaryColumns` extension (the natural
+  home for projecting `address.city` and an enrichment-status flag
+  onto the list row) is deferred to a follow-up — see below. The
+  4a.5 list page renders the columns the existing summary actually
+  carries.
+
+**Tests**
+
+- `apps/web/tests/companies-list-page.test.ts` — pure-logic coverage
+  for the list view reducer, the singular ↔ plural URL helpers, and
+  the slug normalizer.
+- `apps/web/tests/companies-detail-page.test.ts` — pure-logic
+  coverage for the detail view reducer, the form draft <→ payload
+  bridge, the inline validator (KvK 8-digit rule, URL / email
+  shapes, 4000-char description cap), and the
+  `linkSyncStateBadgeKey` mapping.
+- All gates green: `bun run format`, `bun run lint`, `bun run
+typecheck`, `bun test`, `bun run docs:check`, `bun run i18n:check`.
+
+**Docs**
+
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/architecture/entities.md` §10a — paragraph documenting
+  the client-side singular ↔ plural URL mapping that lives in
+  `apps/web/src/lib/companies-routes.ts`.
+- `docs/dev/follow-ups/companies-list-columns.md` — new follow-up
+  describing the gap between the spec's column list (city,
+  enrichment-status, relative time) and what the summary endpoint
+  actually surfaces. Pre-decision is to extend `EntityModule` with a
+  `summaryColumns?` slot when 4b.5 / 4c.5 land, but the call is left
+  open in the follow-up.
+
+**Notable for 4a.6**
+
+- The smoke test still walks the create-edit-delete-search flow at
+  the HTTP layer per the §4.1 4a.6 row — the web UI is exercised
+  only at the pure-logic level by the 4a.5 tests. The DOM-driven
+  render coverage stays parked behind
+  `docs/dev/follow-ups/web-component-tests.md`.
+- The list page columns are intentionally `title + subtitle +
+updatedAt`; surfacing city + enrichment status is tracked in
+  `docs/dev/follow-ups/companies-list-columns.md`.
+- A future enrichment log endpoint (`GET
+/l/:slug/company/:companySlug/enrichment-log` returning the last N
+  enrichment events for the entity) was considered for 4a.5 and
+  explicitly skipped per the spec note — the AI-generated
+  `description` is the visible enrichment outcome for now. A
+  separate follow-up should land when a second consumer asks for the
+  log surface.
+
+**Follow-ups noted**
+
+- `docs/dev/follow-ups/companies-list-columns.md` (new) — the list
+  page's column set is the minimum the summary endpoint surfaces.
+  City / enrichment-status / relative-time columns require either an
+  `EntityModule.summaryColumns?` foundation extension or a different
+  list contract.
+- The dashboard widget's `?new=1` query parameter is **not** the
+  shipping deep-link to the create dialog — the
+  `/l/:slug/companies/new` route is. The widget still uses
+  `?new=1` because the 4a.4 commit shipped that placeholder; it
+  navigates to the list page where the dialog stays closed unless
+  the `/new` path matches. Updating the widget to the
+  `/companies/new` deep link is a one-line follow-up in 4a.6.

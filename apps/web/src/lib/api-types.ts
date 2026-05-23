@@ -215,3 +215,93 @@ export interface ListLayersQuery {
   readonly search?: string;
   readonly includeDeleted?: boolean;
 }
+
+// ---------- entities (phase 4.0 + 4a.5) -------------------------------------
+
+/**
+ * Audit + bookkeeping metadata every entity carries. Mirrors
+ * `EntityMetaSchema` in `packages/shared/src/entity.ts` — kept as a
+ * hand-written interface here so the web bundle does not depend on
+ * `zod` at runtime (same rationale as the rest of this file).
+ */
+export interface EntityMeta {
+  readonly createdAt: string;
+  readonly createdBy: string;
+  readonly updatedAt: string;
+  readonly updatedBy: string;
+  readonly deletedAt: string | null;
+  readonly deletedBy: string | null;
+  readonly version: number;
+  readonly originalLocale: string;
+}
+
+export type EntitySyncState = 'idle' | 'syncing' | 'error';
+
+export interface EntityExternalLink {
+  readonly id: string;
+  readonly connector: string;
+  readonly externalId: string;
+  readonly syncState: EntitySyncState;
+  readonly syncedAt: string | null;
+  readonly error: string | null;
+  readonly payload: Readonly<Record<string, unknown>>;
+}
+
+export interface EntitySummary {
+  readonly id: string;
+  readonly kind: string;
+  readonly layerId: string;
+  readonly slug: string;
+  readonly meta: EntityMeta;
+  readonly title: string;
+  readonly subtitle: string | null;
+  readonly searchableText: string;
+}
+
+export interface Entity<Payload> extends EntitySummary {
+  readonly payload: Payload;
+  readonly externalLinks: readonly EntityExternalLink[];
+  readonly translations?: Readonly<Record<string, Payload>>;
+}
+
+// ---------- companies (phase 4a.5) ------------------------------------------
+
+export interface CompanyAddress {
+  readonly street?: string;
+  readonly houseNumber?: string;
+  readonly postalCode?: string;
+  readonly city?: string;
+  readonly country?: string;
+}
+
+export interface CompanyPayload {
+  readonly legalName?: string;
+  readonly tradeName?: string;
+  readonly kvkNumber?: string;
+  readonly website?: string;
+  readonly address?: CompanyAddress;
+  readonly phone?: string;
+  readonly email?: string;
+  readonly industry?: string;
+  readonly description?: string;
+}
+
+export type Company = Entity<CompanyPayload>;
+
+export interface CreateCompanyPayload {
+  readonly title: string;
+  readonly slug?: string;
+  readonly originalLocale: string;
+  readonly payload: CompanyPayload;
+}
+
+export interface UpdateCompanyPayload {
+  readonly title?: string;
+  readonly payload: CompanyPayload;
+}
+
+export interface AddCompanyExternalLinkPayload {
+  readonly connector: string;
+  readonly externalId: string;
+  readonly payload?: Record<string, unknown>;
+}
