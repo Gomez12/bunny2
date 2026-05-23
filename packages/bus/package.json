@@ -1,0 +1,15 @@
+{
+  "name": "@bunny2/bus",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "echo 'bus is consumed as source via Bun workspaces — no build needed' && exit 0",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}

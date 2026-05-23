@@ -15,6 +15,9 @@ package-json.lock
 # bun deploy file
 node_modules.bun
 
+# bun lockfile (binary) — keep text lockfile only
+bun.lockb
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
@@ -90,6 +93,16 @@ typings/
 # Nuxt.js build / generate output
 .nuxt
 dist
+
+# vite build cache
+.vite/
+
+# electron-builder output
+release/
+out/
+
+# local data-dir for development
+.data/
 
 # Gatsby files
 .cache/

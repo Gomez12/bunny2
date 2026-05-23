@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+.vite
+coverage
+bun.lock
+bun.lockb
+*.tsbuildinfo
+
+# user-authored / source documents — do not reformat
+AGENTS.md
+CLAUDE.md
+originalplan.md
+LICENSE

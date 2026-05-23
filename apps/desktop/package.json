@@ -1,0 +1,16 @@
+{
+  "name": "@bunny2/desktop",
+  "private": true,
+  "type": "commonjs",
+  "version": "0.0.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "dev": "echo 'desktop dev mode is implemented in phase 1.6' && exit 0",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0"
+  }
+}

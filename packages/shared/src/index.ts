@@ -1,0 +1,2 @@
+export const appName = 'bunny2';
+export const appVersion = '0.0.0';
