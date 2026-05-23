@@ -928,3 +928,126 @@ pricing, config, resolveStore })` exposes `start()`, `stop()`, and
 - The summary prompt is locale-blind in 4a.3. When the translator
   (4.0) and enrichment overlap on the same row, the prompts should
   consult `entity.originalLocale`. Not a 4a.3 concern.
+
+### 4a.4 shipped (2026-05-24)
+
+**What landed**
+
+- New optional `EntityModule.statsProvider?` slot in
+  `apps/server/src/entities/module.ts` (`EntityStatsProvider`,
+  `EntityStatsContext` exports). Same additive shape as the 4a.1
+  `indexedColumns` and 4a.3 `enrichmentJobs` extensions — modules
+  without a stats need omit the field entirely.
+- The generic entity router gained `GET /l/:slug/<kind>/_stats`.
+  Registered BEFORE the `/:entitySlug` GET because Hono matches in
+  registration order — `/_stats` would otherwise be treated as an
+  entity slug. When `module.statsProvider` is undefined the route
+  returns `404 errors.entity.statsUnavailable`. New i18n key
+  `errors.entity.statsUnavailable` in en + nl.
+- Concrete `companyStatsProvider` at
+  `apps/server/src/entities/companies/stats.ts`. Pure SQL — returns
+  `{ total, withKvk, missingDescription, recentlyEnriched }` for the
+  requesting layer:
+  - `total` — non-soft-deleted companies in the layer.
+  - `withKvk` — `kvk_number` is non-null and non-empty.
+  - `missingDescription` — `payload_json.description` is missing /
+    NULL / empty (via `json_extract`).
+  - `recentlyEnriched` — `entity_souls.updated_at` is newer than
+    `now - 24h`. The enrichment runner's `recordLastEnriched`
+    stamps `updated_at` on every job tick (success or refusal); the
+    widget therefore answers "how many companies got at least one
+    enrichment run in the past 24 hours?" `now` is injected so
+    tests can pin the window.
+- Wired the stats provider onto `companyModule` in
+  `apps/server/src/entities/companies/module.ts`. Re-exported from
+  `apps/server/src/entities/companies/index.ts`.
+- Web dashboard:
+  - New `apps/web/src/dashboard/widget-registry.ts` — a minimal
+    client-side registry exposing `registerWidget(...)` and
+    `listDashboardWidgets()`. Ordering is `order` ascending, with
+    registration order as a stable tie-breaker.
+  - New `apps/web/src/dashboard/widgets.ts` barrel — imports each
+    widget module once for its registration side effect. Future
+    sub-phases (4b.4 / 4c.4 / 4d.4) add a single import line here.
+  - New `apps/web/src/dashboard/companies-widget-state.ts` — pure
+    reducer mapping `{loading, error, ready}` inputs to the
+    `{loading, error, empty, ready}` render branch the component
+    draws. Extracted so the matrix is testable without a DOM
+    runtime.
+  - New `apps/web/src/dashboard/CompaniesWidget.tsx` — fetches
+    `GET /l/:slug/company/_stats` on mount, renders the four
+    branches via shadcn `<Card>` + `<Button>`, with semantic
+    landmark (`role="region"` + `aria-labelledby`), `role="status"`
+    - `aria-live="polite"` on loading, `role="alert"` on error, and
+      `<dt>` / `<dd>` for stat label/value pairings. The "View
+      companies" and "Create company" CTAs are placeholder links to
+      `/l/:slug/companies` — that route ships in 4a.5.
+  - `apps/web/src/pages/LayerDashboardPage.tsx` now imports the
+    `dashboard/widgets` barrel and renders every registered widget
+    in a responsive grid. The "no widgets yet" fallback stays as a
+    safety net when the registry is empty (e.g. in tests that
+    reset it). The "Configure widgets" link moves to the layer
+    header card so it stays discoverable above the widget grid.
+- Web client gained `getCompanyStats(slug)` +
+  `CompanyStatsResponse` in `apps/web/src/lib/api.ts`.
+- i18n keys (en + nl):
+  - `layer.dashboard.widgets.companies.{title, loading, error,
+empty, createCta, viewAllCta, statTotal, statWithKvk,
+statMissingDescription, statRecentlyEnriched}`.
+  - `errors.entity.statsUnavailable`.
+
+**Tests**
+
+- `apps/server/tests/entities/companies-stats.test.ts` — five HTTP
+  scenarios over a seeded layer with companies (mix of KvK /
+  description / soft-deleted / recently-enriched rows): zero
+  counts, the happy mix from the plan, the route-ordering smoke
+  for `/_stats` vs `/:entitySlug`, cross-layer isolation, and
+  soft-delete exclusion.
+- `apps/web/tests/companies-widget.test.ts` — covers the pure
+  reducer matrix (loading / error / empty / ready / off-by-one
+  guard on `total === 1`), the widget registry contract (ordering,
+  idempotent duplicate registration), and the literal registration
+  shape `CompaniesWidget` uses. The DOM-driven render test sits
+  behind the existing `docs/dev/follow-ups/web-component-tests.md`
+  follow-up — pure-logic coverage matches the
+  `apps/web/tests/layer-helpers.test.ts` pattern.
+
+**Foundation tweaks (extending §4.0 inline in this commit)**
+
+- `EntityModule.statsProvider?` (optional, new) +
+  `EntityStatsProvider` + `EntityStatsContext` types.
+- New `GET /l/:slug/<kind>/_stats` route registered before
+  `/:entitySlug` in the generic router so `/_stats` matches first.
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10d "Stats provider (4a.4)"
+  documents the new slot and the route-ordering rule.
+- `docs/dev/tasklist.md` 4a.4 row → `done`.
+
+**Notable for 4a.5 (web UI)**
+
+- Widget CTAs (`/l/:slug/companies`, `/l/:slug/companies?new=1`)
+  are placeholders that resolve to the React Router 404 page until
+  4a.5 mounts the companies list / create routes.
+- URL routeSegment decision stands: server URL is singular
+  (`/l/:slug/company`, `/l/:slug/company/_stats`) per the 4a.1
+  follow-up; the web UI's user-facing URL is plural
+  (`/l/:slug/companies`). 4a.5 will hit the singular server URL
+  under the hood. If a third entity wants a different routeSegment
+  the §4.0 router gains an optional `routeSegment` override at
+  that point — not now.
+
+**Follow-ups noted**
+
+- `layer_dashboard_widgets` persistence is unused: every layer
+  renders the entire client-side widget registry. Per-layer
+  toggling / layout config lives behind that table and ships
+  alongside the phase-5 scheduled-tasks UI when a user actually
+  asks for it.
+- The DOM-driven render test for `CompaniesWidget` (asserting the
+  rendered branches, button focus visibility, label associations)
+  is blocked on `docs/dev/follow-ups/web-component-tests.md`. The
+  existing pure reducer + registry tests catch the logic
+  regressions in the meantime.

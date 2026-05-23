@@ -45,6 +45,20 @@
       "empty": {
         "title": "Nog geen widgets",
         "description": "Dit dashboard is leeg. Widgets en koppelingen komen in een latere fase — voor nu is alleen de scope van de laag klaar."
+      },
+      "widgets": {
+        "companies": {
+          "title": "Bedrijven",
+          "loading": "Bedrijven laden…",
+          "error": "Kon bedrijfsstatistieken niet laden.",
+          "empty": "Nog geen bedrijven in deze laag.",
+          "createCta": "Bedrijf aanmaken",
+          "viewAllCta": "Bedrijven bekijken",
+          "statTotal": "Totaal bedrijven",
+          "statWithKvk": "Met KvK-koppeling",
+          "statMissingDescription": "Zonder beschrijving",
+          "statRecentlyEnriched": "Verrijkt in laatste 24 uur"
+        }
       }
     }
   },
@@ -138,6 +152,7 @@
       "translationFailed": "Vertaling kon niet worden gegenereerd. Probeer het opnieuw.",
       "syncFailed": "Synchronisatie met het externe systeem is mislukt. Probeer het later opnieuw.",
       "connectorUnknown": "De gekozen connector is niet beschikbaar op deze server.",
+      "statsUnavailable": "Dashboardstatistieken zijn niet beschikbaar voor dit itemtype.",
       "enrichment": {
         "failed": "AI-verrijking kon niet worden voltooid. Probeer het later opnieuw.",
         "rateLimited": "AI-verrijking is tijdelijk beperkt voor deze laag. Het probeert het binnenkort opnieuw."

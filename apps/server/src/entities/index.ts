@@ -68,6 +68,8 @@ export type {
   EnrichmentJobContext,
   EnrichmentResult,
   EnrichmentTrigger,
+  EntityStatsProvider,
+  EntityStatsContext,
 } from './module';
 
 export { createEntityTranslator } from './translator';

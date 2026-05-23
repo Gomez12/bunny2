@@ -286,6 +286,20 @@
       "empty": {
         "title": "No widgets yet",
         "description": "This dashboard is empty. Widgets and attachments arrive in a later phase — for now the layer’s scope is established and ready."
+      },
+      "widgets": {
+        "companies": {
+          "title": "Companies",
+          "loading": "Loading companies…",
+          "error": "Could not load company stats.",
+          "empty": "No companies in this layer yet.",
+          "createCta": "Create company",
+          "viewAllCta": "View companies",
+          "statTotal": "Total companies",
+          "statWithKvk": "With KvK link",
+          "statMissingDescription": "Missing description",
+          "statRecentlyEnriched": "Enriched in last 24h"
+        }
       }
     },
     "shell": {
@@ -356,6 +370,7 @@
       "translationFailed": "Translation could not be generated. Please try again.",
       "syncFailed": "Sync with the external system failed. Please try again later.",
       "connectorUnknown": "The selected connector is not available on this server.",
+      "statsUnavailable": "Dashboard stats are not available for this item kind.",
       "enrichment": {
         "failed": "AI enrichment could not be completed. Please try again later.",
         "rateLimited": "AI enrichment is temporarily rate-limited for this layer. It will retry soon."

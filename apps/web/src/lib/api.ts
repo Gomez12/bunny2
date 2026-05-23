@@ -453,3 +453,25 @@ export async function removeLayerAttachment(slug: string, attachmentId: string):
 export async function getSystemLocales(): Promise<SystemLocalesResponse> {
   return request<SystemLocalesResponse>('/system/locales');
 }
+
+// ---------- entity stats (phase 4a.4 — companies widget) -------------------
+
+/**
+ * Companies aggregate stats — shape mirrors the server-side
+ * `CompanyStats` type in `apps/server/src/entities/companies/stats.ts`.
+ * Future entity widgets (contacts in 4b.4, calendar in 4c.4, todos in
+ * 4d.4) will declare their own per-kind shapes alongside this one.
+ */
+export interface CompanyStatsResponse {
+  readonly total: number;
+  readonly withKvk: number;
+  readonly missingDescription: number;
+  readonly recentlyEnriched: number;
+}
+
+export async function getCompanyStats(slug: string): Promise<CompanyStatsResponse> {
+  const res = await request<{ stats: CompanyStatsResponse }>(
+    `/l/${encodeURIComponent(slug)}/company/_stats`,
+  );
+  return res.stats;
+}

@@ -3,6 +3,7 @@ import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
 import { createKvkConnector } from './kvk-connector';
 import { companyEnrichmentJobs } from './enrichment';
+import { companyStatsProvider } from './stats';
 
 /**
  * Phase 4a.1 — first concrete `EntityModule`.
@@ -71,6 +72,7 @@ export function createCompanyModule(
     ],
     connectors,
     enrichmentJobs,
+    statsProvider: companyStatsProvider,
     toSummary({ ref, meta, payload, title }) {
       const subtitle = payload.kvkNumber ?? payload.website ?? null;
       return {

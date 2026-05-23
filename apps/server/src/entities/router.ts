@@ -55,6 +55,8 @@ export interface MountEntityRoutesDeps<Payload> {
   readonly now?: () => Date;
 }
 
+const STATS_NOT_AVAILABLE = { error: 'errors.entity.statsUnavailable' } as const;
+
 export function mountEntityRoutes<Payload>(
   app: Hono<{ Variables: HonoVariables }>,
   deps: MountEntityRoutesDeps<Payload>,
@@ -62,6 +64,25 @@ export function mountEntityRoutes<Payload>(
   const { module, store } = deps;
   const requireLayer = createRequireLayer();
   const base = `/l/:slug/${module.kind}`;
+  const now = deps.now ?? (() => new Date());
+
+  // ---------- GET /l/:slug/<kind>/_stats ---------------------------------
+  //
+  // 4a.4 — optional aggregate-stats slot. Registered BEFORE the
+  // `/:entitySlug` GET below because Hono matches in registration order
+  // and `_stats` would otherwise be swallowed as an entity slug. Modules
+  // that don't declare `statsProvider` return 404 here, mirroring the
+  // "feature not present on this kind" contract used by the rest of the
+  // router.
+  app.get(`${base}/_stats`, requireLayer, (c) => {
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    if (module.statsProvider === undefined) {
+      return c.json(STATS_NOT_AVAILABLE, 404);
+    }
+    const stats = module.statsProvider.compute({ layerId: layer.id, db: deps.db, now });
+    return c.json({ stats });
+  });
 
   // ---------- GET /l/:slug/<kind> ----------------------------------------
 

@@ -75,6 +75,37 @@ export interface EntityModule<Payload> {
   readonly onUpdate?: EntityLifecycleHook<Payload>;
   readonly onSoftDelete?: EntityLifecycleHook<Payload>;
   readonly onRestore?: EntityLifecycleHook<Payload>;
+  /**
+   * Phase 4a.4 — optional aggregate-stats provider used by dashboard
+   * widgets. The router exposes the provider's output verbatim under
+   * `GET /l/:slug/<kind>/_stats`. Modules without a stats need omit the
+   * field entirely; the router responds with 404 in that case. Same
+   * additive shape as `indexedColumns` (4a.1) and `enrichmentJobs`
+   * (4a.3): a small, declarative slot the foundation accepts so the
+   * stats shape stays per-kind without leaking into the generic router.
+   */
+  readonly statsProvider?: EntityStatsProvider;
+}
+
+/**
+ * Pure-SQL aggregate provider. `compute` runs synchronously against the
+ * shared `Database` handle and returns whatever JSON-serialisable shape
+ * the kind's dashboard widget expects. The router does not enforce a
+ * specific stat surface — each kind owns its own shape.
+ */
+export interface EntityStatsProvider {
+  compute(ctx: EntityStatsContext): Record<string, unknown>;
+}
+
+export interface EntityStatsContext {
+  readonly layerId: string;
+  readonly db: Database;
+  /**
+   * Injectable clock for deterministic "recently …" buckets in tests.
+   * Defaults to `() => new Date()` at the router; providers should rely
+   * on the value, not on `Date.now()` directly.
+   */
+  readonly now: () => Date;
 }
 
 /**

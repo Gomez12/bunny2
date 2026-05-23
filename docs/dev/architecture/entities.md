@@ -635,6 +635,54 @@ without joining `llm_calls`.
 
 ---
 
+## 10d. Stats provider (4a.4)
+
+Phase 4a.4 added `EntityModule.statsProvider?` so a module can expose
+aggregate counts for its dashboard widget. The slot is intentionally
+small — same additive shape as `indexedColumns` (4a.1) and
+`enrichmentJobs` (4a.3):
+
+```ts
+readonly statsProvider?: {
+  compute(ctx: { layerId: string; db: Database; now: () => Date }): Record<string, unknown>;
+};
+```
+
+The generic router exposes the provider's output verbatim at
+`GET /l/:slug/<kind>/_stats`. The route registers BEFORE
+`/:entitySlug` so Hono's first-match policy resolves `_stats` to the
+stats handler rather than treating it as an entity slug. Modules
+without a provider return `404 errors.entity.statsUnavailable`.
+
+Design rules per kind:
+
+- **Pure SQL only.** No event-bus subscriptions, no state caching.
+  Stats endpoints are cheap, layer-scoped reads that always reflect
+  current data.
+- **`now()` is injectable.** Time-bucketed counts (e.g.
+  "recently enriched in last 24h") MUST consume `ctx.now()` instead
+  of `Date.now()` so tests can pin the window.
+- **No payload shape contract.** Each kind owns its return shape —
+  the router does not validate it. The widget on the web side knows
+  what to expect.
+
+The first consumer is `companyStatsProvider`
+(`apps/server/src/entities/companies/stats.ts`), which returns
+`{ total, withKvk, missingDescription, recentlyEnriched }` for the
+Companies dashboard widget. "Recently enriched" reads
+`entity_souls.updated_at` — the timestamp the enrichment runner
+writes via `recordLastEnriched` in `enrichment-runner.ts`.
+
+The dashboard widget lives in `apps/web/src/dashboard/`. A minimal
+client-side registry (`widget-registry.ts`) lets each per-kind
+sub-phase add a widget by importing `CompaniesWidget`-style modules
+from the `dashboard/widgets` barrel; the registration is a side
+effect on import. `LayerDashboardPage` renders every registered
+widget — `layer_dashboard_widgets` persistence (per-layer toggling
+and layout) is a follow-up.
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit

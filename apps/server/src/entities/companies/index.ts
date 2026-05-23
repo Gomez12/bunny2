@@ -28,6 +28,7 @@ export {
   type CreateKvkConnectorDeps,
 } from './kvk-connector';
 export { companiesSummaryJob, companiesFillFieldsJob, companyEnrichmentJobs } from './enrichment';
+export { companyStatsProvider, type CompanyStats } from './stats';
 
 /**
  * Phase 4a.1 — wire-up helper for the companies module.
