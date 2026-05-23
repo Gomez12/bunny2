@@ -682,3 +682,135 @@ first caller.
   URL underneath; if the discrepancy ever bothers a future kind,
   expose an optional `routeSegment` on `EntityModule` then. Not
   worth touching the foundation again now.
+
+### 4a.2 shipped (2026-05-24)
+
+**What landed**
+
+- KvK connector
+  (`apps/server/src/entities/companies/kvk-connector.ts`) on top of
+  the §4.0 connector base. `createKvkConnector(deps)` exposes
+  `verify` (strict zod over `apiKey`, optional `endpoint`,
+  `pollIntervalMinutes` ≥ 60 / default 1440), `pull(ctx, { externalId })`
+  (Basisprofiel fetch → `CompanyPayload` patch), and a no-op `push`.
+  Errors surface as `errors.connectors.kvk.{kvkUnreachable,
+kvkUnauthorized, kvkNotFound, kvkInvalidResponse, invalidConfig}`.
+- New migration
+  `apps/server/src/storage/migrations/0007_layer_attachments_connector_kind.sql`
+  extends `layer_attachments.kind` CHECK to accept `'connector'`
+  via the SQLite table-rebuild dance.
+  `LayerAttachmentKindSchema` in `packages/shared/src/layer.ts`
+  mirrors the new enum value.
+- New shared infrastructure under `apps/server/src/entities/`:
+  - `connector-dispatcher.ts` — `createConnectorDispatcher({ db, bus,
+[resolveConfig], [lookup], [clock] })`. Subscribes to
+    `entity.connector.sync.requested`, resolves the connector +
+    per-layer config, transitions the link via `setSyncingState`,
+    runs `connector.pull`, calls `markSucceeded` / `markFailed`.
+    Exposes `handle(payload)` for synchronous tests.
+  - `connector-runner.ts` — `createConnectorRunner({ db, bus,
+[intervalMs], [clock], [listConnectors], [resolveConfig] })`. On
+    every `tickOnce()` (or interval tick), iterates registered
+    `(kind, connector)` pairs, finds external links whose
+    `synced_at` is older than the per-layer `pollIntervalMinutes`,
+    publishes `entity.connector.sync.requested` for each one. Skips
+    `syncing` / `error` rows.
+  - `registry.ts` gained `getConnector(kind, id)` and
+    `listConnectorsForKind(kind)`. Connector index is rebuilt on
+    every `registerEntityModule`.
+- `entities/router.ts` POST `/external-links` now validates
+  `body.connector` against `getConnector(module.kind, id)`. Unknown
+  id → 400 `errors.entity.connectorUnknown` with NO row persisted.
+  Known id → row stored, `entity.connector.sync.requested`
+  published, 201 returned with the link in `sync_state='idle'`.
+- `entities/connectors/base.ts` foundation tweak: `markSyncing` was
+  split into `setSyncingState` (DB-only state write) +
+  `publishSyncRequested` (publish only). `EntityConnector.pull`
+  signature is now `pull(ctx, { ref, externalId })`. `ConnectorContext`
+  gained a `config` field (the per-attachment config the dispatcher
+  resolves from `layer_attachments`). `ConnectorPullInput` is the
+  new public type the dispatcher hands to `pull`.
+- `companyModule` exports a `createCompanyModule(opts)` factory that
+  accepts a custom connectors list (tests inject a stub-fetch KvK
+  connector). The default singleton `companyModule` registers the
+  production KvK connector.
+- Boot wiring (`apps/server/src/index.ts`) instantiates the
+  dispatcher + runner exactly once, gated by
+  `config.connectors.runnerEnabled` (default `true`) and
+  `config.connectors.tickMs` (default 60_000ms).
+- `AppConfigSchema` (`apps/server/src/config/schema.ts`) gained
+  `connectors: { runnerEnabled: boolean, tickMs: number }`.
+
+**Foundation tweaks (extending §4.0 inline in this commit)**
+
+- Registry gained `getConnector(kind, id)` + `listConnectorsForKind`.
+- Router POST `/external-links` dispatches via the bus instead of
+  silently persisting orphan rows.
+- Connector base split sync-state transitions from publish (avoids
+  double-publish from the request subscriber).
+- `EntityConnector.pull` now receives the externalId per-call;
+  `ConnectorContext` carries the per-attachment config.
+- New per-process dispatcher + interval poll runner.
+- `LayerAttachmentKindSchema` extended to include `'connector'`
+  - matching SQL CHECK migration.
+
+**Tests**
+
+- `apps/server/tests/entities/companies-kvk-connector.test.ts` —
+  happy path (stubbed Basisprofiel → link transitions to `idle`
+  with `synced_at`, `succeeded` emitted), error paths (401 / 404 /
+  5xx / network → `error` state, `failed` emitted with the right
+  i18n key), `verify` config validation (missing apiKey, empty
+  apiKey, too-short interval, extra keys, defaults), and the
+  **secret-stripping invariant** (no event payload anywhere on the
+  bus contains the literal apiKey across both success + failure
+  paths). Includes the response-mapping assertions for
+  `mapBasisprofielToCompanyPayload`.
+- `apps/server/tests/entities/connector-runner.test.ts` — `tickOnce`
+  with a fake clock: emits requested per stale link, treats
+  `synced_at IS NULL` as stale, skips `syncing` / `error` rows,
+  respects per-layer `pollIntervalMinutes`.
+- `apps/server/tests/entities/companies-external-links-http.test.ts`
+  — HTTP-level `POST /l/:slug/company/:companySlug/external-links`:
+  unknown connector returns 400 `errors.entity.connectorUnknown`
+  and persists nothing; known connector returns 201 with `idle`
+  link and emits one `requested` event.
+- `apps/server/tests/migrations.test.ts` updated for `0007`,
+  including a probe INSERT that exercises the extended CHECK.
+
+**ADR**
+
+- `0012-kvk-connector.md` — accepted. Covers the four design
+  questions: where connector config lives, sync vs. async dispatch,
+  who polls, and the secret-stripping invariants. KvK-specific
+  endpoint + auth choices included.
+
+**i18n**
+
+- `errors.entity.connectorUnknown` (en + nl).
+- `errors.connectors.notConfigured` (en + nl).
+- `errors.connectors.kvk.{kvkUnreachable, kvkUnauthorized,
+kvkNotFound, kvkInvalidResponse, invalidConfig}` (en + nl).
+- `connectors.kvk.{label, description, fields.*}` (en + nl).
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10b "Connectors (4a.2)"
+  documents the dispatch model and the secret-stripping invariant.
+- `docs/dev/decisions/0012-kvk-connector.md` (new ADR).
+- `docs/dev/tasklist.md` 4a.2 row → `done`.
+
+**Follow-ups noted**
+
+- Rate-limiting (KvK enforces 60 req/min per apikey) is NOT yet
+  implemented. A follow-up adds a token-bucket inside the
+  dispatcher when a second rate-limited connector lands.
+- The HTTP response of `POST /external-links` does not surface the
+  connector-produced patch. 4a.5 web UI re-fetches; future
+  long-running connectors (Google Calendar OAuth in 4c.2) will
+  likely add an SSE / event-stream for live status — out of 4a.2
+  scope.
+- A connector that throws a non-`errors.` message ends up surfaced
+  as `errors.entity.syncFailed`. This is intentional — see the
+  dispatcher comment — but worth flagging for future connector
+  authors.

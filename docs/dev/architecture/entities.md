@@ -402,6 +402,105 @@ connector and the AI enrichment job follow in 4a.2 / 4a.3.
 
 ---
 
+## 10b. Connectors (4a.2) — dispatch + poll runner + secret-stripping
+
+The §4.0 connector base shipped the `EntityConnector` interface and the
+`markSucceeded` / `markFailed` helpers. Phase 4a.2 added the runtime
+plumbing every concrete connector reuses. See
+[ADR 0012](../decisions/0012-kvk-connector.md) for the rationale.
+
+### Wire layout
+
+```
+POST /l/:slug/<kind>/:entitySlug/external-links
+  ├── router validates body.connector against `getConnector(kind, id)`
+  │     unknown → 400 errors.entity.connectorUnknown (NO row persisted)
+  │     known → store.addExternalLink → row with sync_state='idle'
+  ├── router publishes `entity.connector.sync.requested`
+  ▼
+ConnectorDispatcher (subscriber, registered ONCE per process)
+  ├── lookup connector via registry
+  ├── resolve per-layer config from layer_attachments
+  │     (kind='connector', ref_id=<connectorId>)
+  ├── setSyncingState (DB only — does NOT republish requested)
+  ├── connector.pull(ctx, { externalId })
+  │     ctx.config carries apiKey / endpoint / pollIntervalMinutes
+  │     ctx.db / ctx.bus reserved for future per-connector helpers
+  └── on success: markSucceeded → publish .succeeded
+      on throw:   markFailed    → publish .failed
+                  err.message starting with `errors.` is preserved;
+                  anything else becomes `errors.entity.syncFailed`
+
+ConnectorRunner (interval-driven, default 60s tick)
+  for every registered (kind, connector):
+    for every active external link in any layer:
+      if sync_state == 'idle' AND age > pollIntervalMinutes:
+        publishSyncRequested  → flows through the same dispatcher
+```
+
+`markSyncing` was split into `setSyncingState` (DB write) and
+`publishSyncRequested` (publish only). Callers that ASK for a sync
+(router POST + runner tick) call `publishSyncRequested`. The dispatcher
+subscriber calls `setSyncingState`. This avoids the double-publish that
+would otherwise occur when the subscriber tried to "mark" the row
+syncing.
+
+### Registry helpers
+
+`registry.ts` exposes `getConnector(kind, id)` and
+`listConnectorsForKind(kind)`. Duplicate connector ids per kind throw
+at registration. The router uses `getConnector` to validate POST
+bodies; the runner uses `listConnectorsForKind` per tick.
+
+### Layer attachment kind extension
+
+`layer_attachments.kind` now accepts `'connector'` in addition to
+`'agent' / 'skill' / 'mcp_server'`. The phase-3 CHECK constraint was
+extended via the table-rebuild dance in
+`apps/server/src/storage/migrations/0007_layer_attachments_connector_kind.sql`
+(SQLite does not support `ALTER COLUMN ... CHECK` in place).
+`LayerAttachmentKindSchema` in `packages/shared/src/layer.ts` mirrors
+the same enum.
+
+### Secret-stripping invariant
+
+Two boundaries enforce that an `apiKey` never crosses an untrusted
+edge:
+
+- **The bus.** `entity.connector.sync.*` payloads are closed shapes
+  (`{ ref, connector, externalId, [error|syncState] }`). There is no
+  path to add `config` to them without changing the type.
+- **The link payload.** `entity_external_links.payload_json` is set
+  by `store.addExternalLink` and never re-written by the connector's
+  `pull`. A future connector that wants to persist non-secret link
+  state goes through `scrubConnectorPayload` (which filters known
+  secret keys).
+
+The contract is asserted by `companies-kvk-connector.test.ts` — it
+captures every event published during a sync, JSON-stringifies it, and
+asserts the literal apiKey value never appears.
+
+### Boot wiring
+
+`apps/server/src/index.ts` instantiates the dispatcher and the runner
+exactly once. `config.connectors.runnerEnabled` (default `true`)
+gates `runner.start()`; `config.connectors.tickMs` controls the
+interval. Tests construct their own dispatcher / runner per fixture
+and never touch the production singletons — `createApp` does NOT
+subscribe the dispatcher.
+
+### First concrete connector
+
+`createKvkConnector(deps)` lives in
+`apps/server/src/entities/companies/kvk-connector.ts`. `verify` runs
+the strict `KvkConfigSchema` (apiKey ≥ 1 char, optional URL endpoint,
+pollIntervalMinutes ≥ 60, default 1440). `pull` fetches Basisprofiel
+via the injected `fetch`, maps the response onto a `CompanyPayload`
+partial, and throws `errors.connectors.kvk.*` on failure. `push` is a
+no-op success — KvK is read-only.
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit
@@ -412,5 +511,7 @@ connector and the AI enrichment job follow in 4a.2 / 4a.3.
   there alongside `layer.*` and `user.*`.
 - `docs/dev/decisions/0011-entity-contract.md` — the per-kind +
   shared decision and the module-registry rationale.
+- `docs/dev/decisions/0012-kvk-connector.md` — connector config
+  location, async dispatch model, poll runner, secret-stripping.
 - `docs/dev/plans/phase-04-first-entities.md` — the phase plan;
   per-kind sub-phases (4a..4d) and the §13 risk table.

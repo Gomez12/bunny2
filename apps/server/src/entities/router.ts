@@ -6,6 +6,8 @@ import { createRequireLayer } from '../http/middleware/layer';
 import type { HonoVariables } from '../http/types';
 import type { EntityModule } from './module';
 import type { EntityStore } from './store';
+import { getConnector } from './registry';
+import { publishSyncRequested } from './connectors/base';
 
 /**
  * Phase 4.0 — generic per-kind HTTP router factory.
@@ -41,6 +43,7 @@ const ENTITY_NOT_FOUND = { error: 'errors.entity.notFound' } as const;
 const ENTITY_NOT_IN_LAYER = { error: 'errors.entity.notInLayer' } as const;
 const ENTITY_SLUG_TAKEN = { error: 'errors.entity.slugTaken' } as const;
 const ENTITY_VALIDATION = { error: 'errors.entity.validation' } as const;
+const ENTITY_CONNECTOR_UNKNOWN = { error: 'errors.entity.connectorUnknown' } as const;
 const BAD_REQUEST = { error: 'errors.layer.badRequest' } as const;
 const NOT_VISIBLE = { error: 'errors.layer.notVisible' } as const;
 
@@ -228,6 +231,16 @@ export function mountEntityRoutes<Payload>(
     ) {
       return c.json(ENTITY_VALIDATION, 400);
     }
+    // 4a.2 — validate the connector id against the registered set for
+    // this module's kind BEFORE persisting. Unknown ids fail fast with
+    // `errors.entity.connectorUnknown` (400) so the link table never
+    // accumulates orphan rows pointing at code that does not exist.
+    // The dispatcher subscriber relies on this invariant when it
+    // resolves `(kind, connectorId)` after an event arrives.
+    const connector = getConnector(module.kind, body.connector);
+    if (connector === null) {
+      return c.json(ENTITY_CONNECTOR_UNKNOWN, 400);
+    }
     const payload =
       body.payload !== undefined && body.payload !== null && typeof body.payload === 'object'
         ? (body.payload as Record<string, unknown>)
@@ -238,14 +251,14 @@ export function mountEntityRoutes<Payload>(
       layerId: existing.layerId,
       slug: existing.slug,
     };
+    let link;
     try {
-      const link = store.addExternalLink({
+      link = store.addExternalLink({
         ref,
         connector: body.connector,
         externalId: body.externalId,
         ...(payload === undefined ? {} : { payload }),
       });
-      return c.json({ externalLink: link }, 201);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.toLowerCase().includes('unique')) {
@@ -254,6 +267,19 @@ export function mountEntityRoutes<Payload>(
       console.error(`[entities/${module.kind}] addExternalLink failed:`, err);
       return c.json(ENTITY_VALIDATION, 400);
     }
+    // The link is persisted with sync_state='idle'. Fire the request
+    // event asynchronously — we await the publish (so middleware can
+    // log it) but the connector's `pull` runs inside a subscriber that
+    // returns a promise the bus does not surface back to us. The HTTP
+    // response therefore returns 201 with the idle link; clients poll
+    // the link's read API for the eventual transition.
+    await publishSyncRequested({
+      bus: deps.bus,
+      ref,
+      connector: body.connector,
+      externalId: body.externalId,
+    });
+    return c.json({ externalLink: link }, 201);
   });
 
   // ---------- DELETE /l/:slug/<kind>/:entitySlug/external-links/:linkId --

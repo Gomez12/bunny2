@@ -61,12 +61,27 @@ export const LocalesConfigSchema = z
     message: 'locales.default must be one of locales.supported',
   });
 
+/**
+ * Phase 4a.2 — runtime knob for the per-process connector poll runner.
+ *
+ * `runnerEnabled: true` (default) starts a `setInterval` that ticks every
+ * `tickMs` and asks the dispatcher to refresh any external link whose
+ * `synced_at` is older than that link's configured
+ * `pollIntervalMinutes`. Set to `false` for smoke / CI runs that should
+ * not touch the network.
+ */
+export const ConnectorsConfigSchema = z.object({
+  runnerEnabled: z.boolean().default(true),
+  tickMs: z.number().int().positive().default(60_000),
+});
+
 export const AppConfigSchema = z.object({
   dataDir: z.string().default('./.data'),
   http: HttpConfigSchema.default({}),
   llm: LlmConfigSchema.default({}),
   auth: AuthConfigSchema.default({}),
   locales: LocalesConfigSchema.default({ supported: ['en', 'nl'], default: 'en' }),
+  connectors: ConnectorsConfigSchema.default({ runnerEnabled: true, tickMs: 60_000 }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -74,4 +89,5 @@ export type HttpConfig = z.infer<typeof HttpConfigSchema>;
 export type LlmConfig = z.infer<typeof LlmConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type LocalesConfig = z.infer<typeof LocalesConfigSchema>;
+export type ConnectorsConfig = z.infer<typeof ConnectorsConfigSchema>;
 export type ModelPricing = z.infer<typeof ModelPricingSchema>;

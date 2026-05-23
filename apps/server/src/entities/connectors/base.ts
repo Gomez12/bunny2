@@ -29,7 +29,16 @@ import {
 export interface EntityConnector<Payload> {
   readonly id: string;
   readonly kind: string;
-  pull(ctx: ConnectorContext): Promise<void>;
+  /**
+   * Pull external data into the layer. The dispatcher resolves the
+   * external-link row that triggered this pull and passes the
+   * `externalId` here so the connector knows which external record to
+   * fetch. Connectors that need per-link state can read it from
+   * `ctx.db` via `listExternalLinks` — the link's `payload_json` carries
+   * non-secret state. Secrets travel via `ctx.config`, never via the
+   * link payload (see file-level doc).
+   */
+  pull(ctx: ConnectorContext, input: ConnectorPullInput): Promise<void>;
   push(ctx: ConnectorContext, entity: ConnectorEntityInput<Payload>): Promise<void>;
   verify(config: Readonly<Record<string, unknown>>): Promise<string | null>;
 }
@@ -38,12 +47,24 @@ export interface EntityConnector<Payload> {
  * Runtime context handed to every connector method. Connectors must
  * use the provided `bus` and `db` — they do not own their own
  * persistence; every state change must be observable through the bus.
+ *
+ * `config` is the per-layer attachment config (kind=`connector`,
+ * ref_id=connector id) resolved by the dispatcher. It is the ONLY place
+ * an apiKey / OAuth token ever lives at runtime; it is NEVER copied into
+ * `entity_external_links.payload_json` nor into any bus event payload.
  */
 export interface ConnectorContext {
   readonly db: Database;
   readonly bus: MessageBus;
   readonly now: () => Date;
   readonly correlationId?: string;
+  readonly config: Readonly<Record<string, unknown>>;
+}
+
+/** What `pull(...)` receives per dispatch (one call per external link). */
+export interface ConnectorPullInput {
+  readonly ref: EntityRef;
+  readonly externalId: string;
 }
 
 /** Minimal projection of an `Entity` that a connector needs for `push`. */
@@ -118,11 +139,19 @@ export interface SyncFailureInput extends SyncTransitionInput {
 }
 
 /**
- * Move an external link to `syncing` and publish
- * `entity.connector.sync.requested`. The encrypted-token / secret
- * portion of `payload_json` is NEVER copied into the event.
+ * Move an external link to `syncing` WITHOUT publishing the request
+ * event. Used by the dispatcher subscriber: the request event is the
+ * trigger, not the consequence, so we must not republish it from the
+ * handler. Publishing the request event is the responsibility of the
+ * caller that ASKS for a sync (HTTP route on link creation, runner on
+ * stale-link tick); see `publishSyncRequested`.
  */
-export async function markSyncing(input: SyncTransitionInput): Promise<void> {
+export function setSyncingState(input: {
+  readonly db: Database;
+  readonly connector: string;
+  readonly externalId: string;
+  readonly now: string;
+}): void {
   updateState(input.db, {
     connector: input.connector,
     externalId: input.externalId,
@@ -131,6 +160,23 @@ export async function markSyncing(input: SyncTransitionInput): Promise<void> {
     error: null,
     now: input.now,
   });
+}
+
+/**
+ * Publish `entity.connector.sync.requested`. Callers that ASK for a
+ * sync (router POST, runner tick) call this once; the dispatcher
+ * subscriber transitions the row to `syncing` via `setSyncingState`
+ * before invoking the connector's `pull`. Splitting the state-write
+ * half from the publish half avoids the double-publish that would
+ * otherwise occur when the subscriber tried to "mark" the row syncing.
+ */
+export async function publishSyncRequested(input: {
+  readonly bus: MessageBus;
+  readonly ref: EntityRef;
+  readonly connector: string;
+  readonly externalId: string;
+  readonly correlationId?: string;
+}): Promise<void> {
   const payload: EntityConnectorSyncRequestedPayload = {
     ref: input.ref,
     connector: input.connector,
@@ -139,6 +185,29 @@ export async function markSyncing(input: SyncTransitionInput): Promise<void> {
   await input.bus.publish({
     type: ENTITY_EVENT_TYPES.ConnectorSyncRequested,
     payload,
+    ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
+  });
+}
+
+/**
+ * Legacy combined helper kept for callers that ask for a sync AND want
+ * the row left in `syncing` in one shot. Internally calls
+ * `setSyncingState` + `publishSyncRequested`. New code should prefer
+ * the split halves so a request-event subscriber does not double-
+ * publish. Do not call this from a `ConnectorSyncRequested` subscriber.
+ */
+export async function markSyncing(input: SyncTransitionInput): Promise<void> {
+  setSyncingState({
+    db: input.db,
+    connector: input.connector,
+    externalId: input.externalId,
+    now: input.now,
+  });
+  await publishSyncRequested({
+    bus: input.bus,
+    ref: input.ref,
+    connector: input.connector,
+    externalId: input.externalId,
     ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
   });
 }

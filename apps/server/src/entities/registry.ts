@@ -1,4 +1,5 @@
 import type { EntityModule } from './module';
+import type { EntityConnector } from './connectors/base';
 
 /**
  * Phase 4.0 — process-local registry of `EntityModule`s.
@@ -19,6 +20,30 @@ import type { EntityModule } from './module';
 const modulesByKind = new Map<string, EntityModule<unknown>>();
 
 /**
+ * Secondary index for `(kind, connectorId)` → `EntityConnector`. The
+ * generic per-module connectors[] list is the authoritative source — we
+ * just project it into a Map for O(1) router / runner / dispatcher
+ * lookups. Rebuilt on every `registerEntityModule`.
+ */
+const connectorsByKind = new Map<string, Map<string, EntityConnector<unknown>>>();
+
+function rebuildConnectorIndex(module: EntityModule<unknown>): void {
+  if (module.connectors === undefined || module.connectors.length === 0) {
+    connectorsByKind.delete(module.kind);
+    return;
+  }
+  const seen = new Map<string, EntityConnector<unknown>>();
+  for (const c of module.connectors) {
+    const existing = seen.get(c.id);
+    if (existing !== undefined && existing !== c) {
+      throw new Error(`entity-registry: duplicate connector id '${c.id}' on kind '${module.kind}'`);
+    }
+    seen.set(c.id, c as EntityConnector<unknown>);
+  }
+  connectorsByKind.set(module.kind, seen);
+}
+
+/**
  * Registers a module. Throws if the kind is already registered — kinds
  * are global and must not collide. Use `__resetEntityRegistryForTests`
  * between test runs that build independent fixtures.
@@ -32,6 +57,7 @@ export function registerEntityModule<Payload>(module: EntityModule<Payload>): vo
     );
   }
   modulesByKind.set(module.kind, module as EntityModule<unknown>);
+  rebuildConnectorIndex(module as EntityModule<unknown>);
 }
 
 /**
@@ -55,6 +81,30 @@ export function listEntityModules(): readonly EntityModule<unknown>[] {
 }
 
 /**
+ * Looks up a single connector by `(kind, connectorId)`. Returns `null`
+ * when either the kind is unknown or the kind has no connector with
+ * that id. The HTTP router uses this to validate a `body.connector`
+ * field against the registered set; the dispatcher / runner use it to
+ * resolve the connector for an outstanding external link.
+ */
+export function getConnector(kind: string, connectorId: string): EntityConnector<unknown> | null {
+  const bucket = connectorsByKind.get(kind);
+  if (bucket === undefined) return null;
+  return bucket.get(connectorId) ?? null;
+}
+
+/**
+ * Enumerates every connector registered for `kind`. Order matches the
+ * order in `EntityModule.connectors[]` (insertion order on the
+ * registration call). The poll runner iterates this set per tick.
+ */
+export function listConnectorsForKind(kind: string): readonly EntityConnector<unknown>[] {
+  const bucket = connectorsByKind.get(kind);
+  if (bucket === undefined) return [];
+  return Array.from(bucket.values());
+}
+
+/**
  * Test-only escape hatch. Production code MUST NOT call this — the
  * registry is process-local state that survives the lifetime of the
  * server. Tests that register fixture modules call this in their
@@ -62,4 +112,5 @@ export function listEntityModules(): readonly EntityModule<unknown>[] {
  */
 export function __resetEntityRegistryForTests(): void {
   modulesByKind.clear();
+  connectorsByKind.clear();
 }

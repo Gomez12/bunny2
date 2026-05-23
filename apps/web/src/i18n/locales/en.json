@@ -355,11 +355,22 @@
       "validation": "The item could not be saved. Please check the input and try again.",
       "translationFailed": "Translation could not be generated. Please try again.",
       "syncFailed": "Sync with the external system failed. Please try again later.",
+      "connectorUnknown": "The selected connector is not available on this server.",
       "companies": {
         "kvkInvalid": "The KvK number must be exactly 8 digits.",
         "websiteInvalid": "The website must be a valid URL.",
         "emailInvalid": "The email address is not valid.",
         "descriptionTooLong": "The description is too long."
+      }
+    },
+    "connectors": {
+      "notConfigured": "This connector has not been configured for this layer yet.",
+      "kvk": {
+        "kvkUnreachable": "Could not reach the KvK API. Please try again later.",
+        "kvkUnauthorized": "The KvK API key was rejected. Please verify the configured key.",
+        "kvkNotFound": "No KvK record was found for this number.",
+        "kvkInvalidResponse": "The KvK API returned an unexpected response.",
+        "invalidConfig": "The KvK connector configuration is invalid. Please verify the API key and poll interval."
       }
     }
   },
@@ -407,6 +418,17 @@
       },
       "subtitle": {
         "noDetails": "No KvK number or website yet."
+      }
+    }
+  },
+  "connectors": {
+    "kvk": {
+      "label": "KvK (Dutch Chamber of Commerce)",
+      "description": "Pulls Basisprofiel data (legal name, trade name, address, website, industry) by KvK number.",
+      "fields": {
+        "apiKey": "API key",
+        "endpoint": "Endpoint URL (optional)",
+        "pollIntervalMinutes": "Poll interval (minutes)"
       }
     }
   }

@@ -29,10 +29,27 @@ export type {
 export {
   registerEntityModule,
   getEntityModule,
+  getConnector,
+  listConnectorsForKind,
   listEntityKinds,
   listEntityModules,
   __resetEntityRegistryForTests,
 } from './registry';
+
+export {
+  createConnectorDispatcher,
+  createLayerAttachmentConfigResolver,
+  type ConnectorDispatcher,
+  type ConnectorDispatcherDeps,
+  type ConnectorConfigResolver,
+} from './connector-dispatcher';
+
+export {
+  createConnectorRunner,
+  type ConnectorRunner,
+  type ConnectorRunnerDeps,
+  type RegisteredConnector,
+} from './connector-runner';
 
 export type {
   EntityModule,
@@ -65,6 +82,8 @@ export {
   listExternalLinks,
   removeExternalLink,
   markSyncing,
+  setSyncingState,
+  publishSyncRequested,
   markSucceeded,
   markFailed,
   scrubConnectorPayload,
@@ -73,6 +92,7 @@ export type {
   EntityConnector,
   ConnectorContext,
   ConnectorEntityInput,
+  ConnectorPullInput,
   InsertExternalLinkInput,
   SyncTransitionInput,
   SyncFailureInput,

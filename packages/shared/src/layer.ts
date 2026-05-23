@@ -18,7 +18,7 @@ export type LayerType = z.infer<typeof LayerTypeSchema>;
 export const LayerVisibilityDirectionSchema = z.enum(['top_down', 'bottom_up', 'both']);
 export type LayerVisibilityDirection = z.infer<typeof LayerVisibilityDirectionSchema>;
 
-export const LayerAttachmentKindSchema = z.enum(['agent', 'skill', 'mcp_server']);
+export const LayerAttachmentKindSchema = z.enum(['agent', 'skill', 'mcp_server', 'connector']);
 export type LayerAttachmentKind = z.infer<typeof LayerAttachmentKindSchema>;
 
 export const LayerSchema = z

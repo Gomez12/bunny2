@@ -137,11 +137,22 @@
       "validation": "Het item kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
       "translationFailed": "Vertaling kon niet worden gegenereerd. Probeer het opnieuw.",
       "syncFailed": "Synchronisatie met het externe systeem is mislukt. Probeer het later opnieuw.",
+      "connectorUnknown": "De gekozen connector is niet beschikbaar op deze server.",
       "companies": {
         "kvkInvalid": "Het KvK-nummer moet uit precies 8 cijfers bestaan.",
         "websiteInvalid": "De website moet een geldige URL zijn.",
         "emailInvalid": "Het e-mailadres is niet geldig.",
         "descriptionTooLong": "De beschrijving is te lang."
+      }
+    },
+    "connectors": {
+      "notConfigured": "Deze connector is nog niet ingesteld voor deze laag.",
+      "kvk": {
+        "kvkUnreachable": "Kan de KvK-API niet bereiken. Probeer het later opnieuw.",
+        "kvkUnauthorized": "De KvK-API-sleutel is geweigerd. Controleer de geconfigureerde sleutel.",
+        "kvkNotFound": "Geen KvK-record gevonden voor dit nummer.",
+        "kvkInvalidResponse": "De KvK-API gaf een onverwachte respons.",
+        "invalidConfig": "De KvK-connectorconfiguratie is ongeldig. Controleer de API-sleutel en het polling-interval."
       }
     }
   },
@@ -189,6 +200,17 @@
       },
       "subtitle": {
         "noDetails": "Nog geen KvK-nummer of website."
+      }
+    }
+  },
+  "connectors": {
+    "kvk": {
+      "label": "KvK (Kamer van Koophandel)",
+      "description": "Haalt Basisprofiel-gegevens (statutaire naam, handelsnaam, adres, website, branche) op via een KvK-nummer.",
+      "fields": {
+        "apiKey": "API-sleutel",
+        "endpoint": "Endpoint-URL (optioneel)",
+        "pollIntervalMinutes": "Polling-interval (minuten)"
       }
     }
   }

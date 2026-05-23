@@ -27,6 +27,7 @@ import { getMeta } from './storage/kv-meta';
 import { seedLayersIfNeeded } from './layers/seed';
 import { createLayerResolver } from './layers/resolver';
 import { registerLayerSubscribers } from './layers/subscribers';
+import { createConnectorDispatcher, createConnectorRunner } from './entities';
 
 const { config, configFile, dataDir } = loadConfig();
 const db = openDatabase(dataDir);
@@ -143,6 +144,24 @@ const app = createApp({
   locales: config.locales,
 });
 
+// Phase 4a.2 — connector dispatcher + interval poll runner. The
+// dispatcher subscribes to `entity.connector.sync.requested` once per
+// process (NOT per `createApp` call — tests build dozens of apps
+// against the same bus and must not stack subscribers; see
+// `apps/server/src/entities/connector-dispatcher.ts`). The runner ticks
+// every minute by default; it can be disabled via
+// `connectors.runnerEnabled = false` for offline / smoke runs.
+const connectorDispatcher = createConnectorDispatcher({ db, bus });
+connectorDispatcher.start();
+const connectorRunner = createConnectorRunner({
+  db,
+  bus,
+  intervalMs: config.connectors.tickMs,
+});
+if (config.connectors.runnerEnabled) {
+  connectorRunner.start();
+}
+
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);
 console.log(`[${appName}] sqlite:      schema=${schemaVersion ?? '(none)'}`);
@@ -154,6 +173,11 @@ console.log(
 
 // Keep the prune handle reachable so the GC does not collect its interval.
 void llmPrune;
+// Same for the runner / dispatcher — they own subscriptions / timers
+// that must outlive boot. The lint rule complains about unused locals;
+// `void` keeps them alive without weakening the type.
+void connectorDispatcher;
+void connectorRunner;
 
 const server = Bun.serve({
   port: config.http.port,

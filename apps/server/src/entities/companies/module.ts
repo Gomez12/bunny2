@@ -1,5 +1,7 @@
 import { CompanyPayloadSchema, type CompanyPayload } from '@bunny2/shared';
 import type { EntityModule } from '../module';
+import type { EntityConnector } from '../connectors/base';
+import { createKvkConnector } from './kvk-connector';
 
 /**
  * Phase 4a.1 — first concrete `EntityModule`.
@@ -31,34 +33,66 @@ import type { EntityModule } from '../module';
 export const COMPANY_KIND = 'company';
 export const COMPANY_TABLE = 'companies';
 
-export const companyModule: EntityModule<CompanyPayload> = {
-  kind: COMPANY_KIND,
-  tableName: COMPANY_TABLE,
-  payloadSchema: CompanyPayloadSchema,
-  indexedColumns: [
-    {
-      name: 'kvk_number',
-      extract: (payload) => payload.kvkNumber ?? null,
+/**
+ * Per-process default connector for production. Tests build their own
+ * via `createCompanyModule({ kvkFetch: fakeFetch })` so they don't
+ * accidentally hit the real KvK endpoint via the registered module.
+ */
+const defaultKvkConnector = createKvkConnector();
+
+/**
+ * Build a fresh `companyModule` variant. Production wiring calls this
+ * once at boot (via `registerCompanyModule`); tests call it per-fixture
+ * to inject a stub `fetch`. The default export `companyModule` uses
+ * the default KvK connector (real `fetch`).
+ */
+export function createCompanyModule(
+  opts: CreateCompanyModuleOptions = {},
+): EntityModule<CompanyPayload> {
+  const connectors: readonly EntityConnector<CompanyPayload>[] = opts.connectors ?? [
+    defaultKvkConnector as EntityConnector<CompanyPayload>,
+  ];
+  return {
+    kind: COMPANY_KIND,
+    tableName: COMPANY_TABLE,
+    payloadSchema: CompanyPayloadSchema,
+    indexedColumns: [
+      {
+        name: 'kvk_number',
+        extract: (payload) => payload.kvkNumber ?? null,
+      },
+      {
+        name: 'website',
+        extract: (payload) => payload.website ?? null,
+      },
+    ],
+    connectors,
+    toSummary({ ref, meta, payload, title }) {
+      const subtitle = payload.kvkNumber ?? payload.website ?? null;
+      return {
+        ...ref,
+        meta,
+        title,
+        subtitle,
+        searchableText: searchableTextFor(payload),
+      };
     },
-    {
-      name: 'website',
-      extract: (payload) => payload.website ?? null,
+    searchableText(payload) {
+      return searchableTextFor(payload);
     },
-  ],
-  toSummary({ ref, meta, payload, title }) {
-    const subtitle = payload.kvkNumber ?? payload.website ?? null;
-    return {
-      ...ref,
-      meta,
-      title,
-      subtitle,
-      searchableText: searchableTextFor(payload),
-    };
-  },
-  searchableText(payload) {
-    return searchableTextFor(payload);
-  },
-};
+  };
+}
+
+export interface CreateCompanyModuleOptions {
+  /**
+   * Override the connector list. Defaults to `[defaultKvkConnector]`.
+   * Tests inject a stub connector (with a fake `fetch`) so the
+   * registered module never touches the real KvK API.
+   */
+  readonly connectors?: readonly EntityConnector<CompanyPayload>[];
+}
+
+export const companyModule: EntityModule<CompanyPayload> = createCompanyModule();
 
 function searchableTextFor(payload: CompanyPayload): string {
   const parts: string[] = [];

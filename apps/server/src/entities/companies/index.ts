@@ -7,9 +7,26 @@ import type { LlmClient } from '../../llm';
 import { createEntityStore } from '../store';
 import { mountEntityRoutes } from '../router';
 import { getEntityModule, registerEntityModule } from '../registry';
+import type { EntityModule } from '../module';
 import { companyModule } from './module';
 
-export { companyModule, COMPANY_KIND, COMPANY_TABLE } from './module';
+export {
+  companyModule,
+  createCompanyModule,
+  COMPANY_KIND,
+  COMPANY_TABLE,
+  type CreateCompanyModuleOptions,
+} from './module';
+export {
+  createKvkConnector,
+  KvkConfigSchema,
+  KVK_CONNECTOR_ID,
+  KVK_CONNECTOR_KIND,
+  KVK_ERROR_KEYS,
+  mapBasisprofielToCompanyPayload,
+  type KvkConfig,
+  type CreateKvkConnectorDeps,
+} from './kvk-connector';
 
 /**
  * Phase 4a.1 — wire-up helper for the companies module.
@@ -30,6 +47,8 @@ export interface MountCompanyRoutesDeps {
   readonly db: Database;
   readonly bus: MessageBus;
   readonly llm: LlmClient;
+  /** Optional override for tests that need a stubbed KvK connector. */
+  readonly module?: EntityModule<CompanyPayload>;
 }
 
 /**
@@ -39,25 +58,29 @@ export interface MountCompanyRoutesDeps {
  * instance is already registered. A different module under the same
  * kind is still a programming error and propagates the registry's
  * exception.
+ *
+ * Pass `module` to register a per-test variant (e.g. with a stubbed
+ * KvK connector). Defaults to the production `companyModule`.
  */
-export function registerCompanyModule(): void {
-  const existing = getEntityModule(companyModule.kind);
-  if (existing === companyModule) return;
-  registerEntityModule(companyModule);
+export function registerCompanyModule(module: EntityModule<CompanyPayload> = companyModule): void {
+  const existing = getEntityModule(module.kind);
+  if (existing === module) return;
+  registerEntityModule(module);
 }
 
 export function mountCompanyRoutes(
   app: Hono<{ Variables: HonoVariables }>,
   deps: MountCompanyRoutesDeps,
 ): void {
+  const module = deps.module ?? companyModule;
   const store = createEntityStore<CompanyPayload>({
-    module: companyModule,
+    module,
     db: deps.db,
     bus: deps.bus,
     llm: deps.llm,
   });
   mountEntityRoutes(app, {
-    module: companyModule,
+    module,
     store,
     bus: deps.bus,
     db: deps.db,

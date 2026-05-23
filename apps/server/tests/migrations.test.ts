@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0006_companies');
+      expect(currentSchemaVersion(db)).toBe('0007_layer_attachments_connector_kind');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -74,6 +74,23 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_companies_layer');
       expect(indexes).toContain('idx_companies_deleted_at');
       expect(indexes).toContain('idx_companies_kvk');
+
+      // 0007 — layer_attachments.kind CHECK extended to accept
+      // `'connector'`. Asserting via INSERT is the only portable way
+      // to verify a CHECK on SQLite (no introspection API exposes it).
+      // The migrations test runs on a fresh DB without the layer seed;
+      // insert a stub `everyone` layer just for the CHECK probe.
+      const probeLayerId = '00000000-0000-0000-0000-000000000002';
+      db.query<unknown, [string, string, string]>(
+        "INSERT INTO layers (id, type, slug, name, created_at, updated_at) VALUES (?, 'everyone', ?, ?, datetime('now'), datetime('now'))",
+      ).run(probeLayerId, 'probe-everyone', 'probe-everyone');
+      db.query<unknown, [string, string, string]>(
+        "INSERT INTO layer_attachments (id, layer_id, kind, ref_id, config_json, created_at) VALUES (?, ?, 'connector', ?, '{}', datetime('now'))",
+      ).run('00000000-0000-0000-0000-0000000000aa', probeLayerId, 'kvk');
+      const stored = db
+        .query<{ kind: string }, [string]>('SELECT kind FROM layer_attachments WHERE id = ?')
+        .get('00000000-0000-0000-0000-0000000000aa');
+      expect(stored?.kind).toBe('connector');
     } finally {
       db.close();
     }
@@ -95,6 +112,7 @@ describe('migrations', () => {
         '0004_layer_locale_default',
         '0005_entities_base',
         '0006_companies',
+        '0007_layer_attachments_connector_kind',
       ]);
     } finally {
       db2.close();
