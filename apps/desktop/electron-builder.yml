@@ -1,0 +1,92 @@
+appId: com.bunny2.app
+productName: bunny2
+copyright: Copyright (c) 2026 bunny2 contributors
+
+# tsc emits to apps/desktop/dist/. Use a separate dir for electron-builder
+# output so the two don't fight over the same folder. See ADR 0004 §3.
+directories:
+  output: release
+  buildResources: build
+
+# What ends up inside the asar archive: just the compiled main + preload.
+# The Bun runtime, the bundled server, the built web assets, and the
+# sample config are all `extraResources` so they live outside asar and
+# can be exec'd / loaded as flat files.
+files:
+  - dist/**/*
+  - package.json
+  - '!node_modules/electron/**'
+
+asar: true
+
+# Per-OS `extraResources`: ship the current OS's Bun runtime(s) plus the
+# server bundle, web assets, and sample config. Cross-OS Bun binaries are
+# omitted so each artifact stays small (~80-150 MB instead of 400+ MB).
+# Both arches of the current OS are included because mac/linux ship two
+# arch artifacts per `target.arch`. The runtime resolver in
+# `apps/desktop/src/paths.ts` picks the one matching `process.arch`.
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  # Code signing is deferred; see docs/dev/follow-ups/electron-signing.md.
+  identity: null
+  extraResources:
+    - from: resources
+      to: .
+      filter:
+        - '**/*'
+    - from: vendor/bun
+      to: bun
+      filter:
+        - darwin-x64/**
+        - darwin-aarch64/**
+
+linux:
+  category: Development
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: tar.gz
+      arch:
+        - x64
+        - arm64
+  extraResources:
+    - from: resources
+      to: .
+      filter:
+        - '**/*'
+    - from: vendor/bun
+      to: bun
+      filter:
+        - linux-x64/**
+        - linux-aarch64/**
+
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  extraResources:
+    - from: resources
+      to: .
+      filter:
+        - '**/*'
+    - from: vendor/bun
+      to: bun
+      filter:
+        - windows-x64/**

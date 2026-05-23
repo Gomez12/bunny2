@@ -2,11 +2,26 @@
  * Thin client for the bunny2 server. Both functions return parsed JSON or
  * throw a typed error that the UI layer can map to an i18n key.
  *
- * The base URL is configurable via `VITE_API_BASE`; the default
- * (`http://127.0.0.1:4317`) matches `apps/server/src/config/schema.ts`.
+ * The base URL is resolved in this order:
+ *   1. `window.bunny2.apiBase` — injected by the Electron preload at the
+ *      port the main process pre-probed for the sidecar (phase 1.6).
+ *   2. `import.meta.env.VITE_API_BASE` — for Vite dev / standalone web.
+ *   3. `http://127.0.0.1:4317` — matches `apps/server/src/config/schema.ts`.
  */
 
-export const apiBase = (import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:4317') as string;
+interface BunnyBridge {
+  readonly apiBase: string;
+}
+
+function readBridgeApiBase(): string | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as { bunny2?: BunnyBridge };
+  const base = w.bunny2?.apiBase;
+  return typeof base === 'string' && base.length > 0 ? base : null;
+}
+
+export const apiBase: string =
+  readBridgeApiBase() ?? ((import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:4317') as string);
 
 export interface StatusResponse {
   readonly app: string;

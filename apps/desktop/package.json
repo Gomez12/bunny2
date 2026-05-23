@@ -6,11 +6,16 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p .",
-    "dev": "echo 'desktop dev mode is implemented in phase 1.6' && exit 0",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "dev": "bun run scripts/dev.ts",
+    "electron:dev": "electron .",
+    "typecheck": "tsc -p tsconfig.checks.json",
+    "test": "bun test",
+    "fetch-bun": "bun run scripts/fetch-bun-runtimes.ts",
+    "package": "electron-builder --publish=never"
   },
   "devDependencies": {
-    "electron": "^32.0.0"
+    "@types/node": "^20.12.0",
+    "electron": "^32.0.0",
+    "electron-builder": "^25.1.8"
   }
 }

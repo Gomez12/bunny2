@@ -101,6 +101,11 @@ dist
 release/
 out/
 
+# desktop packaging: generated resources + vendored Bun runtimes
+apps/desktop/resources/web/
+apps/desktop/resources/server/
+apps/desktop/vendor/
+
 # local data-dir for development
 .data/
 

@@ -18,7 +18,9 @@
     "dev:server": "bun run --filter '@bunny2/server' dev",
     "dev:web": "bun run --filter '@bunny2/web' dev",
     "dev:desktop": "bun run --filter '@bunny2/desktop' dev",
-    "package": "echo 'package script is implemented in phase 1.6' && exit 0",
+    "package:prepare": "bun run apps/desktop/scripts/prepare-resources.ts",
+    "package:prepare:all": "bun run apps/desktop/scripts/prepare-resources.ts --all",
+    "package": "bun run package:prepare && bun run --filter '@bunny2/desktop' package",
     "docs:check": "bun run scripts/docs-check.ts",
     "replay": "bun run scripts/replay.ts",
     "i18n:check": "bun run scripts/i18n-check.ts"
