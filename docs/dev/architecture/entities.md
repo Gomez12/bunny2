@@ -501,6 +501,140 @@ no-op success — KvK is read-only.
 
 ---
 
+## 10c. Enrichment (4a.3) — AI-assisted patches via the per-process runner
+
+Phase 4a.3 ships the first concrete consumer of the 4.0 + 4a.2
+foundation: a per-process AI-enrichment runner that applies LLM-
+produced patches to entity rows. It is generic — companies is just
+the first kind to use it; contacts (4b.3), calendar (4c.3), and todos
+(4d.3) reuse the same runner without code changes. ADR
+[`0013`](../decisions/0013-entity-enrichment.md) records the
+rationale.
+
+### `EnrichmentJob<P>` contract
+
+Each module declares zero or more enrichment jobs:
+
+```ts
+interface EnrichmentJob<Payload> {
+  readonly id: string;
+  readonly runOn: readonly ('created' | 'updated' | 'sync.succeeded')[];
+  run(
+    entity: Entity<Payload>,
+    ctx: EnrichmentJobContext<Payload>,
+  ): Promise<EnrichmentResult<Payload>>;
+}
+
+interface EnrichmentResult<Payload> {
+  readonly patch?: Partial<Payload>;
+  readonly note?: string;
+  readonly tokensIn?: number;
+  readonly tokensOut?: number;
+  readonly model?: string;
+}
+```
+
+`ctx` carries the system LLM client (telemetry-wrapped — DO NOT
+bypass), the layer id, the trigger, the bus, the db, and the source
+correlation id when available. `ctx.module` lets jobs that want to be
+generic over kinds read their own module.
+
+The runner — NOT the job — owns patch application:
+
+- For every field in `result.patch`:
+  - if the value is `null` / `undefined`, skip (LLM uncertainty);
+  - if the entity's current field already has a non-empty value AND
+    the field name is not `description`, skip (do not stomp on user
+    input — `description` is the one field enrichment is allowed to
+    refresh by contract);
+  - otherwise apply.
+- If anything survives the filter, the runner calls `store.update`
+  (which bumps `version`, snapshots `entity_versions`, and publishes
+  `entity.<kind>.updated`).
+- The runner stamps `entity_souls.memory_json.lastEnrichedAtVersionByJob[jobId]`
+  with the post-update version so future ticks can decide whether to
+  re-run.
+
+### Runner lifecycle
+
+`createEnrichmentRunner({ db, bus, llm, pricing, config, resolveStore })`
+exposes:
+
+- `start()` — subscribes once to `entity.<kind>.{created,updated}` for
+  every registered module that declares `enrichmentJobs`, plus a
+  single subscription to `entity.connector.sync.succeeded`. Tests
+  inject a `listModules` factory to avoid the process-global
+  registry.
+- `stop()` — detaches every subscription, clears in-flight timers.
+- `tickOnce()` — flushes every pending debounced entry synchronously.
+  Tests use this instead of fake timers for the debounce half; the
+  fake clock is still needed for the rate-limit window.
+
+Production wiring lives in `apps/server/src/index.ts` and respects
+`config.enrichment.runnerEnabled` (default `true`).
+
+### Coalescing + rate limit
+
+- **Debounce** — multiple events for the same `(kind, entityId)` within
+  `config.enrichment.debounceMs` (default 5000) collapse to one job
+  invocation per matching job. Triggers are union-merged so a
+  burst of "created, updated, sync.succeeded" still runs every job
+  whose `runOn` matches any reason.
+- **Per-layer rate limit** — a sliding 60-second window per `layerId`
+  caps the LLM-call rate at `config.enrichment.maxRunsPerLayerPerMinute`
+  (default 30). On overflow the runner publishes
+  `entity.enrichment.deferred` and re-arms the entry's timer to the
+  next window so a later tick can satisfy it. The LLM is NOT called
+  on the deferred branch.
+
+### Secret-strip invariant
+
+Two boundaries enforce that connector apiKeys never reach an LLM
+prompt:
+
+- The 4a.2 dispatcher persists the connector's payload patch via
+  `persistConnectorPayloadPatch(...)`, which runs
+  `scrubConnectorPayload` (filters `apiKey`, `token`, …) before
+  writing to `entity_external_links.payload_json`. The enrichment
+  job reads `link.payload.lastPatch` from this scrubbed JSON — there
+  is no path from the per-layer attachment row into the job's prompt.
+- The bus event payloads added in 4a.3 (`entity.enrichment.*`) are
+  closed shapes (`{ kind, entityId, jobId, … }`); no `prompt` or
+  `response` field exists. The canonical record of the full
+  prompt + response is the `llm_calls` row (telemetry wrapper),
+  joined by `correlationId` per ADR `0006`.
+
+A regression test (`companies-enrichment.test.ts §secret-strip
+invariant`) configures a known apiKey, drives a full
+sync.succeeded → enrichment flow, and asserts the literal value
+never appears in any LLM prompt nor any bus event.
+
+### `ConnectorContext.onPayloadPatch` — the 4a.2 → 4a.3 bridge
+
+The 4a.2 ADR left the patch-bridge open by routing patches through
+`CreateKvkConnectorDeps.onPayloadPatch` (test-only). 4a.3 adds
+`ConnectorContext.onPayloadPatch` so the dispatcher itself can capture
+the patch and persist a scrubbed copy on the external link's
+`payload_json`. The KvK connector now calls both hooks: `deps.onPayloadPatch`
+preserves the deterministic-mapping unit test, and `ctx.onPayloadPatch`
+feeds the runner's `fillFields` job.
+
+### Companies jobs (`companies.summary`, `companies.fillFields`)
+
+The two production jobs registered on `companyModule.enrichmentJobs`:
+
+| Job                    | Trigger(s)                             | What it does                                                                                                                                                                                           |
+| ---------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `companies.summary`    | `created`, `updated`, `sync.succeeded` | Asks the LLM for a ≤300-char description; emits an empty result when `payload.description` is already set on a `created` tick. Returns `{ patch: { description }, tokensIn, tokensOut, model }`.       |
+| `companies.fillFields` | `sync.succeeded` only                  | Reads `link.payload.lastPatch` (the scrubbed KvK ground-truth persisted by the dispatcher) and asks the LLM to return a JSON object filling missing structured fields. Null-valued fields are skipped. |
+
+Both jobs go through `ctx.llm.chat(...)` (telemetry-wrapped). Cost
+is recomputed for the success event using the same `PricingMap` the
+LLM wrapper uses, so the event surfaces the per-call USD figure
+without joining `llm_calls`.
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit
@@ -513,5 +647,8 @@ no-op success — KvK is read-only.
   shared decision and the module-registry rationale.
 - `docs/dev/decisions/0012-kvk-connector.md` — connector config
   location, async dispatch model, poll runner, secret-stripping.
+- `docs/dev/decisions/0013-entity-enrichment.md` — enrichment runner
+  shape, rate limit + coalescing, per-job declaration on
+  `EntityModule`, secret-strip invariants.
 - `docs/dev/plans/phase-04-first-entities.md` — the phase plan;
   per-kind sub-phases (4a..4d) and the §13 risk table.

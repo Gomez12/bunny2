@@ -356,6 +356,10 @@
       "translationFailed": "Translation could not be generated. Please try again.",
       "syncFailed": "Sync with the external system failed. Please try again later.",
       "connectorUnknown": "The selected connector is not available on this server.",
+      "enrichment": {
+        "failed": "AI enrichment could not be completed. Please try again later.",
+        "rateLimited": "AI enrichment is temporarily rate-limited for this layer. It will retry soon."
+      },
       "companies": {
         "kvkInvalid": "The KvK number must be exactly 8 digits.",
         "websiteInvalid": "The website must be a valid URL.",
@@ -392,6 +396,14 @@
       "externalLinks": "External links",
       "addExternalLink": "Link external system",
       "removeExternalLink": "Remove link"
+    },
+    "enrichment": {
+      "running": "Enriching…",
+      "idle": "Up to date.",
+      "deferred": "Scheduled — waiting for rate limit window.",
+      "failed": "Enrichment failed.",
+      "summary": "Summary",
+      "fillFields": "Fill missing fields"
     },
     "companies": {
       "title": "Companies",

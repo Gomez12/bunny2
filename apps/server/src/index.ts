@@ -27,7 +27,14 @@ import { getMeta } from './storage/kv-meta';
 import { seedLayersIfNeeded } from './layers/seed';
 import { createLayerResolver } from './layers/resolver';
 import { registerLayerSubscribers } from './layers/subscribers';
-import { createConnectorDispatcher, createConnectorRunner } from './entities';
+import {
+  createConnectorDispatcher,
+  createConnectorRunner,
+  createEnrichmentRunner,
+  createEntityStore,
+  listEntityModules,
+  type EntityStore,
+} from './entities';
 
 const { config, configFile, dataDir } = loadConfig();
 const db = openDatabase(dataDir);
@@ -162,6 +169,39 @@ if (config.connectors.runnerEnabled) {
   connectorRunner.start();
 }
 
+// Phase 4a.3 — AI enrichment runner. Subscribes to
+// `entity.<kind>.{created,updated}` for every registered module that
+// declares `enrichmentJobs`, plus `entity.connector.sync.succeeded`. The
+// runner is constructed AFTER `createApp` so the entity-module registry
+// has every module registered (per-kind sub-phases register inside
+// their `mountXRoutes` helper, called from `createApp`).
+//
+// `resolveStore` builds a per-kind `EntityStore` on demand using the
+// telemetry-wrapped `llmClient` so every enrichment-driven `store.update`
+// inherits the same LLM client + bus + db the request-time stores use.
+const enrichmentStoreCache = new Map<string, EntityStore<unknown>>();
+function resolveStoreForModule(module: ReturnType<typeof listEntityModules>[number]) {
+  const cached = enrichmentStoreCache.get(module.kind);
+  if (cached !== undefined) return cached;
+  const store = createEntityStore({ module, db, bus, llm: llmClient });
+  enrichmentStoreCache.set(module.kind, store as EntityStore<unknown>);
+  return store as EntityStore<unknown>;
+}
+const enrichmentRunner = createEnrichmentRunner({
+  db,
+  bus,
+  llm: llmClient,
+  pricing: config.llm.pricing,
+  config: {
+    debounceMs: config.enrichment.debounceMs,
+    maxRunsPerLayerPerMinute: config.enrichment.maxRunsPerLayerPerMinute,
+  },
+  resolveStore: resolveStoreForModule,
+});
+if (config.enrichment.runnerEnabled) {
+  enrichmentRunner.start();
+}
+
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);
 console.log(`[${appName}] sqlite:      schema=${schemaVersion ?? '(none)'}`);
@@ -173,11 +213,12 @@ console.log(
 
 // Keep the prune handle reachable so the GC does not collect its interval.
 void llmPrune;
-// Same for the runner / dispatcher — they own subscriptions / timers
-// that must outlive boot. The lint rule complains about unused locals;
-// `void` keeps them alive without weakening the type.
+// Same for the runner / dispatcher / enrichment runner — they own
+// subscriptions / timers that must outlive boot. The lint rule complains
+// about unused locals; `void` keeps them alive without weakening the type.
 void connectorDispatcher;
 void connectorRunner;
+void enrichmentRunner;
 
 const server = Bun.serve({
   port: config.http.port,

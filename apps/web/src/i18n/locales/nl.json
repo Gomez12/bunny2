@@ -138,6 +138,10 @@
       "translationFailed": "Vertaling kon niet worden gegenereerd. Probeer het opnieuw.",
       "syncFailed": "Synchronisatie met het externe systeem is mislukt. Probeer het later opnieuw.",
       "connectorUnknown": "De gekozen connector is niet beschikbaar op deze server.",
+      "enrichment": {
+        "failed": "AI-verrijking kon niet worden voltooid. Probeer het later opnieuw.",
+        "rateLimited": "AI-verrijking is tijdelijk beperkt voor deze laag. Het probeert het binnenkort opnieuw."
+      },
       "companies": {
         "kvkInvalid": "Het KvK-nummer moet uit precies 8 cijfers bestaan.",
         "websiteInvalid": "De website moet een geldige URL zijn.",
@@ -174,6 +178,14 @@
       "externalLinks": "Externe koppelingen",
       "addExternalLink": "Extern systeem koppelen",
       "removeExternalLink": "Koppeling verwijderen"
+    },
+    "enrichment": {
+      "running": "Bezig met verrijken…",
+      "idle": "Bijgewerkt.",
+      "deferred": "Ingepland — wacht op limietvenster.",
+      "failed": "Verrijking mislukt.",
+      "summary": "Samenvatting",
+      "fillFields": "Ontbrekende velden invullen"
     },
     "companies": {
       "title": "Bedrijven",

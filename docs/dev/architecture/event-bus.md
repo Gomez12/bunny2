@@ -302,17 +302,21 @@ the same `entity.translation.*` events, and every connector emits
 the same `entity.connector.sync.*` events. No concrete entity kind
 ships in 4.0 — per-kind code lands in 4a..4d.
 
-| Type                              | When                                                  | Payload                                               |
-| --------------------------------- | ----------------------------------------------------- | ----------------------------------------------------- |
-| `entity.<kind>.created`           | `EntityStore.create` after the tx commits             | `{ ref, version, originalLocale, searchableText }`    |
-| `entity.<kind>.updated`           | `EntityStore.update` after the tx commits             | `{ ref, version, previousVersion, searchableText }`   |
-| `entity.<kind>.deleted`           | `EntityStore.softDelete` after the tx commits         | `{ ref, version, deletedBy }`                         |
-| `entity.<kind>.restored`          | `EntityStore.restore` after the tx commits            | `{ ref, version }`                                    |
-| `entity.translation.requested`    | Translator job enqueues a per-locale translation      | `{ ref, locale, sourceVersion }`                      |
-| `entity.translation.completed`    | Translator writes `entity_translations` and publishes | `{ ref, locale, sourceVersion, latencyMs }`           |
-| `entity.connector.sync.requested` | Connector base `markSyncing`                          | `{ ref, connector, externalId }`                      |
-| `entity.connector.sync.succeeded` | Connector base `markSucceeded`                        | `{ ref, connector, externalId, syncState, syncedAt }` |
-| `entity.connector.sync.failed`    | Connector base `markFailed`                           | `{ ref, connector, externalId, error }`               |
+| Type                              | When                                                   | Payload                                                             |
+| --------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------- |
+| `entity.<kind>.created`           | `EntityStore.create` after the tx commits              | `{ ref, version, originalLocale, searchableText }`                  |
+| `entity.<kind>.updated`           | `EntityStore.update` after the tx commits              | `{ ref, version, previousVersion, searchableText }`                 |
+| `entity.<kind>.deleted`           | `EntityStore.softDelete` after the tx commits          | `{ ref, version, deletedBy }`                                       |
+| `entity.<kind>.restored`          | `EntityStore.restore` after the tx commits             | `{ ref, version }`                                                  |
+| `entity.translation.requested`    | Translator job enqueues a per-locale translation       | `{ ref, locale, sourceVersion }`                                    |
+| `entity.translation.completed`    | Translator writes `entity_translations` and publishes  | `{ ref, locale, sourceVersion, latencyMs }`                         |
+| `entity.connector.sync.requested` | Connector base `markSyncing`                           | `{ ref, connector, externalId }`                                    |
+| `entity.connector.sync.succeeded` | Connector base `markSucceeded`                         | `{ ref, connector, externalId, syncState, syncedAt }`               |
+| `entity.connector.sync.failed`    | Connector base `markFailed`                            | `{ ref, connector, externalId, error }`                             |
+| `entity.enrichment.started`       | Enrichment runner before each job invocation           | `{ kind, entityId, jobId }`                                         |
+| `entity.enrichment.succeeded`     | Enrichment runner after a job runs (with or w/o patch) | `{ kind, entityId, jobId, hasPatch, tokensIn, tokensOut, costUsd }` |
+| `entity.enrichment.failed`        | Enrichment runner when a job throws                    | `{ kind, entityId, jobId, error }`                                  |
+| `entity.enrichment.deferred`      | Enrichment runner when per-layer rate limit hits       | `{ kind, entityId, jobId, layerId, reason }`                        |
 
 Anti-leak invariants:
 
@@ -326,6 +330,11 @@ Anti-leak invariants:
   short enough to live in an event without bloating the log.
 - Translation events carry `sourceVersion`, never the translated
   payload itself; the payload lives in `entity_translations`.
+- Enrichment events carry quantitative metadata only (`tokensIn`,
+  `tokensOut`, `costUsd`, `hasPatch`). The full prompt + response
+  lives in `llm_calls`, joined by `correlationId`. ADR
+  [`0013`](../decisions/0013-entity-enrichment.md) records the
+  secret-strip invariant and the rate-limit / coalescing model.
 
 Subscribers (announced; not all live in this commit):
 

@@ -51,12 +51,23 @@ export {
   type RegisteredConnector,
 } from './connector-runner';
 
+export {
+  createEnrichmentRunner,
+  type EnrichmentRunner,
+  type EnrichmentRunnerDeps,
+  type EnrichmentRunnerConfig,
+} from './enrichment-runner';
+
 export type {
   EntityModule,
   EntityIndexedColumn,
   EntityLifecycleContext,
   EntityLifecycleHook,
   EntityScheduledJob,
+  EnrichmentJob,
+  EnrichmentJobContext,
+  EnrichmentResult,
+  EnrichmentTrigger,
 } from './module';
 
 export { createEntityTranslator } from './translator';
@@ -75,6 +86,10 @@ export type {
   EntityConnectorSyncRequestedPayload,
   EntityConnectorSyncSucceededPayload,
   EntityConnectorSyncFailedPayload,
+  EntityEnrichmentStartedPayload,
+  EntityEnrichmentSucceededPayload,
+  EntityEnrichmentFailedPayload,
+  EntityEnrichmentDeferredPayload,
 } from './events';
 
 export {
@@ -87,12 +102,14 @@ export {
   markSucceeded,
   markFailed,
   scrubConnectorPayload,
+  persistConnectorPayloadPatch,
 } from './connectors/base';
 export type {
   EntityConnector,
   ConnectorContext,
   ConnectorEntityInput,
   ConnectorPullInput,
+  ConnectorPayloadPatch,
   InsertExternalLinkInput,
   SyncTransitionInput,
   SyncFailureInput,

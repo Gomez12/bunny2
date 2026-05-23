@@ -158,13 +158,21 @@ export function createKvkConnector(
       throw new Error(KVK_ERROR_KEYS.InvalidResponse);
     }
     const patch = mapBasisprofielToCompanyPayload(body as BasisprofielResponse);
+    // Two consumers see the patch:
+    //  - `deps.onPayloadPatch` (set by unit tests via
+    //    `createKvkConnector({ onPayloadPatch })`) — preserves the
+    //    deterministic-mapping assertion in
+    //    `companies-kvk-connector.test.ts`.
+    //  - `ctx.onPayloadPatch` (set by the dispatcher in 4a.3) — runs
+    //    `persistConnectorPayloadPatch` which scrubs known-secret keys
+    //    and stores the result on `entity_external_links.payload_json`
+    //    as `{ lastPatch, lastPatchedAt }`. The 4a.3 enrichment runner
+    //    reads that field as KvK ground-truth for `fillFields`.
     deps.onPayloadPatch?.({ externalId: input.externalId, patch });
-    // Note: the connector does NOT write to the per-kind table here.
-    // The 4a.3 AI-enrichment job will consume `entity.connector.sync.
-    // succeeded` events (correlated to this link) and decide which
-    // patch fields to apply. Splitting the concerns keeps the
-    // connector deterministic and testable.
-    void ctx; // db / bus reserved for future ergonomic helpers.
+    ctx.onPayloadPatch?.({
+      externalId: input.externalId,
+      patch: patch as Readonly<Record<string, unknown>>,
+    });
   }
 
   async function push(

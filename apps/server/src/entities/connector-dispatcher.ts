@@ -4,6 +4,7 @@ import { ENTITY_EVENT_TYPES, type EntityConnectorSyncRequestedPayload } from './
 import {
   markFailed,
   markSucceeded,
+  persistConnectorPayloadPatch,
   setSyncingState,
   type EntityConnector,
 } from './connectors/base';
@@ -161,6 +162,20 @@ export function createConnectorDispatcher(deps: ConnectorDispatcherDeps): Connec
           now: clock,
           config,
           ...(correlationId === undefined ? {} : { correlationId }),
+          // 4a.3 — capture the connector's mapped payload patch so the
+          // enrichment runner can read the latest external ground-truth
+          // from `entity_external_links.payload_json`. The patch is
+          // scrubbed by `persistConnectorPayloadPatch` before write;
+          // bus events stay closed (no payload field) as in 4a.2.
+          onPayloadPatch: (patchInput) => {
+            persistConnectorPayloadPatch({
+              db: deps.db,
+              connector: connectorId,
+              externalId: patchInput.externalId,
+              patch: patchInput.patch,
+              now: clock().toISOString(),
+            });
+          },
         },
         { ref, externalId },
       );

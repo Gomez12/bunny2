@@ -1,7 +1,8 @@
 import { CompanyPayloadSchema, type CompanyPayload } from '@bunny2/shared';
-import type { EntityModule } from '../module';
+import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
 import { createKvkConnector } from './kvk-connector';
+import { companyEnrichmentJobs } from './enrichment';
 
 /**
  * Phase 4a.1 — first concrete `EntityModule`.
@@ -52,6 +53,8 @@ export function createCompanyModule(
   const connectors: readonly EntityConnector<CompanyPayload>[] = opts.connectors ?? [
     defaultKvkConnector as EntityConnector<CompanyPayload>,
   ];
+  const enrichmentJobs: readonly EnrichmentJob<CompanyPayload>[] =
+    opts.enrichmentJobs ?? companyEnrichmentJobs;
   return {
     kind: COMPANY_KIND,
     tableName: COMPANY_TABLE,
@@ -67,6 +70,7 @@ export function createCompanyModule(
       },
     ],
     connectors,
+    enrichmentJobs,
     toSummary({ ref, meta, payload, title }) {
       const subtitle = payload.kvkNumber ?? payload.website ?? null;
       return {
@@ -90,6 +94,13 @@ export interface CreateCompanyModuleOptions {
    * registered module never touches the real KvK API.
    */
   readonly connectors?: readonly EntityConnector<CompanyPayload>[];
+  /**
+   * Override the enrichment-job list. Defaults to
+   * `companyEnrichmentJobs` (summary + fillFields). Tests inject
+   * deterministic stubs to assert runner behavior without driving a
+   * real LLM client.
+   */
+  readonly enrichmentJobs?: readonly EnrichmentJob<CompanyPayload>[];
 }
 
 export const companyModule: EntityModule<CompanyPayload> = createCompanyModule();

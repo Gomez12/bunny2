@@ -814,3 +814,117 @@ kvkNotFound, kvkInvalidResponse, invalidConfig}` (en + nl).
   as `errors.entity.syncFailed`. This is intentional — see the
   dispatcher comment — but worth flagging for future connector
   authors.
+
+### 4a.3 shipped (2026-05-24)
+
+**What landed**
+
+- Generic enrichment runner under
+  `apps/server/src/entities/enrichment-runner.ts`. Same shape as the
+  4a.2 connector runner: `createEnrichmentRunner({ db, bus, llm,
+pricing, config, resolveStore })` exposes `start()`, `stop()`, and
+  `tickOnce()`. `start()` subscribes once per registered module that
+  declares `enrichmentJobs` (to `entity.<kind>.{created,updated}`) plus
+  one subscription to `entity.connector.sync.succeeded`. Tests call
+  `tickOnce()` instead of fake timers for the debounce half.
+- `EntityModule<Payload>` gained an optional
+  `enrichmentJobs?: readonly EnrichmentJob<Payload>[]` field (foundation
+  tweak — reused by 4b.3, 4c.3, 4d.3). `EnrichmentJob`,
+  `EnrichmentJobContext`, `EnrichmentResult`, and `EnrichmentTrigger`
+  are exported from `apps/server/src/entities/module.ts`.
+- Four new event types in
+  `apps/server/src/entities/events.ts`:
+  `entity.enrichment.{started,succeeded,failed,deferred}` with closed
+  payload shapes (no `prompt` / `response` field). The succeeded event
+  carries `tokensIn`, `tokensOut`, and `costUsd` so dashboards do not
+  need to join `llm_calls`.
+- `ConnectorContext.onPayloadPatch?` (new) lets the dispatcher capture
+  a connector's mapped payload patch. The dispatcher's implementation
+  runs `scrubConnectorPayload(...)` and writes the result to
+  `entity_external_links.payload_json` as `{ lastPatch, lastPatchedAt }`
+  via a new helper `persistConnectorPayloadPatch(...)`. The
+  `companies.fillFields` job reads `link.payload.lastPatch` as KvK
+  ground-truth — closing the 4a.2 ADR's open thread.
+- Two production jobs in
+  `apps/server/src/entities/companies/enrichment.ts`:
+  - `companies.summary` (runs on `created` / `updated` /
+    `sync.succeeded`) — generates a ≤300-char description via the
+    telemetry-wrapped LLM client.
+  - `companies.fillFields` (runs on `sync.succeeded` only) — asks the
+    LLM to fill missing structured fields (`legalName`, `tradeName`,
+    `industry`, `description`) using `link.payload.lastPatch` as
+    ground-truth. Null-valued fields are skipped.
+- Both jobs registered on `companyModule.enrichmentJobs` (override-able
+  via `createCompanyModule({ enrichmentJobs })` for tests).
+- Boot wiring (`apps/server/src/index.ts`) constructs + starts the
+  enrichment runner once at boot, gated by
+  `config.enrichment.runnerEnabled` (default `true`). The runner uses
+  the telemetry-wrapped `llmClient` and the same `PricingMap` the
+  wrapper consumes.
+- `AppConfigSchema` gained
+  `enrichment: { runnerEnabled, debounceMs, maxRunsPerLayerPerMinute }`
+  (defaults `true`, `5_000`, `30`).
+
+**Foundation tweaks (extending §4.0 and 4a.2 inline in this commit)**
+
+- `EntityModule.enrichmentJobs` (optional, new).
+- `EnrichmentJob<P>` / `EnrichmentResult<P>` / `EnrichmentJobContext<P>`
+  / `EnrichmentTrigger` exports.
+- `ConnectorContext.onPayloadPatch?` + the
+  `persistConnectorPayloadPatch` helper. The KvK connector now calls
+  both `deps.onPayloadPatch` (test-only, preserves 4a.2 assertion)
+  and `ctx.onPayloadPatch` (dispatcher path).
+- Four new `entity.enrichment.*` event types + payload interfaces.
+- `EnrichmentConfigSchema` in `apps/server/src/config/schema.ts`.
+
+**Tests**
+
+- `apps/server/tests/entities/enrichment-runner.test.ts` — generic
+  runner tests driven against a `FixtureEntityModule`: subscribes,
+  debounces (multiple events for one entity collapse to one run),
+  applies a patch + bumps version, refuses to overwrite non-empty
+  user fields (except `description`), publishes the new events,
+  handles failure gracefully, and enforces the per-layer rate limit
+  with a deferred event when the cap hits.
+- `apps/server/tests/entities/companies-enrichment.test.ts` — four
+  companies-specific scenarios: summary on `created` (description
+  applied + tokens/cost in event), fillFields on `sync.succeeded`
+  (patch applied + version bump), LLM failure (`failed` event, no
+  patch, no version bump), and the secret-strip invariant (configured
+  KvK apiKey appears in NO LLM prompt and in NO bus event).
+
+**ADR**
+
+- `0013-entity-enrichment.md` — accepted. Covers the four design
+  questions (per-kind vs. generic runner, event-driven vs. polling,
+  where the connector patch lives, how cost surfaces).
+
+**i18n**
+
+- `entity.enrichment.{summary,fillFields,deferred,running,idle}` (en + nl).
+- `errors.entity.enrichment.{failed,rateLimited}` (en + nl).
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10c "Enrichment (4a.3)"
+  documents the `EnrichmentJob` contract, the runner lifecycle, the
+  rate-limit + coalescing model, and the secret-strip invariant.
+- `docs/dev/architecture/event-bus.md` §12 table extended with the
+  four new event types; anti-leak list extended with the
+  enrichment-only invariant ("quantitative metadata only — the full
+  prompt + response lives in `llm_calls`").
+- `docs/dev/decisions/0013-entity-enrichment.md` (new ADR).
+- `docs/dev/tasklist.md` 4a.3 row → `done`.
+
+**Follow-ups noted**
+
+- The "do not overwrite non-empty user fields" overwrite policy
+  expresses a single exception (`description`). When the second
+  exception appears (likely calendar attendees in 4c.3), the policy
+  becomes per-field and lives in the module rather than in the runner.
+- The 30 calls/min/layer rate limit is a flat constant. Phase 5
+  (general scheduled tasks) is the natural place to surface it as
+  configurable per layer with a UI.
+- The summary prompt is locale-blind in 4a.3. When the translator
+  (4.0) and enrichment overlap on the same row, the prompts should
+  consult `entity.originalLocale`. Not a 4a.3 concern.

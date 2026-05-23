@@ -52,6 +52,16 @@ export interface EntityConnector<Payload> {
  * ref_id=connector id) resolved by the dispatcher. It is the ONLY place
  * an apiKey / OAuth token ever lives at runtime; it is NEVER copied into
  * `entity_external_links.payload_json` nor into any bus event payload.
+ *
+ * `onPayloadPatch` (added in 4a.3) is the hook a connector calls when
+ * its `pull` mapped a remote record onto a partial payload. The
+ * dispatcher wires this to a writer that runs `scrubConnectorPayload`
+ * and persists the patch (NOT the apiKey) into
+ * `entity_external_links.payload_json` as `{ lastPatch, lastPatchedAt }`.
+ * The 4a.3 enrichment runner reads this stored patch so the
+ * `companies.fillFields` job can use the latest KvK ground-truth as
+ * context. Unset in unit tests that drive `pull` directly without a
+ * dispatcher.
  */
 export interface ConnectorContext {
   readonly db: Database;
@@ -59,6 +69,18 @@ export interface ConnectorContext {
   readonly now: () => Date;
   readonly correlationId?: string;
   readonly config: Readonly<Record<string, unknown>>;
+  readonly onPayloadPatch?: (input: ConnectorPayloadPatch) => void;
+}
+
+/**
+ * Patch handed back to the dispatcher when a connector's `pull` produces
+ * a mapped subset of the entity payload. The dispatcher scrubs known
+ * secret keys before persisting; connectors MUST NOT include their own
+ * apiKey / token in this object.
+ */
+export interface ConnectorPayloadPatch {
+  readonly externalId: string;
+  readonly patch: Readonly<Record<string, unknown>>;
 }
 
 /** What `pull(...)` receives per dispatch (one call per external link). */
@@ -340,6 +362,63 @@ export function listExternalLinks(
 
 export function removeExternalLink(db: Database, id: string): void {
   db.query<unknown, [string]>('DELETE FROM entity_external_links WHERE id = ?').run(id);
+}
+
+/**
+ * Persist a connector-produced payload patch into the link's
+ * `payload_json` under a stable shape. Runs `scrubConnectorPayload` so a
+ * misbehaving connector that accidentally pasted its apiKey into the
+ * patch object still can NOT leak it across this boundary (defense in
+ * depth — the `ConnectorPayloadPatch` contract already forbids secrets).
+ *
+ * Stored shape:
+ *   {
+ *     ...preserved keys that were already in payload_json,
+ *     lastPatch: <scrubbed patch>,
+ *     lastPatchedAt: ISO timestamp,
+ *   }
+ *
+ * Used by the 4a.3 dispatcher hook so the enrichment runner can read the
+ * latest connector ground-truth without redoing the network call. The
+ * 4a.3 enrichment job inspects `link.payload.lastPatch` per the
+ * `companies.fillFields` contract.
+ */
+export function persistConnectorPayloadPatch(input: {
+  readonly db: Database;
+  readonly connector: string;
+  readonly externalId: string;
+  readonly patch: Readonly<Record<string, unknown>>;
+  readonly now: string;
+}): void {
+  const scrubbed = scrubConnectorPayload(input.patch);
+  const existingRow = input.db
+    .query<
+      { payload_json: string },
+      [string, string]
+    >(`SELECT payload_json FROM entity_external_links WHERE connector = ? AND external_id = ?`)
+    .get(input.connector, input.externalId);
+  let existing: Record<string, unknown> = {};
+  if (existingRow !== null) {
+    try {
+      const parsed = JSON.parse(existingRow.payload_json) as unknown;
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        existing = parsed as Record<string, unknown>;
+      }
+    } catch {
+      existing = {};
+    }
+  }
+  const merged: Record<string, unknown> = {
+    ...existing,
+    lastPatch: scrubbed,
+    lastPatchedAt: input.now,
+  };
+  input.db
+    .query<
+      unknown,
+      [string, string, string, string]
+    >(`UPDATE entity_external_links SET payload_json = ?, updated_at = ? WHERE connector = ? AND external_id = ?`)
+    .run(JSON.stringify(merged), input.now, input.connector, input.externalId);
 }
 
 /**

@@ -75,6 +75,31 @@ export const ConnectorsConfigSchema = z.object({
   tickMs: z.number().int().positive().default(60_000),
 });
 
+/**
+ * Phase 4a.3 — runtime knobs for the per-process AI enrichment runner.
+ *
+ * `runnerEnabled: true` (default) starts the runner at boot. The runner
+ * subscribes to `entity.<kind>.{created,updated}` for every module that
+ * declares `enrichmentJobs` and to `entity.connector.sync.succeeded` —
+ * see `apps/server/src/entities/enrichment-runner.ts`. Smoke / CI runs
+ * that should not call the LLM pass `false`.
+ *
+ * `debounceMs` is the per-`(kind, entityId)` window during which
+ * multiple events collapse into one job invocation (default 5s). Lower
+ * values run jobs more eagerly; higher values save tokens at the cost
+ * of a longer "freshness" lag.
+ *
+ * `maxRunsPerLayerPerMinute` caps the per-layer LLM-call rate at the
+ * runner level (default 30). On overflow the runner publishes
+ * `entity.enrichment.deferred` and re-arms the entry for the next
+ * window slide.
+ */
+export const EnrichmentConfigSchema = z.object({
+  runnerEnabled: z.boolean().default(true),
+  debounceMs: z.number().int().positive().default(5_000),
+  maxRunsPerLayerPerMinute: z.number().int().positive().default(30),
+});
+
 export const AppConfigSchema = z.object({
   dataDir: z.string().default('./.data'),
   http: HttpConfigSchema.default({}),
@@ -82,6 +107,11 @@ export const AppConfigSchema = z.object({
   auth: AuthConfigSchema.default({}),
   locales: LocalesConfigSchema.default({ supported: ['en', 'nl'], default: 'en' }),
   connectors: ConnectorsConfigSchema.default({ runnerEnabled: true, tickMs: 60_000 }),
+  enrichment: EnrichmentConfigSchema.default({
+    runnerEnabled: true,
+    debounceMs: 5_000,
+    maxRunsPerLayerPerMinute: 30,
+  }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -90,4 +120,5 @@ export type LlmConfig = z.infer<typeof LlmConfigSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type LocalesConfig = z.infer<typeof LocalesConfigSchema>;
 export type ConnectorsConfig = z.infer<typeof ConnectorsConfigSchema>;
+export type EnrichmentConfig = z.infer<typeof EnrichmentConfigSchema>;
 export type ModelPricing = z.infer<typeof ModelPricingSchema>;

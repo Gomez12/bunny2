@@ -1,5 +1,5 @@
 import type { ZodType } from 'zod';
-import type { EntityMeta, EntityRef, EntitySummary } from '@bunny2/shared';
+import type { Entity, EntityMeta, EntityRef, EntitySummary } from '@bunny2/shared';
 import type { Database } from 'bun:sqlite';
 import type { MessageBus } from '@bunny2/bus';
 import type { LlmClient } from '../llm';
@@ -64,6 +64,13 @@ export interface EntityModule<Payload> {
   readonly indexedColumns?: readonly EntityIndexedColumn<Payload>[];
   readonly connectors?: readonly EntityConnector<Payload>[];
   readonly scheduledJobs?: readonly EntityScheduledJob[];
+  /**
+   * Phase 4a.3 — AI-enrichment jobs the generic runner picks up. Each
+   * job declares which events trigger it; the runner subscribes once
+   * per module and dispatches in order. Modules without enrichment
+   * needs omit the field entirely.
+   */
+  readonly enrichmentJobs?: readonly EnrichmentJob<Payload>[];
   readonly onCreate?: EntityLifecycleHook<Payload>;
   readonly onUpdate?: EntityLifecycleHook<Payload>;
   readonly onSoftDelete?: EntityLifecycleHook<Payload>;
@@ -109,4 +116,65 @@ export interface EntityScheduledJob {
   readonly id: string;
   readonly kind: string;
   readonly cron: string;
+}
+
+/**
+ * Phase 4a.3 — AI-enrichment job descriptor.
+ *
+ * `runOn` lists the trigger surfaces. The runner subscribes once per
+ * module to `entity.<kind>.created`, `entity.<kind>.updated`, and
+ * `entity.connector.sync.succeeded`. For each registered job whose
+ * `runOn` matches the trigger, the runner debounces by entityId, then
+ * calls `run(entity, ctx)`.
+ *
+ * `run` MUST NOT call `store.update` itself — the runner owns patch
+ * application, version bumping, and event emission. Return `{}` or
+ * `{ patch: {} }` to signal "no change".
+ *
+ * The runner applies the patch by reading the current payload via the
+ * store and merging the job's partial. `null`-valued fields in the
+ * patch are SKIPPED (treated as "uncertain"); the LLM prompt is
+ * expected to return `null` on uncertainty so the runner can apply
+ * defense-in-depth.
+ */
+export type EnrichmentTrigger = 'created' | 'updated' | 'sync.succeeded';
+
+export interface EnrichmentJob<Payload> {
+  readonly id: string;
+  readonly runOn: readonly EnrichmentTrigger[];
+  run(
+    entity: Entity<Payload>,
+    ctx: EnrichmentJobContext<Payload>,
+  ): Promise<EnrichmentResult<Payload>>;
+}
+
+/** Context handed to every enrichment job. */
+export interface EnrichmentJobContext<Payload> {
+  readonly db: Database;
+  readonly bus: MessageBus;
+  readonly llm: LlmClient;
+  /** The layer the entity lives in — handy for telemetry / prompts. */
+  readonly layerId: string;
+  /** Why this job ran this time — useful for prompt selection. */
+  readonly trigger: EnrichmentTrigger;
+  /** Correlation id threaded from the source event when available. */
+  readonly correlationId?: string;
+  /** Module the job belongs to. */
+  readonly module: EntityModule<Payload>;
+}
+
+export interface EnrichmentResult<Payload> {
+  /**
+   * Partial payload to merge into the entity. Empty / missing means no
+   * change — the runner does NOT call `store.update`. `null`-valued
+   * fields are skipped by the runner (see `EnrichmentJob` doc).
+   */
+  readonly patch?: Partial<Payload>;
+  /** Optional human-readable note for telemetry. Not persisted. */
+  readonly note?: string;
+  /** Token counts the job observed. The runner threads these into the success event. */
+  readonly tokensIn?: number;
+  readonly tokensOut?: number;
+  /** Model name used by the job — used for cost lookup. */
+  readonly model?: string;
 }

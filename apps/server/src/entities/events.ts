@@ -42,6 +42,10 @@ export const ENTITY_EVENT_TYPES = {
   ConnectorSyncRequested: 'entity.connector.sync.requested',
   ConnectorSyncSucceeded: 'entity.connector.sync.succeeded',
   ConnectorSyncFailed: 'entity.connector.sync.failed',
+  EnrichmentStarted: 'entity.enrichment.started',
+  EnrichmentSucceeded: 'entity.enrichment.succeeded',
+  EnrichmentFailed: 'entity.enrichment.failed',
+  EnrichmentDeferred: 'entity.enrichment.deferred',
 } as const;
 
 export type EntityEventType = (typeof ENTITY_EVENT_TYPES)[keyof typeof ENTITY_EVENT_TYPES];
@@ -113,4 +117,53 @@ export interface EntityConnectorSyncFailedPayload {
   readonly connector: string;
   readonly externalId: string;
   readonly error: string;
+}
+
+/**
+ * Phase 4a.3 enrichment events. The runner publishes these around every
+ * `EntityModule.enrichmentJobs[]` invocation. Generic over kind — every
+ * future entity kind that registers enrichment jobs reuses the surface.
+ *
+ * Anti-leak invariants:
+ *  - The runner NEVER includes payload content (prompts, responses) in
+ *    these events. Token counts + cost are quantitative — the full
+ *    prompt + response lives in `llm_calls`, joined by `correlationId`.
+ *  - `error` is an i18n key (e.g. `errors.entity.enrichment.failed`) or
+ *    a redacted Error message — never a stack trace.
+ */
+export interface EntityEnrichmentStartedPayload {
+  readonly kind: string;
+  readonly entityId: string;
+  readonly jobId: string;
+}
+
+export interface EntityEnrichmentSucceededPayload {
+  readonly kind: string;
+  readonly entityId: string;
+  readonly jobId: string;
+  readonly hasPatch: boolean;
+  readonly tokensIn: number;
+  readonly tokensOut: number;
+  /** USD cost from the pricing map. `null` when the model is unknown. */
+  readonly costUsd: number | null;
+}
+
+export interface EntityEnrichmentFailedPayload {
+  readonly kind: string;
+  readonly entityId: string;
+  readonly jobId: string;
+  readonly error: string;
+}
+
+/**
+ * Emitted when the per-layer rate limit kicks in. The runner does NOT
+ * call the LLM and does NOT consume a slot from the bucket; the entry
+ * is re-queued so a later tick can satisfy it once the window slides.
+ */
+export interface EntityEnrichmentDeferredPayload {
+  readonly kind: string;
+  readonly entityId: string;
+  readonly jobId: string;
+  readonly layerId: string;
+  readonly reason: 'rate_limited';
 }
