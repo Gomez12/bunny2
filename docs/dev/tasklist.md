@@ -9,7 +9,7 @@ here; move older done rows to `docs/dev/tasklistarchive.md`.
 | done        | docs/dev/plans/overall.md                       |           0.5h | Answer open questions in overall plan §10                                                          |
 | done        | docs/dev/plans/phase-01-system-foundation.md    |             2h | Write phase-1 detail plan                                                                          |
 | done        | docs/dev/plans/phase-01-system-foundation.md    |             4h | Phase 1.1: repo skeleton + Bun/TS workspaces + lint/format/typecheck/test + CI baseline            |
-| open        | docs/dev/plans/phase-01-system-foundation.md    |             6h | Phase 1.2: config loader + data-dir bootstrap + SQLite migrations + LanceDB init                   |
+| done        | docs/dev/plans/phase-01-system-foundation.md    |             6h | Phase 1.2: config loader + data-dir bootstrap + SQLite migrations + LanceDB init                   |
 | open        | docs/dev/plans/phase-01-system-foundation.md    |             8h | Phase 1.3: `MessageBus` interface + bunqueue adapter + event-log persistence + replay + middleware |
 | open        | docs/dev/plans/phase-01-system-foundation.md    |             6h | Phase 1.4: OpenAI-compatible LLM client + 100% logging + cost/tokens + retention prune             |
 | open        | docs/dev/plans/phase-01-system-foundation.md    |             8h | Phase 1.5: HTTP API + Vite/React/Tailwind/shadcn frontend + i18n + status + chat round-trip        |
