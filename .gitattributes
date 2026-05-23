@@ -1,0 +1,25 @@
+# Normalize line endings to LF so `prettier --check` is platform-stable.
+# Without this, Windows runners check out files with CRLF and every
+# prettier-managed file fails the format check (see CI run 26334860642).
+
+* text=auto eol=lf
+
+# Windows-native script formats keep CRLF.
+*.bat        text eol=crlf
+*.cmd        text eol=crlf
+*.ps1        text eol=crlf
+
+# Binary assets — never touch their bytes.
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.ico        binary
+*.webp       binary
+*.pdf        binary
+*.zip        binary
+*.gz         binary
+*.tar        binary
+*.exe        binary
+*.dmg        binary
+*.AppImage   binary
