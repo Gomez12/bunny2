@@ -3,9 +3,50 @@
     "appName": "bunny2",
     "loading": "Loading…",
     "retry": "Retry",
-    "tabs": {
-      "status": "Status",
-      "chat": "Chat"
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "confirm": "Confirm",
+    "close": "Close",
+    "required": "required",
+    "optional": "optional",
+    "copy": "Copy",
+    "copied": "Copied"
+  },
+  "nav": {
+    "status": "Status",
+    "chat": "Chat",
+    "adminUsers": "Admin · Users",
+    "adminGroups": "Admin · Groups"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "usernameLabel": "Username",
+      "passwordLabel": "Password",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "errorTitle": "Could not sign in",
+      "errorPrefix": "Error:"
+    },
+    "changePassword": {
+      "title": "Change password",
+      "forcedNotice": "You must choose a new password before continuing.",
+      "currentPasswordLabel": "Current password",
+      "newPasswordLabel": "New password",
+      "confirmPasswordLabel": "Confirm new password",
+      "submit": "Change password",
+      "submitting": "Saving…",
+      "mismatch": "The new password and confirmation do not match.",
+      "success": "Password updated.",
+      "policyHint": "At least 12 characters, including one non-letter."
+    },
+    "userMenu": {
+      "open": "Open account menu",
+      "signedInAs": "Signed in as {{name}}",
+      "changePassword": "Change password",
+      "signOut": "Sign out"
     }
   },
   "status": {
@@ -42,6 +83,102 @@
     "metaTokensIn": "Tokens in",
     "metaTokensOut": "Tokens out",
     "metaCorrelationId": "Correlation ID"
+  },
+  "admin": {
+    "users": {
+      "title": "Users",
+      "newUser": "New user",
+      "includeDeletedToggle": "Show soft-deleted users",
+      "empty": "No users yet.",
+      "tableHeader": {
+        "username": "Username",
+        "displayName": "Display name",
+        "groups": "Groups",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "active": "Active",
+        "deleted": "Deleted"
+      },
+      "action": {
+        "resetPassword": "Reset password",
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "dialog": {
+        "create": { "title": "Create user" },
+        "edit": { "title": "Edit user" }
+      },
+      "field": {
+        "usernameLabel": "Username",
+        "displayNameLabel": "Display name",
+        "initialPasswordLabel": "Initial password (optional)",
+        "initialPasswordHint": "Leave blank and the server will generate one and show it once.",
+        "groupsLabel": "Groups"
+      },
+      "resetPassword": {
+        "title": "Reset password",
+        "body": "Set a new password for {{name}}. The user must change it on next login.",
+        "newPasswordLabel": "New password (optional)",
+        "newPasswordHint": "Leave blank and the server will generate one and show it once.",
+        "confirm": "Reset password",
+        "result": "Generated password",
+        "warning": "This password is shown only once. Copy it now — it cannot be retrieved later.",
+        "copyHint": "Copy the generated password and share it with the user via a secure channel."
+      },
+      "delete": {
+        "title": "Delete user",
+        "body": "Delete {{name}}? This is a soft delete and removes their active sessions."
+      }
+    },
+    "groups": {
+      "title": "Groups",
+      "newGroup": "New group",
+      "empty": "No groups yet.",
+      "tableHeader": {
+        "slug": "Slug",
+        "name": "Name",
+        "description": "Description",
+        "users": "Users",
+        "subGroups": "Sub-groups",
+        "actions": "Actions"
+      },
+      "action": {
+        "open": "Open",
+        "edit": "Edit",
+        "delete": "Delete"
+      },
+      "dialog": {
+        "create": { "title": "Create group" },
+        "edit": { "title": "Edit group" }
+      },
+      "field": {
+        "slugLabel": "Slug",
+        "slugHint": "Lowercase letters, digits and dashes only.",
+        "nameLabel": "Name",
+        "descriptionLabel": "Description"
+      },
+      "detail": {
+        "title": "Group: {{name}}",
+        "back": "Back to groups",
+        "directUsers": "Direct user members",
+        "directSubGroups": "Direct sub-groups",
+        "parentGroups": "Parent groups",
+        "noUsers": "No direct user members.",
+        "noSubGroups": "No direct sub-groups.",
+        "noParents": "No parent groups.",
+        "addUser": "Add user",
+        "addSubGroup": "Add sub-group",
+        "remove": "Remove",
+        "pickUser": "Pick a user",
+        "pickGroup": "Pick a group"
+      },
+      "delete": {
+        "title": "Delete group",
+        "body": "Delete the group \"{{name}}\"? Members are not deleted, only their membership in this group."
+      }
+    }
   },
   "errors": {
     "network": "Could not reach the server. Please try again.",

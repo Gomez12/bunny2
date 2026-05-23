@@ -447,7 +447,100 @@ this rule).
 
 ---
 
-## 11. Open extensions (post-2.5)
+## 11. Web UI surface (phase 2.6)
+
+The web app at `apps/web/` consumes the endpoints above. Phase 2.6
+introduces a routing-less top-level state machine in
+`apps/web/src/App.tsx` driven by `apps/web/src/lib/session.ts`:
+
+```text
+            ┌─ unknown ──────────┐
+bootstrap ──▶ loading            │
+            │   │  401 /auth/me  │
+            │   ├───────────────▶│  guest ──login──▶ authenticated
+            │   │                │     ▲                    │
+            │   │  200 /auth/me  │     │                    │
+            │   └───────────────▶│   logout                 │
+            │                    │     │                    ▼
+            └────────────────────┘     └──── mustChangePassword?
+                                                │           │
+                                              true        false
+                                                │           │
+                                                ▼           ▼
+                                     ChangePasswordPage  AppShell
+                                          (forced)      (tabs + UserMenu)
+```
+
+Pages (`apps/web/src/pages/` and `…/pages/admin/`):
+
+| Page                 | Visible when                             | Purpose                                                   |
+| -------------------- | ---------------------------------------- | --------------------------------------------------------- |
+| `LoginPage`          | `status === 'guest'`                     | Username + password form, accessible error region         |
+| `ChangePasswordPage` | `mustChangePassword === true` (forced)   | New password + confirm; reads policy hint                 |
+| `ChangePasswordPage` | User menu → "Change password" (optional) | Current + new + confirm                                   |
+| `StatusPage`         | Any authenticated user                   | Existing phase-1.5 surface                                |
+| `ChatPage`           | Any authenticated user                   | Existing phase-1.5 surface                                |
+| `AdminUsersPage`     | `isAdmin === true`                       | List, create, edit, delete, reset password (generated PW) |
+| `AdminGroupsPage`    | `isAdmin === true`                       | List, create, edit, delete (admin slug blocked)           |
+| `GroupDetailPage`    | Click "Open" on a row in AdminGroupsPage | Direct users / sub-groups / parents; add/remove pickers   |
+
+### Session store
+
+`apps/web/src/lib/session.ts` exposes a minimal `EventTarget`-backed
+store plus a `useSession()` hook built on
+`useSyncExternalStore`. Transitions: `bootstrapSession()`,
+`applyLogin(response)`, `applyLogout()`. The bootstrap call distinguishes
+401 (→ guest) from other errors (→ guest with a console warning) by
+branching on `res.status` rather than throwing.
+
+### API client
+
+`apps/web/src/lib/api.ts` wraps every fetch with `credentials: 'include'`
+so the HttpOnly session cookie flows. Server errors arrive in the shape
+`{ error: 'errors.<key>' }`; the client surfaces them via `t(error)` with
+`errors.network` as the universal fallback (see `lib/errors.ts`). The
+admin endpoints are typed against the hand-written interfaces in
+`lib/api-types.ts` (kept dependency-light rather than importing the
+shared zod schemas into the web bundle).
+
+### Dialogs & menus
+
+Phase 2.6 picks the native `<dialog>` element via
+`apps/web/src/components/ui/dialog.tsx`. The browser handles focus trap,
+ESC dismissal, and `::backdrop` for free; we only add click-on-backdrop
+close and an explicit close button. The UserMenu is hand-rolled —
+`role="menu"` with `<button role="menuitem">` items, ESC closes,
+click-away closes, focus restored to the trigger.
+
+### Admin navigation gating
+
+Admin tabs are only rendered when `session.isAdmin === true`. A
+useEffect in `App.tsx` defensively snaps the active tab back to `status`
+if the user loses admin (e.g. groups change mid-session). The
+`/admin/*` routes also enforce `requireAdmin` server-side — the tab gate
+is UX only.
+
+### i18n surface added in 2.6
+
+New namespaces: `nav.*`, `auth.login.*`, `auth.changePassword.*`,
+`auth.userMenu.*`, `admin.users.*`, `admin.groups.*`, plus a handful of
+common verbs/labels under `common.*` (`cancel`, `save`, `delete`,
+`edit`, `confirm`, `close`, `copy`, `copied`, `required`, `optional`).
+The Dutch locale ships login + change-password + nav + common as a
+showcase; the rest stay warn-only per the
+`scripts/i18n-check.ts` discipline.
+
+### Generated passwords
+
+`POST /admin/users` (no `initialPassword`) and
+`POST /admin/users/:id/reset-password` return `generatedPassword` in the
+response body exactly once. The web UI surfaces it in a read-only input
+with a "Copy" button (loud i18n'd warning) and never keeps it in any
+list cache or component state outside the dialog.
+
+---
+
+## 12. Open extensions (post-2.5)
 
 - **Rate limiting on `/auth/login`** — captured but not enforced;
   follow-up tracked in `docs/dev/follow-ups/auth-rate-limit.md`.

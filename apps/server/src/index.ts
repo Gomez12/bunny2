@@ -74,7 +74,7 @@ const status = (): StatusBody => {
   return {
     app: appName,
     version: appVersion,
-    phase: '2.5',
+    phase: '2.6',
     ok: true,
     dataDir,
     configFile,

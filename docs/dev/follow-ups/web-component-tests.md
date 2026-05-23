@@ -2,45 +2,78 @@
 
 - Status: open
 - Created: 2026-05-23
-- Phase: 1.5
+- Updated: 2026-05-23 (phase 2.6)
+- Phases referencing it: 1.5 (origin), 2.6 (deferred again)
 
 ## What remains
 
-Add component-level tests for `apps/web/src/pages/StatusPage.tsx` and
-`apps/web/src/pages/ChatPage.tsx` that render against a mock `fetch`
-and assert:
+Wire `happy-dom` + `@testing-library/react` into `bun test` and add
+component-level tests for the now-existing pages:
 
-- Loading, success, and error states render the expected i18n keys.
-- The chat form posts the right body and surfaces server-emitted error
-  keys (`errors.chat.upstream`, `errors.chat.badRequest`).
-- Pressing Enter inside the chat textarea submits; Shift+Enter inserts
-  a newline.
+- `apps/web/tests/login-page.test.tsx` — empty state, submit happy
+  path mocking `fetch`, error path renders the localized message,
+  focus management (username on mount, error region on failure).
+- `apps/web/tests/change-password-page.test.tsx` — forced mode hides
+  the `currentPassword` input; mismatch shows the inline error;
+  success closes the page (calls `onSuccess`).
+- `apps/web/tests/admin-users-page.test.tsx` — lists users, opens
+  create dialog, calls `POST /admin/users`, surfaces the generated
+  password dialog, refreshes the list.
+- `apps/web/tests/admin-groups-page.test.tsx` — admin-slug delete is
+  disabled, edit dialog patches the right fields.
+- `apps/web/tests/user-menu.test.tsx` — open/close keyboard +
+  click-away, sign-out triggers `applyLogout`.
+- `apps/web/tests/status-page.test.tsx` /
+  `apps/web/tests/chat-page.test.tsx` — the original phase-1.5
+  stretch goals (loading / success / error renders, Enter vs
+  Shift+Enter, error key mapping).
 
 Stretch: add an axe-core smoke check in test to catch a11y regressions.
 
 ## Why not done now
 
-Phase 1.5 deliberately scoped this as optional. Wiring up a DOM runtime
-for `bun test` (`happy-dom` or `jsdom`) plus `@testing-library/react`
-balloons the diff and forces decisions about test setup that touch
-every web test added later. The phase-1.5 spec explicitly allowed
-deferring it because the critical paths are already covered:
+Both phase 1.5 and phase 2.6 deliberately deferred this. Wiring a DOM
+runtime for `bun test` (`happy-dom` or `jsdom`) plus
+`@testing-library/react` is a phase on its own — tsconfig changes, bun
+test config, render helper, fetch mock helper, i18n test bootstrap, and
+a decision about how to keep this from blowing up test runtime in CI.
 
-- `apps/server/tests/http-chat.test.ts` exercises the chat round-trip
-  end-to-end against the real bus, event log, and telemetry wrapper.
-- `apps/web/tests/i18n-no-hardcoded-strings.test.ts` enforces the
-  no-hardcoded-strings discipline.
+Phase 2.6 fits the budget by leaning on:
+
+- `scripts/i18n-check.ts` + `apps/web/tests/i18n-no-hardcoded-strings.test.ts`
+  catching every regression in the no-hardcoded-strings discipline.
+- `@axe-core/react` in `apps/web/src/main.tsx` surfacing a11y
+  violations in the dev console.
+- Server-side integration tests already covering the HTTP contract
+  the UI talks to.
+- A documented manual smoke against `bun run dev:web` after the
+  initial admin login.
 
 ## Next step
 
-When the next phase introduces UI that has non-trivial branching (likely
-phase 2 — auth screens), set up `happy-dom` + `@testing-library/react`
-in one PR and bring this set of tests along.
+Open a single PR after phase 2.6:
+
+1. Add `happy-dom` (or `jsdom`) + `@testing-library/react` +
+   `@testing-library/user-event` to `apps/web/devDependencies`.
+2. Add a `tests/setup.ts` that boots i18n synchronously and registers
+   the DOM globals; reference it from `bunfig.toml`'s `[test]
+preload`.
+3. Add a shared render helper + a small `mockFetch` utility under
+   `apps/web/tests/helpers/`.
+4. Bring along the six files listed under "What remains" above.
+5. Mark this follow-up `done` and move it under `done/`.
 
 ## Related files / docs
 
-- `apps/web/src/pages/StatusPage.tsx`
-- `apps/web/src/pages/ChatPage.tsx`
+- `apps/web/src/pages/LoginPage.tsx`
+- `apps/web/src/pages/ChangePasswordPage.tsx`
+- `apps/web/src/pages/admin/AdminUsersPage.tsx`
+- `apps/web/src/pages/admin/AdminGroupsPage.tsx`
+- `apps/web/src/pages/admin/GroupDetailPage.tsx`
+- `apps/web/src/components/UserMenu.tsx`
+- `apps/web/src/components/ui/dialog.tsx`
+- `apps/web/src/lib/session.ts`
+- `apps/web/src/lib/api.ts`
 - `apps/web/tests/i18n-no-hardcoded-strings.test.ts`
 - `docs/dev/architecture/i18n.md`
-- `docs/dev/plans/done/phase-01-system-foundation.md` §4.2 row 1.5 (option F)
+- `docs/dev/architecture/auth-and-sessions.md` §11 (Web UI surface)

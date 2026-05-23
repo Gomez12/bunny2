@@ -192,8 +192,14 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
 
 - Code: `apps/web/`.
 - Stack: Vite + React + Tailwind + shadcn/ui + i18next.
-- Two screens: status page (status data from `/status`) and a
-  single-turn chat box (posts to `/chat`).
+- Phase 1.5 shipped two screens: status page (status data from
+  `/status`) and a single-turn chat box (posts to `/chat`). Phase 2.6
+  adds a routing-less app shell with login, forced-password-change, a
+  user-menu chip, and admin Users / Groups pages (only visible to
+  members of the `admin` group). Top-level state lives in
+  `apps/web/src/lib/session.ts`; pages live under `apps/web/src/pages/`
+  and `…/pages/admin/`. See
+  [`auth-and-sessions.md`](./auth-and-sessions.md) §11.
 - API base URL: in Electron, the preload exposes
   `window.bunny2.apiBase` (ADR 0004 §5); in dev, `VITE_API_BASE` from
   Vite env; otherwise the schema default `http://127.0.0.1:4317`.

@@ -3,9 +3,50 @@
     "appName": "bunny2",
     "loading": "Laden…",
     "retry": "Opnieuw proberen",
-    "tabs": {
-      "status": "Status",
-      "chat": "Chat"
+    "cancel": "Annuleren",
+    "save": "Opslaan",
+    "delete": "Verwijderen",
+    "edit": "Bewerken",
+    "confirm": "Bevestigen",
+    "close": "Sluiten",
+    "required": "verplicht",
+    "optional": "optioneel",
+    "copy": "Kopiëren",
+    "copied": "Gekopieerd"
+  },
+  "nav": {
+    "status": "Status",
+    "chat": "Chat",
+    "adminUsers": "Beheer · Gebruikers",
+    "adminGroups": "Beheer · Groepen"
+  },
+  "auth": {
+    "login": {
+      "title": "Inloggen",
+      "usernameLabel": "Gebruikersnaam",
+      "passwordLabel": "Wachtwoord",
+      "submit": "Inloggen",
+      "submitting": "Bezig met inloggen…",
+      "errorTitle": "Inloggen mislukt",
+      "errorPrefix": "Fout:"
+    },
+    "changePassword": {
+      "title": "Wachtwoord wijzigen",
+      "forcedNotice": "Je moet een nieuw wachtwoord kiezen voordat je verder kunt.",
+      "currentPasswordLabel": "Huidig wachtwoord",
+      "newPasswordLabel": "Nieuw wachtwoord",
+      "confirmPasswordLabel": "Bevestig nieuw wachtwoord",
+      "submit": "Wachtwoord wijzigen",
+      "submitting": "Bezig met opslaan…",
+      "mismatch": "Het nieuwe wachtwoord en de bevestiging komen niet overeen.",
+      "success": "Wachtwoord bijgewerkt.",
+      "policyHint": "Minstens 12 tekens, inclusief minimaal één niet-letter."
+    },
+    "userMenu": {
+      "open": "Open accountmenu",
+      "signedInAs": "Ingelogd als {{name}}",
+      "changePassword": "Wachtwoord wijzigen",
+      "signOut": "Uitloggen"
     }
   },
   "status": {
