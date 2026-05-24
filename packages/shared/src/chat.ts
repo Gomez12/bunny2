@@ -54,6 +54,26 @@ export type PipelineRunStatus = z.infer<typeof PipelineRunStatusSchema>;
 export const ChatFeedbackValueSchema = z.enum(['up', 'down']);
 export type ChatFeedbackValue = z.infer<typeof ChatFeedbackValueSchema>;
 
+/**
+ * The closed set of intents the intent step can emit. Moved into
+ * the shared package in phase 7.2 so that proposal `skill` artifact
+ * specs (`packages/shared/src/proposals.ts`) can pin the same enum
+ * the chat pipeline routes on without re-declaring it.
+ *
+ * Server-internal aliases (`IntentEnum`, `Intent`) in
+ * `apps/server/src/chat/pipeline/types.ts` re-export this schema
+ * so the orchestrator import path stays stable.
+ */
+export const ChatIntentSchema = z.enum([
+  'question.entity_lookup',
+  'question.summary',
+  'command.create',
+  'command.update',
+  'smalltalk',
+  'unsupported',
+]);
+export type ChatIntent = z.infer<typeof ChatIntentSchema>;
+
 // ---------- conversation ----------------------------------------------
 
 export const ChatConversationSchema = z

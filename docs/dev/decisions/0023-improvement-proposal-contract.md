@@ -15,7 +15,7 @@
   Source code (lands in 7.2 / 7.3 / 7.5):
   `apps/server/src/storage/migrations/0015_proposals.sql`,
   `apps/server/src/proposals/`,
-  `packages/shared/src/schemas/proposals.ts`.
+  `packages/shared/src/proposals.ts`.
 
 ---
 

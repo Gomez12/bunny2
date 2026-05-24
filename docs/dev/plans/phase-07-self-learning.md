@@ -91,7 +91,7 @@ In scope:
   `layer_capabilities` (per-layer registry of activated tools /
   skills / agents — phase-3 left this as a registration point;
   phase 7 fills it). Migration `0015_proposals.sql`. zod schemas in
-  `packages/shared/src/schemas/proposals.ts`.
+  `packages/shared/src/proposals.ts`.
 - **Per-layer review agent (`chat.review-layer`)** — replaces
   the phase-6 placeholder body. For each layer, reads the last
   N days of `chat_messages` joined with `chat_message_feedback`
@@ -248,7 +248,7 @@ them in):
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------: | -------------------------------------------------------------------------------- |
 | 7.0 | This detail plan + ADR stubs (`0023`, `0024`, `0025` as `proposed`)                                                                                                                                                                                                                                                                                                       |       3h | plan + ADR drafts; tasklist rows 7.1–7.7 open                                    |
 | 7.1 | LanceDB read swap behind `EntityStore.searchSummaries` (pre-filter on `layer_id IN (?)`; fallback to LIKE when corpus empty); regression test pins the auth boundary; closes `chat-lancedb-read-swap.md`                                                                                                                                                                  |       6h | chat retrieval reads from LanceDB by default; LIKE remains the degraded path     |
-| 7.2 | Migration `0015_proposals.sql` + repos (`improvement_proposals`, `improvement_proposal_evidence`, `improvement_proposal_artifacts`, `layer_capabilities`) + zod schemas in `packages/shared/src/schemas/proposals.ts` + repo unit tests                                                                                                                                   |       5h | schema migration applied; CRUD round-trips green                                 |
+| 7.2 | Migration `0015_proposals.sql` + repos (`improvement_proposals`, `improvement_proposal_evidence`, `improvement_proposal_artifacts`, `layer_capabilities`) + zod schemas in `packages/shared/src/proposals.ts` + repo unit tests                                                                                                                                           |       5h | schema migration applied; CRUD round-trips green                                 |
 | 7.3 | Review agent: replace `chat.review-layer` body with the real implementation (telemetry mining, cluster grouper, proposal minter); LLM call validated by zod; unit tests against fixture telemetry; bus event `proposal.minted`                                                                                                                                            |       8h | seeded telemetry → at least one proposal row per fixture cluster                 |
 | 7.4 | Sandbox runner + capability re-inspector: replay supporting messages against current pipeline + overlay-with-proposed-artifact; delta metrics; capability-snapshot diff; ADR 0024 / 0025 enforced in code; integration test that approval re-plans correctly under all three outcomes (no drift / drift but gap persists / superseded)                                    |       8h | one proposal can move new → approved → activated end-to-end against the mock LLM |
 | 7.5 | Tool / skill / agent builder: three artifact kinds with their activation paths (tool → answerer-step lookup table; skill → answerer prompt fragment; agent → durable-bus subscriber registered on activation); `layer_capabilities` write path + per-layer registry consumers; admin-only deactivate                                                                      |       6h | a `skill` activated by 7.4's flow shows up in the next chat answer               |
@@ -398,8 +398,8 @@ CREATE INDEX idx_layer_capabilities_layer
   ON layer_capabilities(layer_id, deactivated_at);
 ```
 
-zod schemas live in `packages/shared/src/schemas/proposals.ts`
-(mirror `packages/shared/src/schemas/chat.ts` shape).
+zod schemas live in `packages/shared/src/proposals.ts`
+(mirror `packages/shared/src/chat.ts` shape).
 
 ### 4.3 Review agent (lands in 7.3)
 
@@ -682,7 +682,7 @@ proposal.mint:<runId>` / `flow_id = proposal.replan:<proposalId>`
   `apps/web/src/pages/LayerProposalDetailPage.tsx`,
   `apps/web/src/pages/LayerCapabilitiesPage.tsx`,
   `apps/web/src/dashboard/ProposalsWidget.tsx`,
-  `packages/shared/src/schemas/proposals.ts`,
+  `packages/shared/src/proposals.ts`,
   `apps/server/src/scheduled/built-in/proposals-evidence-prune.ts`,
   `apps/server/src/scheduled/built-in/proposals-replan-stale.ts`.
 - **Migrated / extended**:

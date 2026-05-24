@@ -15,6 +15,7 @@
  */
 
 import { z } from 'zod';
+import { ChatIntentSchema, type ChatIntent } from '@bunny2/shared';
 import type { ChatMessage } from '../repos/chat-messages-repo';
 import { ENTITY_KIND_TO_LANCE_TABLE } from '../embeddings/lance-tables';
 
@@ -39,15 +40,14 @@ export type EntityKind = z.infer<typeof EntityKindSchema>;
 
 // ---------- intent step ------------------------------------------------
 
-export const IntentEnum = z.enum([
-  'question.entity_lookup',
-  'question.summary',
-  'command.create',
-  'command.update',
-  'smalltalk',
-  'unsupported',
-]);
-export type Intent = z.infer<typeof IntentEnum>;
+/**
+ * The intent enum lives in `packages/shared` (`ChatIntentSchema`)
+ * so cross-package consumers (proposal specs in phase 7.2) can pin
+ * the same closed set. Re-exported here under the orchestrator's
+ * historic names to keep server import paths stable.
+ */
+export const IntentEnum = ChatIntentSchema;
+export type Intent = ChatIntent;
 
 export const IntentOutputSchema = z
   .object({

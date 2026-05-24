@@ -10,3 +10,4 @@ export * from './calendar';
 export * from './todos';
 export * from './scheduled-tasks';
 export * from './chat';
+export * from './proposals';
