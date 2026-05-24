@@ -3,7 +3,16 @@ import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
 import type { Database } from 'bun:sqlite';
 import type { MessageBus } from '@bunny2/bus';
 import { z } from 'zod';
-import { ChatFeedbackValueSchema } from '@bunny2/shared';
+import {
+  ChatFeedbackValueSchema,
+  type ChatBoardItem,
+  type ChatBoardStepSnapshot,
+  type PipelineRunStatus,
+  type PipelineStepKind,
+  type PipelineStepStatus,
+  type ChatMessageRole,
+  type ChatMessageStatus,
+} from '@bunny2/shared';
 import type { LlmClient } from '../../llm/types';
 import type { LlmCallLog } from '../../llm/call-log';
 import { createChatConversationsRepo } from '../../chat/repos/chat-conversations-repo';
@@ -181,12 +190,21 @@ export function registerLayerChatRoutes(
   });
 
   // ---------- GET /l/:slug/chat/conversations ----------------------------
+  //
+  // Phase 6.6 widened the response: each conversation row carries
+  // aggregated `feedbackUpCount` / `feedbackDownCount` so the
+  // `RecentChatsWidget` can render a ratio without N+1 fetches. The
+  // base `ChatConversation` fields are unchanged — phase 6.5's
+  // `LayerChatPage.tsx` reads only those and ignores the new fields.
 
   app.get('/l/:slug/chat/conversations', requireLayer, (c) => {
     const user = c.get('user');
     const layer = c.get('layer');
     if (layer === undefined) return c.json(NOT_VISIBLE, 404);
-    const rows = conversationsRepo.listConversations({ layerId: layer.id, userId: user.id });
+    const rows = conversationsRepo.listConversationSummaries({
+      layerId: layer.id,
+      userId: user.id,
+    });
     return c.json({ conversations: rows });
   });
 
@@ -460,6 +478,40 @@ export function registerLayerChatRoutes(
     );
   });
 
+  // ---------- GET /l/:slug/chat/board ------------------------------------
+  //
+  // Phase 6.6 — Kanban board data. Returns the last N assistant
+  // messages across the caller's conversations in this layer with
+  // a small snapshot of their pipeline state. Server returns raw
+  // run + step snapshots; client buckets into Kanban columns. The
+  // sort is newest-first by message `created_at`.
+  //
+  // Filter rules:
+  //  - `c.var.effectiveLayers` boundary (mirrors every other
+  //    layer-scoped route): non-members of this layer hit the
+  //    `requireLayer` middleware and never reach this handler.
+  //  - Only `role = 'assistant'` messages are returned. User
+  //    messages have no pipeline run and would land in the
+  //    "queued" column permanently.
+  //  - Soft-deleted conversations are skipped.
+  //  - Cap at 200; clamp the `limit` query.
+
+  app.get('/l/:slug/chat/board', requireLayer, (c) => {
+    const user = c.get('user');
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    const limitRaw = c.req.query('limit');
+    let limit = 50;
+    if (limitRaw !== undefined) {
+      const parsed = Number.parseInt(limitRaw, 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        limit = Math.min(parsed, 200);
+      }
+    }
+    const items = listBoardItemsFor(deps.db, layer.id, user.id, limit);
+    return c.json({ items });
+  });
+
   // ---------- POST /l/:slug/chat/messages/:id/feedback -------------------
 
   app.post('/l/:slug/chat/messages/:id/feedback', requireLayer, async (c) => {
@@ -516,6 +568,129 @@ interface OwnableConversation {
 function isOwnedAndVisible(conv: OwnableConversation, layerId: string, userId: string): boolean {
   if (conv.deletedAt !== null) return false;
   return conv.layerId === layerId && conv.userId === userId;
+}
+
+const BOARD_CONTENT_PREVIEW_BYTES = 280;
+
+interface BoardMessageRow {
+  message_id: string;
+  conversation_id: string;
+  conversation_title: string;
+  role: ChatMessageRole;
+  status: ChatMessageStatus;
+  content: string;
+  created_at: string;
+  finished_at: string | null;
+  run_id: string | null;
+  run_status: PipelineRunStatus | null;
+}
+
+interface BoardStepRow {
+  run_id: string;
+  kind: PipelineStepKind;
+  status: PipelineStepStatus;
+  attempt: number;
+  started_at: string;
+}
+
+/**
+ * Phase 6.6 — load the board snapshot for one (layer, user) pair.
+ *
+ * Returns the most-recent `limit` assistant messages across the
+ * user's non-deleted conversations in this layer, each with their
+ * latest pipeline run + step snapshot. Two queries: one for
+ * messages + runs, one for steps. Joined client-side in this
+ * function to avoid emitting one row per step. Sort is newest-first
+ * by `chat_messages.created_at`.
+ *
+ * Auth is enforced upstream by `requireLayer` + the `layer_id` /
+ * `user_id` filter below — non-members never reach this code.
+ */
+function listBoardItemsFor(
+  db: Database,
+  layerId: string,
+  userId: string,
+  limit: number,
+): readonly ChatBoardItem[] {
+  // Subquery picks the latest run per message (a v1 design assumes
+  // 1:1 messages↔runs; the LEFT JOIN handles "no run yet" messages
+  // gracefully). The MAX(started_at) trick keeps the SQL ANSI-ish.
+  const messageRowsSql = `
+    SELECT
+      m.id            AS message_id,
+      m.conversation_id AS conversation_id,
+      c.title         AS conversation_title,
+      m.role          AS role,
+      m.status        AS status,
+      m.content       AS content,
+      m.created_at    AS created_at,
+      m.finished_at   AS finished_at,
+      r.id            AS run_id,
+      r.status        AS run_status
+      FROM chat_messages m
+      JOIN chat_conversations c ON c.id = m.conversation_id
+      LEFT JOIN chat_pipeline_runs r
+        ON r.message_id = m.id
+       AND r.started_at = (
+         SELECT MAX(r2.started_at)
+           FROM chat_pipeline_runs r2
+          WHERE r2.message_id = m.id
+       )
+     WHERE c.layer_id = ?
+       AND c.user_id = ?
+       AND c.deleted_at IS NULL
+       AND m.role = 'assistant'
+     ORDER BY m.created_at DESC
+     LIMIT ?
+  `;
+  const messageRows = db
+    .query<BoardMessageRow, [string, string, number]>(messageRowsSql)
+    .all(layerId, userId, limit);
+
+  if (messageRows.length === 0) return [];
+
+  const runIds = messageRows.map((r) => r.run_id).filter((x): x is string => x !== null);
+  const stepsByRun = new Map<string, ChatBoardStepSnapshot[]>();
+  if (runIds.length > 0) {
+    const placeholders = runIds.map(() => '?').join(', ');
+    const stepRowsSql = `
+      SELECT run_id, kind, status, attempt, started_at
+        FROM chat_pipeline_steps
+       WHERE run_id IN (${placeholders})
+       ORDER BY started_at ASC
+    `;
+    const stepRows = db.query<BoardStepRow, string[]>(stepRowsSql).all(...runIds);
+    for (const row of stepRows) {
+      let arr = stepsByRun.get(row.run_id);
+      if (arr === undefined) {
+        arr = [];
+        stepsByRun.set(row.run_id, arr);
+      }
+      arr.push({ kind: row.kind, status: row.status });
+    }
+  }
+
+  return messageRows.map((row): ChatBoardItem => {
+    const preview =
+      row.content.length > BOARD_CONTENT_PREVIEW_BYTES
+        ? `${row.content.slice(0, BOARD_CONTENT_PREVIEW_BYTES)}…`
+        : row.content;
+    return {
+      messageId: row.message_id,
+      conversationId: row.conversation_id,
+      conversationTitle: row.conversation_title,
+      role: row.role,
+      status: row.status,
+      contentPreview: preview,
+      createdAt: row.created_at,
+      finishedAt: row.finished_at,
+      run:
+        row.run_id !== null && row.run_status !== null
+          ? { id: row.run_id, status: row.run_status }
+          : null,
+      steps: stepsByRun.get(row.run_id ?? '') ?? [],
+    };
+  });
 }
 
 /**

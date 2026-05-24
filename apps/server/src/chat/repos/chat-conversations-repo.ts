@@ -63,10 +63,23 @@ export interface ChatConversationsRepo {
   getConversationById(id: string): ChatConversation | null;
   /** List the caller's conversations in one layer, newest first. */
   listConversations(filter: ListChatConversationsFilter): ChatConversation[];
+  /**
+   * Same set as `listConversations` plus aggregated thumbs-up /
+   * thumbs-down counts joined from `chat_message_feedback`. Phase 6.6
+   * — used by the conversation list endpoint and the
+   * `RecentChatsWidget` to render a feedback ratio without N+1
+   * fetches.
+   */
+  listConversationSummaries(filter: ListChatConversationsFilter): ChatConversationSummary[];
   updateConversation(id: string, patch: UpdateChatConversationPatch, now: string): ChatConversation;
   /** Bumps `updated_at` only. Used after a new message lands. */
   touchConversation(id: string, now: string): void;
   softDeleteConversation(id: string, deletedBy: string, now: string): void;
+}
+
+export interface ChatConversationSummary extends ChatConversation {
+  readonly feedbackUpCount: number;
+  readonly feedbackDownCount: number;
 }
 
 const COLS =
@@ -149,6 +162,42 @@ export function createChatConversationsRepo(db: Database): ChatConversationsRepo
     listConversations(filter) {
       const stmt = filter.includeDeleted === true ? listAll : listActive;
       return stmt.all(filter.layerId, filter.userId).map(rowToConversation);
+    },
+
+    listConversationSummaries(filter) {
+      // Aggregate feedback per conversation in a single grouped
+      // subquery; LEFT JOIN so conversations with zero feedback rows
+      // still come through (with both counts = 0).
+      type SummaryRow = ChatConversationRow & {
+        feedback_up_count: number;
+        feedback_down_count: number;
+      };
+      const includeDeletedClause = filter.includeDeleted === true ? '' : 'AND c.deleted_at IS NULL';
+      const sql = `
+        SELECT
+          c.id, c.layer_id, c.user_id, c.title, c.locale,
+          c.created_at, c.updated_at, c.deleted_at, c.deleted_by,
+          COALESCE(fb.up_count, 0) AS feedback_up_count,
+          COALESCE(fb.down_count, 0) AS feedback_down_count
+          FROM chat_conversations c
+          LEFT JOIN (
+            SELECT
+              m.conversation_id AS conversation_id,
+              SUM(CASE WHEN f.value = 'up' THEN 1 ELSE 0 END) AS up_count,
+              SUM(CASE WHEN f.value = 'down' THEN 1 ELSE 0 END) AS down_count
+              FROM chat_message_feedback f
+              JOIN chat_messages m ON m.id = f.message_id
+             GROUP BY m.conversation_id
+          ) fb ON fb.conversation_id = c.id
+         WHERE c.layer_id = ? AND c.user_id = ? ${includeDeletedClause}
+         ORDER BY c.updated_at DESC
+      `;
+      const rows = db.query<SummaryRow, [string, string]>(sql).all(filter.layerId, filter.userId);
+      return rows.map((row) => ({
+        ...rowToConversation(row),
+        feedbackUpCount: Number(row.feedback_up_count),
+        feedbackDownCount: Number(row.feedback_down_count),
+      }));
     },
 
     updateConversation(id, patch, now) {

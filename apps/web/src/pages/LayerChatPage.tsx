@@ -27,13 +27,14 @@ import {
 import { errorKeyOf } from '../lib/errors';
 import { sseFetch } from '../lib/sse-fetch';
 import { useCurrentLayer } from '../lib/use-current-layer';
-import type { PipelineStepKind, PipelineStepStatus } from '@bunny2/shared';
+import type { PipelineStepStatus } from '@bunny2/shared';
 import {
   applyPipelineStepFrame,
   bucketContentLength,
   emptyPipelineStepMap,
   mapServerErrorToChatErrorKey,
   PIPELINE_STEP_ORDER,
+  pipelineStepLabelKey,
   shouldComposerSubmit,
   splitForAnnouncement,
   type PipelineStepFrame,
@@ -741,12 +742,6 @@ function PipelineIndicator(props: PipelineIndicatorProps): JSX.Element {
       })}
     </ul>
   );
-}
-
-function pipelineStepLabelKey(kind: PipelineStepKind, status: PipelineStepStatus): string {
-  // `pending` maps to `queued` in the i18n schema.
-  const tail = status === 'pending' ? 'queued' : status;
-  return `chat.pipeline.steps.${kind}.${tail}`;
 }
 
 function pipelinePillClass(status: PipelineStepStatus): string {

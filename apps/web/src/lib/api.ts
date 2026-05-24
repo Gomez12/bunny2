@@ -14,7 +14,9 @@
  */
 
 import type {
+  ChatBoardItem as SharedChatBoardItem,
   ChatConversation as SharedChatConversation,
+  ChatConversationSummary as SharedChatConversationSummary,
   ChatMessage as SharedChatMessage,
   ChatMessageFeedback as SharedChatMessageFeedback,
   ChatFeedbackValue as SharedChatFeedbackValue,
@@ -1113,10 +1115,19 @@ export async function replayAdminBusDlq(outboxId: string): Promise<void> {
 // streaming helper. The functions below cover the synchronous JSON
 // routes (conversation CRUD + feedback).
 
-export type LayerChatConversation = SharedChatConversation;
+/**
+ * The list endpoint returns the `Summary` shape (base conversation
+ * fields + aggregated feedback counts); the create / get endpoints
+ * still return the bare `ChatConversation`. Phase 6.5's
+ * `LayerChatPage.tsx` reads only the shared base fields so the
+ * widened list payload is forward-compatible.
+ */
+export type LayerChatConversation = SharedChatConversationSummary;
+export type LayerChatConversationDetail = SharedChatConversation;
 export type LayerChatMessage = SharedChatMessage;
 export type LayerChatFeedback = SharedChatMessageFeedback;
 export type LayerChatFeedbackValue = SharedChatFeedbackValue;
+export type LayerChatBoardItem = SharedChatBoardItem;
 
 function chatConversationsBase(layerSlug: string): string {
   return `/l/${encodeURIComponent(layerSlug)}/chat/conversations`;
@@ -1138,14 +1149,21 @@ export async function createLayerChatConversation(
   const payload: { title?: string; locale?: string } = {};
   if (body.title !== undefined) payload.title = body.title;
   if (body.locale !== undefined) payload.locale = body.locale;
-  const res = await request<{ conversation: LayerChatConversation }>(
+  // The create endpoint returns the bare `ChatConversation`; we
+  // widen with zero counts so the result shape matches the list
+  // shape (used by the page state to insert the new row).
+  const res = await request<{ conversation: LayerChatConversationDetail }>(
     chatConversationsBase(layerSlug),
     {
       method: 'POST',
       body: JSON.stringify(payload),
     },
   );
-  return res.conversation;
+  return {
+    ...res.conversation,
+    feedbackUpCount: 0,
+    feedbackDownCount: 0,
+  };
 }
 
 export async function deleteLayerChatConversation(
@@ -1175,6 +1193,22 @@ export async function listLayerChatMessages(
  */
 export function layerChatMessageStreamPath(layerSlug: string, conversationId: string): string {
   return `${chatConversationsBase(layerSlug)}/${encodeURIComponent(conversationId)}/messages`;
+}
+
+/**
+ * Phase 6.6 — board snapshot for the per-layer Kanban view. The
+ * server returns raw run + step snapshots; the client buckets into
+ * columns. Newest-first by message `createdAt`. The server caps the
+ * `limit` at 200.
+ */
+export async function listLayerChatBoard(
+  layerSlug: string,
+  limit = 50,
+): Promise<readonly LayerChatBoardItem[]> {
+  const res = await request<{ items: readonly LayerChatBoardItem[] }>(
+    `/l/${encodeURIComponent(layerSlug)}/chat/board?limit=${encodeURIComponent(String(limit))}`,
+  );
+  return res.items;
 }
 
 export async function postLayerChatFeedback(

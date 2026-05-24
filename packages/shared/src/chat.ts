@@ -143,3 +143,59 @@ export const ChatMessageFeedbackSchema = z
   })
   .strict();
 export type ChatMessageFeedback = z.infer<typeof ChatMessageFeedbackSchema>;
+
+// ---------- list summary (phase 6.6) ---------------------------------
+//
+// The list endpoint (`GET /l/:slug/chat/conversations`) returns each
+// `ChatConversation` plus aggregated thumbs-up / thumbs-down counts
+// so the `RecentChatsWidget` (on the layer dashboard) can render a
+// ratio without N+1 fetches. Phase 6.5's `LayerChatPage.tsx` reads
+// only the base fields and ignores the new counts.
+
+export const ChatConversationSummarySchema = ChatConversationSchema.extend({
+  feedbackUpCount: z.number().int().min(0),
+  feedbackDownCount: z.number().int().min(0),
+}).strict();
+export type ChatConversationSummary = z.infer<typeof ChatConversationSummarySchema>;
+
+// ---------- board snapshot (phase 6.6) -------------------------------
+//
+// The Kanban board (`/l/:slug/chat/board`) fetches a "recent N
+// messages with their pipeline-state snapshot" view. The endpoint
+// returns assistant messages only — user messages have no pipeline
+// run and live on the column logic as their conversation's last
+// assistant turn. The client buckets each row into a column based
+// on the message `status` and (when running) the step kind currently
+// `running` (or last `running`).
+
+export const ChatBoardStepSnapshotSchema = z
+  .object({
+    kind: PipelineStepKindSchema,
+    status: PipelineStepStatusSchema,
+  })
+  .strict();
+export type ChatBoardStepSnapshot = z.infer<typeof ChatBoardStepSnapshotSchema>;
+
+export const ChatBoardRunSnapshotSchema = z
+  .object({
+    id: z.string().uuid(),
+    status: PipelineRunStatusSchema,
+  })
+  .strict();
+export type ChatBoardRunSnapshot = z.infer<typeof ChatBoardRunSnapshotSchema>;
+
+export const ChatBoardItemSchema = z
+  .object({
+    messageId: z.string().uuid(),
+    conversationId: z.string().uuid(),
+    conversationTitle: z.string(),
+    role: ChatMessageRoleSchema,
+    status: ChatMessageStatusSchema,
+    contentPreview: z.string(),
+    createdAt: z.string(),
+    finishedAt: z.string().nullable(),
+    run: ChatBoardRunSnapshotSchema.nullable(),
+    steps: z.array(ChatBoardStepSnapshotSchema),
+  })
+  .strict();
+export type ChatBoardItem = z.infer<typeof ChatBoardItemSchema>;

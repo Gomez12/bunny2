@@ -105,6 +105,20 @@ export function applyPipelineStepFrame(
   return next;
 }
 
+/**
+ * Localised label key for a pipeline-step pill / Kanban-column tag.
+ *
+ * The 6.5 inline copy mapped `pending → queued` so the i18n schema
+ * could stay flat (`chat.pipeline.steps.<kind>.{queued,running,succeeded,failed,skipped}`).
+ * 6.6 lifts the mapping here so the per-conversation page AND the
+ * Kanban board AND `RecentChatsWidget` all read from one helper. A
+ * regression in the i18n map now fails one shared test, not three.
+ */
+export function pipelineStepLabelKey(kind: PipelineStepKind, status: PipelineStepStatus): string {
+  const tail = status === 'pending' ? 'queued' : status;
+  return `chat.pipeline.steps.${kind}.${tail}`;
+}
+
 // ---------- error key mapping --------------------------------------------
 
 const SERVER_TO_CHAT_ERROR: Readonly<Record<string, string>> = {

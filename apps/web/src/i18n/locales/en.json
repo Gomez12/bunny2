@@ -178,6 +178,21 @@
       "layerNotVisible": "This layer is no longer visible to you.",
       "streamAborted": "The answer was interrupted before it finished.",
       "intentInvalid": "Your message could not be understood. Please rephrase it."
+    },
+    "board": {
+      "title": "Chat board",
+      "description": "Latest assistant messages and where they are in the pipeline. Cards refresh every few seconds while this tab is visible.",
+      "cardEmpty": "No messages in this column yet.",
+      "jumpToMessage": "Open this conversation",
+      "columns": {
+        "queued": "Queued",
+        "intent": "Intent",
+        "entities": "Entities",
+        "retrieval": "Retrieval",
+        "answering": "Answering",
+        "done": "Done",
+        "failed": "Failed"
+      }
     }
   },
   "admin": {
@@ -485,6 +500,13 @@
             "finishedAt": "Finished",
             "triggeredBy": "Triggered by"
           }
+        },
+        "recentChats": {
+          "title": "Recent chats",
+          "emptyDescription": "No conversations yet in this layer. Open the chat to start one.",
+          "loading": "Loading recent chats…",
+          "errorLoadFailed": "Could not load recent chats.",
+          "linkOpen": "Open chat"
         }
       }
     },

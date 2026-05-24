@@ -25,6 +25,8 @@ import {
   type ScheduledTaskHandler,
 } from '../scheduled';
 import { createChatEmbeddingsBackfillHandler, type Embedder, type LanceWriter } from './embeddings';
+import { chatRunsPruneHandler } from './runs-prune-handler';
+import { chatReviewLayerHandler } from './review-layer-handler';
 
 export interface RegisterChatScheduledTaskHandlersDeps {
   readonly embedder: Embedder;
@@ -48,6 +50,8 @@ export function registerChatScheduledTaskHandlers(
       embedder: deps.embedder,
       writer: deps.writer,
     }),
+    chatReviewLayerHandler,
+    chatRunsPruneHandler,
   ];
   for (const handler of handlers) {
     if (getScheduledTaskHandler(handler.kind) === null) {
@@ -59,3 +63,11 @@ export function registerChatScheduledTaskHandlers(
 export * from './embeddings';
 export * from './pipeline';
 export * from './events';
+export {
+  CHAT_RUNS_PRUNE_KIND,
+  pruneChatPipelineRuns,
+  chatRunsPruneHandler,
+  type ChatRunsPruneConfig,
+  type ChatRunsPruneResult,
+} from './runs-prune-handler';
+export { CHAT_REVIEW_LAYER_KIND, chatReviewLayerHandler } from './review-layer-handler';

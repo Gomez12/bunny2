@@ -109,6 +109,13 @@
             "finishedAt": "Klaar om",
             "triggeredBy": "Gestart door"
           }
+        },
+        "recentChats": {
+          "title": "Recente gesprekken",
+          "emptyDescription": "Nog geen gesprekken in deze laag. Open de chat om er een te starten.",
+          "loading": "Recente gesprekken laden…",
+          "errorLoadFailed": "Kon recente gesprekken niet laden.",
+          "linkOpen": "Chat openen"
         }
       }
     },
@@ -306,6 +313,21 @@
       "layerNotVisible": "Deze laag is niet meer zichtbaar voor jou.",
       "streamAborted": "Het antwoord werd onderbroken voordat het klaar was.",
       "intentInvalid": "Je bericht kon niet worden begrepen. Herformuleer het."
+    },
+    "board": {
+      "title": "Chatboard",
+      "description": "Recente assistent-berichten en waar ze in de pijplijn zijn. Kaarten vernieuwen elke paar seconden zolang dit tabblad zichtbaar is.",
+      "cardEmpty": "Nog geen berichten in deze kolom.",
+      "jumpToMessage": "Dit gesprek openen",
+      "columns": {
+        "queued": "In wachtrij",
+        "intent": "Intentie",
+        "entities": "Entiteiten",
+        "retrieval": "Ophalen",
+        "answering": "Antwoorden",
+        "done": "Klaar",
+        "failed": "Mislukt"
+      }
     }
   },
   "errors": {

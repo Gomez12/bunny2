@@ -24,6 +24,7 @@ import { AdminBusDlqPage } from './pages/admin/AdminBusDlqPage';
 import { ScheduledTasksListPage } from './pages/ScheduledTasksListPage';
 import { MyLayersPage } from './pages/MyLayersPage';
 import { LayerSettingsPage } from './pages/LayerSettingsPage';
+import { LayerChatBoardPage } from './pages/LayerChatBoardPage';
 import { LayerChatPage } from './pages/LayerChatPage';
 import { LayerDashboardPage } from './pages/LayerDashboardPage';
 import { CalendarEventDetailPage } from './pages/CalendarEventDetailPage';
@@ -245,6 +246,7 @@ function AppShell(): JSX.Element {
           <Route path="/l/:layerSlug/todos/:todoSlug" element={<TodoDetailPage />} />
           <Route path="/l/:layerSlug/scheduled-tasks" element={<ScheduledTasksListPage />} />
           <Route path="/l/:layerSlug/chat" element={<LayerChatPage />} />
+          <Route path="/l/:layerSlug/chat/board" element={<LayerChatBoardPage />} />
           <Route path="/l/:layerSlug" element={<LayerSlugIndexRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
