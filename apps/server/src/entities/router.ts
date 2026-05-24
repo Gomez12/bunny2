@@ -300,7 +300,37 @@ export function mountEntityRoutes<Payload>(
     } catch {
       return c.json(BAD_REQUEST, 400);
     }
-    const parsed = module.payloadSchema.safeParse(body.payload);
+    // Merge the incoming payload against the stored payload at the
+    // top-level-key layer (see follow-up
+    // `docs/dev/follow-ups/done/calendar-patch-payload-merge.md`).
+    //
+    //   merged = { ...existingPayload, ...incomingPayload }
+    //
+    // Keys absent from the request body preserve the stored value —
+    // critical for runner-owned fields (calendar's
+    // `meetingSummaryNote`) that the web UI never sends back on edit.
+    // Keys present in the body wholesale-replace the stored value at
+    // the TOP LEVEL — no deep merge, no per-array merge. A client that
+    // wants to clear a field sends it as `null` and the schema decides
+    // whether null is allowed (today: it isn't on any kind, so explicit
+    // clear is not yet supported by `optional()` schemas).
+    //
+    // The vCard ingest dispatcher calls `store.update` directly and is
+    // NOT affected by this merge — wholesale-replace stays the contract
+    // at the store level.
+    const incoming =
+      body.payload !== null && body.payload !== undefined && typeof body.payload === 'object'
+        ? (body.payload as Record<string, unknown>)
+        : undefined;
+    if (incoming === undefined) {
+      return c.json(ENTITY_VALIDATION, 400);
+    }
+    const existingPayload = existing.payload as unknown as Record<string, unknown>;
+    const merged: Record<string, unknown> = { ...existingPayload };
+    for (const key of Object.keys(incoming)) {
+      merged[key] = incoming[key];
+    }
+    const parsed = module.payloadSchema.safeParse(merged);
     if (!parsed.success) {
       return c.json(ENTITY_VALIDATION, 400);
     }

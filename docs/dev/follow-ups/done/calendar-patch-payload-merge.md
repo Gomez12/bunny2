@@ -72,4 +72,39 @@ incoming)` that takes the existing payload and replaces only the
 
 ## Status
 
-open
+done
+
+## Resolution (2026-05-24)
+
+Fixed in the router-level PATCH handler
+(`apps/server/src/entities/router.ts`). The handler now builds
+`merged = { ...existingPayload, ...incomingPayload }` at the
+top-level key layer using the existing entity already loaded for the
+not-found check, validates the merged result with
+`module.payloadSchema.safeParse(...)`, and passes `parsed.data` to
+`store.update`. Top-level wholesale-replace per key — no deep merge,
+no per-array merge. Keys absent from the body preserve the stored
+value; keys present in the body replace the stored value verbatim.
+
+The contract suite
+(`apps/server/tests/entity-contract/suite.ts`) gained a regression
+test "PATCH preserves payload keys not present in the request body"
+that mounts the real `mountEntityRoutes` against the per-kind fixture
+and asserts the merge invariant. Companies, contacts, calendar, and
+the fixture module all inherit the assertion through the existing
+`runEntityContractSuite(...)` wiring.
+
+The 4c.6 smoke step 14.8 flipped from `.toBeUndefined()` to
+`.not.toBeUndefined()` and now also asserts the preserved
+`meetingSummaryNote` equals the runner-written value captured before
+the PATCH.
+
+The vCard ingest dispatcher
+(`apps/server/src/entities/connector-dispatcher.ts`) keeps calling
+`store.update` directly — wholesale-replace stays the contract at the
+store layer; only the HTTP PATCH path merges.
+
+Schemas use `.optional()` (not `.nullable()`), so explicit `null` to
+clear an optional field is not yet supported on any kind. The
+"send null to clear" convention is the v1 escape hatch when a schema
+later accepts null; no `$delete` sentinel was introduced.

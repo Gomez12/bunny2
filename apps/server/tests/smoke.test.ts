@@ -1632,13 +1632,11 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     //       - re-tick is a no-op for the LLM ledger (idempotence sanity).
     //       - stats endpoint independently observable.
     //       - `meetingSummaryNote` preservation regression: PATCH
-    //         without the field. The current router PATCH wholesale-
-    //         replaces `payload` via `module.payloadSchema.safeParse`
-    //         (no merge with existing) so the runner-owned field IS
-    //         wiped. Filed as
-    //         `docs/dev/follow-ups/calendar-patch-payload-merge.md`.
-    //         The assertion below documents the bug; flip to
-    //         `.not.toBeUndefined()` when the follow-up lands.
+    //         without the field. The router PATCH merges the incoming
+    //         payload against the stored payload at the top-level-key
+    //         layer (see
+    //         `docs/dev/follow-ups/done/calendar-patch-payload-merge.md`)
+    //         so the runner-owned field survives a partial PATCH.
     //       - soft-delete: list omits, detail returns soft-deleted row.
     //       - cross-layer isolation.
     //       - leak canary: clientSecret / refreshToken plaintext never
@@ -2157,12 +2155,13 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       expect(calStatsBody.stats.recentlyEnriched).toBe(4);
 
       // 14.8 `meetingSummaryNote` preservation regression. The router
-      //      PATCH wholesale-replaces `payload` via
-      //      `module.payloadSchema.safeParse(body.payload)` (no merge),
-      //      so a PATCH without `meetingSummaryNote` wipes the field.
-      //      The follow-up `docs/dev/follow-ups/calendar-patch-payload-merge.md`
-      //      tracks the fix. The smoke documents the current (broken)
-      //      behaviour — flip the assertion when the follow-up lands.
+      //      PATCH merges the incoming payload against the stored
+      //      payload at the top-level-key layer (see
+      //      `docs/dev/follow-ups/done/calendar-patch-payload-merge.md`).
+      //      A PATCH that omits `meetingSummaryNote` MUST preserve the
+      //      runner-written value — the merge code path is exercised
+      //      end-to-end here.
+      const summaryBefore = kickoffAfterBody.entity.payload.meetingSummaryNote;
       const patchWithoutSummary = await app.fetch(
         new Request(`http://localhost/l/${personalSlug}/calendar_event/project-kickoff`, {
           method: 'PATCH',
@@ -2190,10 +2189,11 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       const patchedAgainBody = (await patchedAgain.json()) as {
         entity: { payload: CalendarEventPayload };
       };
-      // PRE-ASSERTS THE BUG: the field IS undefined here because the
-      // router did not merge. When the follow-up lands, this expect()
-      // becomes `.not.toBeUndefined()`.
-      expect(patchedAgainBody.entity.payload.meetingSummaryNote).toBeUndefined();
+      // The runner-owned field survives a PATCH that does not include
+      // it. Equal to the value the summary job wrote earlier — the
+      // merge preserves the exact string, it does not regenerate it.
+      expect(patchedAgainBody.entity.payload.meetingSummaryNote).not.toBeUndefined();
+      expect(patchedAgainBody.entity.payload.meetingSummaryNote).toBe(summaryBefore);
 
       // 14.9 DELETE — soft-delete the kickoff event. The list omits
       //      it; detail keeps returning the soft-deleted row.

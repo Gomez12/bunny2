@@ -15,8 +15,13 @@
  */
 import { describe, expect, it } from 'bun:test';
 import type { Database } from 'bun:sqlite';
+import { Hono } from 'hono';
 import type { MessageBus, BusEvent } from '@bunny2/bus';
+import type { User as SafeUser } from '@bunny2/shared';
 import type { EntityModule, EntityStore } from '../../src/entities';
+import { mountEntityRoutes } from '../../src/entities';
+import type { HonoVariables } from '../../src/http/types';
+import { createLayersRepo } from '../../src/repos/layers-repo';
 import {
   entityEventType,
   ENTITY_EVENT_TYPES,
@@ -274,6 +279,116 @@ export function runEntityContractSuite<Payload>(
       } finally {
         translator.dispose();
       }
+    });
+
+    // -----------------------------------------------------------------
+    // PATCH preserves keys not present in the request body.
+    //
+    // The router PATCH handler merges the incoming payload against the
+    // stored payload at the top-level-key layer (see
+    // `docs/dev/follow-ups/done/calendar-patch-payload-merge.md`).
+    // Keys absent from the body preserve the stored value; keys
+    // present in the body wholesale-replace at the top level (no deep
+    // merge, no per-array merge). This invariant is enforced in
+    // `mountEntityRoutes`, so every kind that mounts the generic
+    // router inherits it.
+    //
+    // The test mounts the real `mountEntityRoutes` on a minimal Hono
+    // app with a stub middleware that injects `user`, `effectiveLayers`,
+    // and `layer` — bypassing the auth chain that production routes
+    // depend on. This exercises the merge code path in the same router
+    // every per-kind sub-phase wires up at boot.
+    // -----------------------------------------------------------------
+    it('PATCH preserves payload keys not present in the request body', async () => {
+      const { layerAId } = fixture.createTwoLayers({
+        localesA: ['en'],
+        localesB: ['en'],
+        defaultLocaleA: 'en',
+      });
+      const userId = fixture.createUser('patch-merge');
+      const layer = createLayersRepo(fixture.db).getLayerById(layerAId);
+      if (layer === null) throw new Error('layer not found after createTwoLayers');
+
+      const initial = fixture.samplePayload('merge') as unknown as Record<string, unknown>;
+      const keys = Object.keys(initial);
+      if (keys.length < 2) {
+        throw new Error(
+          `samplePayload must declare ≥2 top-level keys to exercise the merge; got: ${keys.join(',')}`,
+        );
+      }
+      // Pick the patched key as the one the per-kind mutator targets
+      // (so we know the mutated value is schema-valid). Pick the
+      // preserved key as a different key with a non-undefined initial
+      // value.
+      const mutated = fixture.mutatePayload(
+        fixture.samplePayload('merge'),
+        'patched',
+      ) as unknown as Record<string, unknown>;
+      let patchKey: string | undefined;
+      for (const k of Object.keys(mutated)) {
+        if (mutated[k] !== initial[k] && mutated[k] !== undefined) {
+          patchKey = k;
+          break;
+        }
+      }
+      if (patchKey === undefined) {
+        throw new Error('mutatePayload did not change any top-level key — required by merge test');
+      }
+      let preservedKey: string | undefined;
+      for (const k of keys) {
+        if (k !== patchKey && initial[k] !== undefined) {
+          preservedKey = k;
+          break;
+        }
+      }
+      if (preservedKey === undefined) {
+        throw new Error('samplePayload must define ≥2 non-undefined top-level keys');
+      }
+
+      const created = await fixture.store.create({
+        layerId: layerAId,
+        slug: 'merge-target',
+        title: 'Merge target',
+        originalLocale: 'en',
+        payload: fixture.samplePayload('merge'),
+        actorId: userId,
+      });
+
+      // Mount the real router behind a stub middleware that injects
+      // the auth context fields `mountEntityRoutes` reads.
+      const app = new Hono<{ Variables: HonoVariables }>();
+      app.use('*', async (c, next) => {
+        c.set('user', { id: userId } as unknown as SafeUser);
+        c.set('effectiveLayers', [layer]);
+        await next();
+      });
+      mountEntityRoutes(app, {
+        module: fixture.module,
+        store: fixture.store,
+        bus: fixture.bus,
+        db: fixture.db,
+      });
+
+      const patchedValue = mutated[patchKey];
+      const patchRes = await app.fetch(
+        new Request(`http://localhost/l/${layer.slug}/${fixture.module.kind}/${created.slug}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ payload: { [patchKey]: patchedValue } }),
+        }),
+      );
+      expect(patchRes.status).toBe(200);
+
+      const refreshed = fixture.store.getById(created.id);
+      expect(refreshed).not.toBeNull();
+      const refreshedPayload = refreshed?.payload as unknown as Record<string, unknown>;
+      // The patched key carries the new value.
+      expect(refreshedPayload[patchKey]).toEqual(patchedValue);
+      // The omitted key preserved its original value — this is the
+      // regression assertion. Pre-merge, the wholesale-replace
+      // semantics would have left `refreshedPayload[preservedKey]`
+      // undefined here.
+      expect(refreshedPayload[preservedKey]).toEqual(initial[preservedKey]);
     });
   });
 }

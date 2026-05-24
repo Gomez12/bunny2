@@ -3149,19 +3149,75 @@ sub-phases land additively:
 
 Three new follow-ups added by 4c.6 itself:
 
-- `docs/dev/follow-ups/calendar-patch-payload-merge.md` — PATCH
-  wholesale-replaces `payload`, wiping runner-owned fields.
+- `docs/dev/follow-ups/done/calendar-patch-payload-merge.md` —
+  PATCH wholesale-replaces `payload`, wiping runner-owned fields.
+  Fixed in the post-4c entry below.
 - `docs/dev/follow-ups/ingest-externalid-dedup.md` — dispatcher
   does not write `entity_external_links` on create-from-ingest.
 - `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md` —
   multi-job tick clobbered earlier writes via stale in-memory
   entity reference. Fixed in the post-4c entry above.
 
+### Post-4c fix: router PATCH top-level-key merge (2026-05-24)
+
+Bug #1 of the 4c.6 close-out — PATCH wholesale-replacing the payload
+and wiping runner-owned fields (`meetingSummaryNote`) the client did
+not send back — landed as a standalone fix on top of the 4c block.
+
+**What changed**
+
+- `apps/server/src/entities/router.ts` — the generic PATCH handler
+  now merges the incoming payload against the stored payload at the
+  top-level key layer. Existing entity is already loaded for the
+  not-found check; the handler builds
+  `merged = { ...existingPayload, ...incomingPayload }`, validates
+  the merged result with `module.payloadSchema.safeParse(...)`, and
+  passes `parsed.data` to `store.update`. Top-level wholesale-replace
+  per key — no deep merge, no per-array merge. Keys absent from the
+  body preserve the stored value; keys present in the body replace
+  the stored value verbatim (so PATCH `attendees: [...]` still
+  replaces the array, matching the 4c.5 detail page editor's behaviour).
+- `apps/server/tests/entity-contract/suite.ts` — added the regression
+  test "PATCH preserves payload keys not present in the request
+  body". The test mounts the real `mountEntityRoutes` against the
+  per-kind fixture behind a stub middleware that sets `user`,
+  `effectiveLayers`, and `layer`, then PATCHes with a single
+  top-level key and asserts the other keys keep their original
+  values. Companies, contacts, calendar, and the fixture module all
+  inherit the assertion through the existing
+  `runEntityContractSuite(...)` wiring — zero per-kind file
+  modification required.
+- `apps/server/tests/smoke.test.ts` step 14.8 — flipped from
+  `.toBeUndefined()` to `.not.toBeUndefined()` and now also asserts
+  the preserved `meetingSummaryNote` equals the runner-written value
+  captured before the PATCH.
+- `docs/dev/follow-ups/calendar-patch-payload-merge.md` →
+  `docs/dev/follow-ups/done/`, status `done`, with a Resolution
+  section.
+
+**Scope choices**
+
+- `store.update` keeps its wholesale-replace contract — the vCard
+  ingest dispatcher (`connector-dispatcher.ts`) calls it directly
+  with the full payload from the parsed file, and that path is
+  unaffected by the router-level merge.
+- No `$delete` sentinel introduced. The "send `null` to clear" path
+  is the v1 escape hatch; current `.optional()` schemas reject null,
+  so explicit clear is not yet supported on any kind — fine for the
+  4c block, which has no clear-via-PATCH UI.
+- No new ADR. Top-level-key merge is the obvious default; deep merge
+  and sentinel-clear were explicitly rejected in the follow-up.
+
+**No regressions** — every contract suite + per-kind test + the
+existing smoke flow stays green. The contract suite needed only the
+new test case; existing assertions all send full payloads, so they
+exercise the same merge result.
+
 **Next**
 
 The 4d block (Todos + Calendar bridge) opens on this foundation.
-The smoke template carries through one more time; the
-calendar-patch-payload-merge follow-up should land alongside the
-4d.5 todo detail page so the merge semantics ship cleanly together.
-The six foundation extensions are stable; 4c.6 ran the existing
-contract end-to-end without earning a seventh slot.
+The smoke template carries through one more time. The six foundation
+extensions are stable; 4c.6 ran the existing contract end-to-end
+without earning a seventh slot, and the post-4c router fix above is
+contained inside the existing router behaviour — no new contract
+slot, no new foundation tweak.

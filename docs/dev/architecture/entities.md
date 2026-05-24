@@ -188,6 +188,32 @@ surface (ADR `0010`).
 Per-kind sub-phases (4a.1, 4b.1, ...) call
 `mountEntityRoutes(app, { module, store, bus, db })` once at boot.
 
+**PATCH merges payload top-level keys against the stored payload.**
+The handler loads the existing entity (already required for the
+not-found check), builds
+`merged = { ...existingPayload, ...incomingPayload }`, validates the
+merged result with `module.payloadSchema.safeParse(...)`, and passes
+`parsed.data` to `store.update`. Top-level wholesale-replace per key
+— no deep merge, no per-array merge. Keys absent from the body
+preserve the stored value (critical for runner-owned fields such as
+the calendar `meetingSummaryNote`); keys present in the body replace
+the stored value verbatim (so PATCH `attendees: [...]` still replaces
+the array, matching the calendar detail editor's behaviour). Example:
+
+```
+stored:    { startsAt: '...', attendees: [A, B], meetingSummaryNote: 'AI text' }
+PATCH:     { payload: { location: 'Room A' } }
+merged:    { startsAt: '...', attendees: [A, B], meetingSummaryNote: 'AI text',
+             location: 'Room A' }
+```
+
+The merge happens in the router, not in the store. `store.update`
+keeps its wholesale-replace contract — the vCard ingest dispatcher
+calls it directly with the full payload from the parsed file. Schemas
+use `.optional()` (not `.nullable()`), so explicit `null` to clear an
+optional field is not yet supported on any kind; a future "send null
+to clear" path can be opted into per-schema without a router change.
+
 ---
 
 ## 5. Events — `entity.*` taxonomy
