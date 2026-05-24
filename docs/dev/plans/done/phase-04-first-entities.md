@@ -1142,7 +1142,7 @@ typecheck`, `bun test`, `bun run docs:check`, `bun run i18n:check`.
 
 **Docs**
 
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out.
 - `docs/dev/architecture/entities.md` §10a — paragraph documenting
   the client-side singular ↔ plural URL mapping that lives in
   `apps/web/src/lib/companies-routes.ts`.
@@ -1297,7 +1297,7 @@ fields.endpoint, fields.pollIntervalMinutes}` — admin-UI
 
 **Docs**
 
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out
   and the 4a-block recap section below.
 - `docs/dev/tasklist.md` 4a.6 row → `done`. 4a parent row → `done`.
 
@@ -1676,7 +1676,7 @@ appliedCompany, noMatch}` in en + nl (real Dutch translations).
   / LLM-fallback pattern (4b.3 onward)" subsection documenting the
   three-step pattern, the per-path LLM-called table, the cross-layer
   isolation property, and the secret-strip discipline.
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out.
 - `docs/dev/tasklist.md` 4b.3 row → `done`.
 
 **No new ADR** — 4b.3 consumes the foundation cleanly with zero
@@ -1767,7 +1767,7 @@ statMissingEmail, statRecentlyEnriched}` in BOTH `en.json` and
 - `docs/dev/architecture/entities.md` §10d "Stats provider (4a.4)"
   now records contacts as the second consumer and explicitly notes
   the zero-tweak adoption.
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out.
 - `docs/dev/tasklist.md` 4b.4 row → `done`.
 
 **No new ADR** — 4b.4 consumes the foundation cleanly with zero
@@ -1891,7 +1891,7 @@ Soft-delete confirmation reuses `ConfirmDialog`'s native
 
 **Docs**
 
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out.
 - `docs/dev/tasklist.md` 4b.5 row → `done`.
 
 **No new ADR** — pure UI work; the entity contract (ADR 0011) is
@@ -2080,7 +2080,7 @@ appliedCompany, noMatch}` — surface labels for a future enrichment
 
 **Docs**
 
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out
   and the 4b-block recap section below.
 - `docs/dev/tasklist.md` 4b.6 row → `done`.
 
@@ -2663,7 +2663,7 @@ unknown>`) keeps the per-kind shape opaque to the router and the
   noting calendar as the third `statsProvider` consumer and
   documenting the `json_each` / `json_extract` path the linked
   counter uses.
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this
   close-out.
 - `docs/dev/tasklist.md` 4c.4 row → `done`.
 
@@ -2829,7 +2829,7 @@ The DOM-driven render coverage stays parked behind
 
 **Docs**
 
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out.
 - `docs/dev/tasklist.md` 4c.5 row → `done`.
 - `docs/dev/follow-ups/calendar-list-range-filter.md` — new.
 - `docs/dev/follow-ups/calendar-timezone-v1.md` — new.
@@ -3062,7 +3062,7 @@ subtitle / updatedAt` triple Companies / Contacts use today.
 
 **Docs**
 
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out
   and the 4c-block recap section below.
 - `docs/dev/tasklist.md` 4c.6 row → `done`.
 
@@ -3680,7 +3680,7 @@ applied, noMatch}`) are the minimum surface the UI needs;
   noting todos as the fourth `statsProvider` consumer and
   documenting the open-ish status gate + the date-extraction path
   the `dueToday` counter uses.
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this
   close-out.
 - `docs/dev/tasklist.md` 4d.4 row → `done`.
 
@@ -3869,7 +3869,7 @@ without a breaking schema change.
 
 **Docs**
 
-- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — this close-out
   (no-DnD decision, `completedAt` client-side normalization
   decision).
 - `docs/dev/tasklist.md` 4d.5 row → `done`.
@@ -4049,3 +4049,301 @@ same todo produce exactly two `entity.todo.*` events on the bus.
 - A future "due this week" widget can re-use the same projection
   table without a second `due_at` denormalization. The
   `idx_calendar_projection_todos_due_at` index is already in place.
+
+### 4d.7 shipped (2026-05-24)
+
+**What landed**
+
+- `apps/server/tests/smoke.test.ts` step 15 — canonical Todos
+  vertical, mirroring the steps 12 / 13 / 14 structure for the fourth
+  (and final) phase-4 entity kind. The step drives the complete
+  contract end-to-end against the real bus + real DB + real HTTP
+  layer:
+  - Create / patch / detail (CRUD via the generic router): version
+    bumps on PATCH, `originalLocale` is set, `meta.deletedAt` is
+    `null` until the soft-delete step.
+  - Cross-kind link via PATCH (`payload.linkedEntityRef = { kind:
+'contact', entityId }`) — the validator inline-middleware
+    (`mountTodoRoutes` from the 4d.1 close-out) confirms the target
+    exists in the same layer, and the §4.0 `indexedColumns`
+    projection writes `linked_entity_id` / `linked_entity_kind` to
+    the per-kind table.
+  - Cross-kind link rejection — PATCH with a random UUID returns
+    `400 errors.entity.todos.linkedEntityNotFound` (no row mutation).
+  - AI auto-priority via the deterministic keyword scan — "URGENT"
+    hits `PRIORITY_1_WORDS` and the runner applies `priority: 1`
+    without ever invoking the LLM fallback. The smoke asserts
+    `entity.enrichment.succeeded` fired with `jobId:
+'todos.autoPriority'` + `hasPatch: true` AND that the
+    fake-LLM ledger carries NO `enrichment:todos.autoPriority`
+    flowId in the same window.
+  - AI auto-due via the deterministic Dutch "morgen" phrase — the
+    runner applies `dueAt = tomorrow (YYYY-MM-DD)` via
+    `parseDueAtFromTitle`. No LLM call carries the
+    `enrichment:todos.autoDue` flowId — the job has NO LLM
+    fallback by design (see ADR 0013 Update (4d.3)).
+  - Todo → calendar projection bridge — after the auto-due tick,
+    the bridge subscriber (started inside step 15b) has materialised
+    a row in `calendar_projection_todos`. The
+    `GET /l/:slug/calendar/_projections/todos` endpoint returns the
+    row with the expected `dueAt`, `priority`, `status`, and
+    `todoSlug`.
+  - Projection clears on soft-delete — `DELETE /l/:slug/todo/:slug`
+    publishes `entity.todo.deleted`; the bridge re-reads the
+    soft-deleted row and removes the projection. The
+    `GET /l/:slug/calendar/_projections/todos` response no longer
+    includes the deleted todo.
+  - Stats — `GET /l/:slug/todo/_stats` returns
+    `{ totalOpen: 3, dueToday: 0, overdue: 0, highPriorityOpen: 3 }`
+    against the three open todos created in this step (the two
+    explicitly-set ones plus the autoPriority-rewritten "morgen"
+    todo before its soft-delete).
+  - Cross-layer isolation — the `contact-isolation` project layer
+    seeded in step 13 reports `entities: []` and `items: []` on the
+    todo list and projection endpoints, and zero counters on
+    `/todo/_stats`.
+  - Secret-strip canary — no apiKey- or refreshToken-shaped string
+    appears in any captured `entity.enrichment.succeeded` payload or
+    in any captured fake-LLM prompt.
+- The smoke captures the bridge subscriber for the lifetime of step
+  15 only. `start()` + `rebuild()` mirror the production boot path;
+  `stop()` in the finally block removes the subscriber before later
+  test files (none today, but the contract is forward-stable).
+
+**The HTTP PATCH-clear branch is deliberately NOT tested.** The
+`dueAt` field is declared `.optional()` on `TodoPayloadSchema` (NOT
+`.nullable()`), so a PATCH body carrying `dueAt: null` fails zod
+parse with `400 errors.entity.validation` at the router boundary.
+The soft-delete path is the only HTTP-driven way to remove a
+projection row today. The bridge supports both transitions
+(soft-delete + dueAt cleared) — the `bel-terug-morgen` projection
+clears the same way regardless of which transition the bridge sees,
+because the subscriber re-reads the row and writes the upsert /
+delete decision from the current state. A future `.nullable()`
+extension on the schema would let the HTTP PATCH path drive the
+same branch; the bridge needs no change. Documented in the smoke
+inline comment + the step 15.10 assertion path.
+
+**Foundation tweaks**
+
+- **ZERO.** Pure test + i18n + docs work. The §4.0 entity contract,
+  the per-kind module, every extension slot, and the projection
+  bridge are all untouched. Smoke is the seventh consecutive
+  zero-foundation-tweak commit in the phase-4 block (4d.1–4d.7).
+
+**Tests**
+
+- One smoke step added; the test count rises from 741 → 741 (smoke
+  stays one `it(...)`, with 253 `expect()` calls against 222
+  before). All prior tests stay green.
+
+**i18n audit**
+
+- Every key under `entity.todos.*`, `errors.entity.todos.*`,
+  `entity.enrichment.todos.*`, `layer.dashboard.widgets.todos.*`,
+  and `entity.calendar.todoProjection*` exists in BOTH `en.json` and
+  `nl.json` with real Dutch translations. The only `en === nl`
+  values are `fieldStatus = "Status"`,
+  `fieldLinkedKindContact = "Contact"`, and
+  `fieldLinkedEntityContact = "Contact"` — all legitimate same-token
+  values. No unused keys; spot-checks against `apps/web/src` confirm
+  every key is referenced from a `t('…')` call or a route helper.
+- `bun run i18n:check` ends green (warnings come from unrelated
+  legacy `status.*` / `chat.*` namespaces that pre-date phase 4 and
+  are out of scope for this commit, per the brief).
+
+**Docs**
+
+- `docs/dev/plans/done/phase-04-first-entities.md` — this close-out,
+  the "4d block: shipped" recap below, and the "Phase 4 — entire
+  phase: shipped" recap.
+- Plan moved to `docs/dev/plans/done/phase-04-first-entities.md`
+  per `AGENTS.md §Plans` ("Move a plan to `docs/dev/plans/done/`
+  when the related task is `done`"). Every reference in
+  `docs/dev/tasklist.md`, `docs/dev/plans/overall.md`, and the
+  phase-4 close-out body updated.
+- `docs/dev/tasklist.md` 4d.7 row → `done`. The plan-level row
+  (which references this document as the parent plan) is now
+  effectively redundant — every phase-4 sub-phase is `done`. Older
+  done rows archived to `docs/dev/tasklistarchive.md` to keep the
+  active file at ≤ 50 done rows per `AGENTS.md`.
+- `docs/dev/plans/overall.md` §8 Phase 4 gained a status block
+  citing the close-out section, the architecture doc
+  (`docs/dev/architecture/entities.md`), and ADRs 0011..0017.
+
+**No new ADR.** Smoke + i18n + close-out is the cleanest possible
+adoption of the four-entity contract — nothing earns an ADR.
+
+### 4d — Todos block: shipped (2026-05-24)
+
+The fourth and final entity block of phase 4 closes with seven
+sub-phases, all `done`, all zero-foundation-tweak. Recap:
+
+| Sub-phase | Shipped                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 4d.1      | Schema + module — fourth clean adoption of the §4.0 contract; polymorphic cross-kind link (`linkedEntityRef`) with an inline Hono middleware validator (Option 2 / per-kind code) rather than a foundation slot.                                                                                                                                                                                       |
+| 4d.2      | Connector placeholder — `buildProductionTodoModule()` returns a module whose `connectors` field is `undefined`. No external system in v1; the registry slot exists so a future "Trello import" connector lands additively without contract drift.                                                                                                                                                      |
+| 4d.3      | AI enrichment — `todos.autoPriority` (deterministic keyword/tag/proximity + LLM fallback) + `todos.autoDue` (deterministic phrase scan, NO LLM fallback). Module declares `enrichmentOverwriteFields: ['priority']` because zod's `.default(3)` makes the field always look "set" to the runner's "do not overwrite non-empty" policy. Empirical landing of the slot pre-promised by 4a.3's close-out. |
+| 4d.4      | Dashboard widget — fourth clean adoption of `statsProvider`. Pure SQL counters (`totalOpen`, `dueToday`, `overdue`, `highPriorityOpen`) over indexed columns.                                                                                                                                                                                                                                          |
+| 4d.5      | Web UI — list + simple per-status kanban (NO drag-and-drop in v1; the full Kanban entity comes later in `overall.md` §8 "Later"). Detail page with linked-entity picker + tag editor. N+1 hydration follow-up (`summaryColumns` on the §4.0 router) is parked alongside the 4a.5 / 4b.5 / 4c.5 ones.                                                                                                   |
+| 4d.6      | Todo → calendar projection bridge — derived-index table `calendar_projection_todos`, separate read endpoint `GET /l/:slug/calendar/_projections/todos`, ADR 0017. No second source of truth.                                                                                                                                                                                                           |
+| 4d.7      | Smoke + i18n + close-out — this commit.                                                                                                                                                                                                                                                                                                                                                                |
+
+**ADRs landed in 4d**
+
+- `0017-todo-calendar-projection.md` (4d.6) — accepted. Covers the
+  three smaller projection-via-subscriber decisions: stored
+  projection vs. event-only stream vs. query-time join; separate
+  read endpoint vs. discriminator on the existing event list;
+  `rebuild()` on boot as the recovery contract.
+
+**4d follow-ups (still open after 4d.7)**
+
+- N+1 hydration on the todos list view (the §4.0 router's
+  `EntitySummary` shape omits `status` / `priority` / `dueAt`, so
+  the web client hydrates each summary with a per-row GET). The
+  unifying fix is a `summaryColumns` extension on the §4.0 router
+  shared across companies / contacts / calendar / todos. Out of
+  scope for phase 4; tracked as part of the 4a.5 list-columns
+  follow-up (`docs/dev/follow-ups/companies-list-columns.md`).
+- `docs/dev/follow-ups/ingest-externalid-dedup.md` (4c bug #2) —
+  still open. The dispatcher does NOT yet write
+  `entity_external_links` rows on create-from-ingest; the smoke
+  step 14 documents the gap by inserting links between calls.
+
+### Phase 4 — entire phase: shipped (2026-05-24)
+
+The phase-4 block ships four user-facing entities — **companies,
+contacts, calendar events, todos** — on top of a single universal
+Entity contract introduced in §4.0. After phase 4 a developer can:
+
+1. Log in, open `/l/<slug>/companies`, paste a KvK number, watch
+   the scheduled KvK connector + summary enrichment fill in legal
+   name, address, and description.
+2. Open `/l/<slug>/contacts`, drop a vCard file, see contacts
+   appear with company links resolved by the deterministic-first
+   suggest-company enrichment job.
+3. Open `/l/<slug>/calendar`, OAuth into Google Calendar (or seed a
+   pre-encrypted refresh token), pull events on the configured
+   interval, watch the meeting-summary enrichment job write a
+   `meetingSummaryNote` and the attendee-contacts job link each
+   attendee email to its `contact` entity.
+4. Open `/l/<slug>/todos`, create "Bel terug morgen", watch the
+   auto-due enrichment job stamp `dueAt = tomorrow`, then open
+   `/l/<slug>/calendar` and see the todo show up as a read-only
+   projection on tomorrow's date.
+
+**The §4.0 foundation grew six designed-once extension slots through
+real consumer demand.** Each extension was triggered by a real next-
+consumer gap, not by speculative future-proofing:
+
+1. **`indexedColumns`** — landed in 4a.1 (Companies), validated by
+   4b.1 (Contacts), 4c.1 (Calendar), 4d.1 (Todos). The §4.0 store
+   appends declared columns + placeholders to its INSERT / UPDATE
+   SQL once per factory call; the per-kind module's `extract`
+   callback projects payload values into `string | number | null`.
+2. **`getConnector` + connector dispatcher + connector interval
+   runner + `LayerAttachmentKindSchema 'connector'`** — landed in
+   4a.2 (KvK). The dispatcher subscribes to
+   `entity.connector.sync.requested` and resolves connectors via
+   `getConnector(kind, id)`; the runner polls per-link
+   `pollIntervalMinutes`. The slot's seam later absorbed the
+   Google Calendar connector (4c.2) without contract drift.
+3. **`enrichmentJobs`** — landed in 4a.3 (Companies summary +
+   fillFields), validated by 4b.3 (Contacts suggest-company), 4c.3
+   (Calendar meeting summary + attendee contacts), 4d.3 (Todos
+   auto-priority + auto-due). The generic
+   `apps/server/src/entities/enrichment-runner.ts` debounces +
+   coalesces + rate-limits per layer.
+4. **`statsProvider`** — landed in 4a.4 (Companies), validated by
+   4b.4 (Contacts), 4c.4 (Calendar), 4d.4 (Todos). The generic
+   router mounts `GET /l/:slug/<kind>/_stats` once when the slot is
+   set; `404 errors.entity.statsUnavailable` when omitted.
+5. **`EntityConnector.ingest`** — landed in 4b.2 (vCard). The
+   connector base gained a non-pull push path so file imports can
+   take their own dispatch route. The slot's seam later absorbed
+   Google Calendar's events.list ingest path (4c.2).
+6. **`enrichmentOverwriteFields`** — pre-promised by 4a.3
+   close-out as the policy refactor "when the second exception
+   appears". Landed in 4c.3 (Calendar `meetingSummaryNote` +
+   `attendees` exceptions) and validated again in 4d.3 (Todos
+   `priority` exception, necessary because zod's `.default(3)`
+   makes `priority` look "set" to the runner).
+
+**Empirical validation of the universal-contract design.** The
+contract took four consumers with controlled, named foundation
+evolutions only. Each evolution was driven by a real next-consumer
+gap — none was speculative. The contract did NOT grow per-kind
+escape hatches, per-kind router branches, or per-kind store
+specialisations.
+
+**ADRs landed in phase 4 (seven total)**
+
+| ADR  | Title                                      | Sub-phase |
+| ---- | ------------------------------------------ | --------- |
+| 0011 | Entity contract                            | §4.0      |
+| 0012 | KvK connector                              | §4a.2     |
+| 0013 | Entity enrichment                          | §4a.3     |
+| 0014 | Connector ingest (vCard / Google Calendar) | §4b.2     |
+| 0015 | Secret encryption                          | §4c.2     |
+| 0016 | Google Calendar connector                  | §4c.2     |
+| 0017 | Todo → calendar projection                 | §4d.6     |
+
+**Two post-block bug fixes** landed inline between 4c.6 and 4d.1
+(not as their own block — `AGENTS.md §Git` "one commit = one focused
+change"):
+
+- `55a4752 fix(enrichment): refresh entity between jobs in one tick
+(4c bug #3)` — the runner now reloads the entity row from the
+  store between jobs in the same tick so the calendar
+  attendee-contacts job's write is visible to the subsequent summary
+  job. Follow-up archived as
+  `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md`.
+- `93753ed fix(entities): router PATCH merges payload top-level keys
+(4c bug #1)` — PATCH now merges `{...stored, ...incoming}` at the
+  top-level-key layer so runner-owned fields (calendar
+  `meetingSummaryNote`, todos `dueAt`, future runner-owned fields
+  on other kinds) survive a partial PATCH. Follow-up archived as
+  `docs/dev/follow-ups/done/calendar-patch-payload-merge.md`.
+
+**Smoke coverage** — four canonical entity flows plus one
+cross-entity bridge step. Steps 12 (Companies), 13 (Contacts), 14
+(Calendar), 15 (Todos + projection). 253 `expect()` calls in a
+single `it(...)`. The pattern is forward-stable for the §6 "Later"
+entities: each future entity drops in as a `step N+1` mirroring the
+shape established by 12 → 13 → 14 → 15.
+
+**Total commits ahead of `origin/main` after 4d.7**
+
+```
+git log --oneline origin/main..HEAD | wc -l
+30
+```
+
+The 30-commit chain decomposes as:
+1 (phase-4 plan doc, `66e6f71`) +
+1 (§4.0, `518493d`) +
+6 (4a.1..4a.6) +
+6 (4b.1..4b.6) +
+6 (4c.1..4c.6) +
+2 (post-block bug fixes `55a4752` + `93753ed`) +
+7 (4d.1..4d.7) = 29 phase-4 commits +
+1 (plan doc) = **30 commits**.
+
+**Follow-ups still open** (tracked in `docs/dev/follow-ups/`)
+
+| File                            | Owner area                | Note                                                                                                                                          |
+| ------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `companies-list-columns.md`     | 4a.5 → §4.0               | Unifying `summaryColumns` extension on the §4.0 router; absorbs the N+1 hydration trade-off on companies / contacts / calendar / todos lists. |
+| `web-component-tests.md`        | Phase 1.5                 | Component-test surface for the new entity pages.                                                                                              |
+| `google-calendar-oauth-ui.md`   | 4c.2                      | A guided OAuth flow in the web layer attachments page.                                                                                        |
+| `ingest-delete-semantics.md`    | 4b.2 / 4c.2               | `ingest.completed` does not yet model deletes; cancelled-event downgrade is currently logged as a warning.                                    |
+| `enrichment-i18n-drift.md`      | 4a.3 / 4b.3 / 4c.3 / 4d.3 | Locale-blind prompts for the enrichment summary jobs; a follow-up consults `entity.originalLocale`.                                           |
+| `calendar-list-range-filter.md` | 4c.5                      | `?start=…&end=…` range filter on the calendar list endpoint.                                                                                  |
+| `calendar-timezone-v1.md`       | 4c.4 / 4d.4               | Phase-4 ships UTC-only `date(due_at)` and `date(starts_at)` comparators; a timezone-aware variant is a phase-5 follow-up.                     |
+| `react-big-calendar-a11y.md`    | 4c.5                      | Keyboard / screen-reader audit results for `react-big-calendar`.                                                                              |
+| `ingest-externalid-dedup.md`    | 4c.2 (bug #2)             | The dispatcher does NOT yet write `entity_external_links` on create-from-ingest; smoke step 14 inserts links between calls.                   |
+
+None of these are blockers for the 4d PR. The phase-4 close-out PR
+ships a green CI matrix on macOS + Linux (Windows stays
+`continue-on-error: true` per `docs/dev/follow-ups/windows-bun-sqlite-ebusy.md`).

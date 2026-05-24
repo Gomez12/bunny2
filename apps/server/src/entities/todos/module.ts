@@ -52,7 +52,7 @@ const SUBTITLE_MAX_LENGTH = 120;
  * Phase 4d.2 — extended with an OPTIONAL `connectors?` slot. The slot
  * is empty in v1 production wiring (no Trello / Linear / Asana /
  * Google Tasks connector ships in this release; see
- * `docs/dev/plans/phase-04-first-entities.md` §14 — 4d.2 close-out).
+ * `docs/dev/plans/done/phase-04-first-entities.md` §14 — 4d.2 close-out).
  * The shape exists so a future connector — e.g. a `trelloConnector`
  * — can be threaded through `buildProductionTodoModule()` without
  * touching this file. 4d.3 (enrichment) will extend the same options

@@ -11,7 +11,7 @@ import { z } from 'zod';
  * the per-kind table (`0010_todos.sql`) + module
  * (`apps/server/src/entities/todos/module.ts`).
  *
- * v1 stance (per `docs/dev/plans/phase-04-first-entities.md` §2): a
+ * v1 stance (per `docs/dev/plans/done/phase-04-first-entities.md` §2): a
  * todo is a single, simple item. NO recurrence, NO checklist children,
  * NO sub-tasks. The 4d.6 calendar projection turns a todo with a
  * `dueAt` into a read-only calendar entry — there is no shared FK
@@ -117,7 +117,7 @@ export type TodoLinkedEntityRef = z.infer<typeof TodoLinkedEntityRefSchema>;
  * 4d.5 web UI (which writes it explicitly when the user marks a todo
  * done) is the simpler choice that needs zero foundation tweaks. See
  * the 4d.1 close-out in
- * `docs/dev/plans/phase-04-first-entities.md` §14.
+ * `docs/dev/plans/done/phase-04-first-entities.md` §14.
  *
  * `tags` is a small bounded list (max 16) of lowercase short
  * strings — useful for `#urgent` style filters in 4d.5. Duplicate
@@ -198,7 +198,7 @@ export type CreateTodoRequest = z.infer<typeof CreateTodoRequestSchema>;
  * because the §4.0 router validates the full payload shape on every
  * PATCH (and merges top-level keys against the stored payload — see
  * the post-4c router fix in
- * `docs/dev/plans/phase-04-first-entities.md` §14).
+ * `docs/dev/plans/done/phase-04-first-entities.md` §14).
  */
 export const UpdateTodoRequestSchema = z.object({
   title: z.string().min(1).max(320).optional(),

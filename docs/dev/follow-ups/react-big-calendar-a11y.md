@@ -66,4 +66,4 @@ follow-up rather than fixing in 4c.5.
 ## Related files / docs
 
 - `apps/web/src/pages/CalendarPage.tsx`
-- `docs/dev/plans/phase-04-first-entities.md` §4c.5 close-out + §12
+- `docs/dev/plans/done/phase-04-first-entities.md` §4c.5 close-out + §12

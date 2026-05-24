@@ -271,6 +271,31 @@ Phase-4 entity order (rest deferred to "later"):
 Cross-entity sync — e.g. todo-with-due-date showing on calendar —
 is delivered as part of 4c / 4d.
 
+- **Status (as of 2026-05-24):** §4.0 plus all 4a._, 4b._, 4c._,
+  and 4d._ sub-phases are `done`. The plan is archived at
+  [`done/phase-04-first-entities.md`](./done/phase-04-first-entities.md);
+  see its §14 close-outs (`4d.7 shipped`, `4d — Todos block:
+shipped`, and `Phase 4 — entire phase: shipped`) for the per-DoD
+  walkthrough, the six designed-once foundation extension slots,
+  the two post-block bug fixes, and the nine remaining open
+  follow-ups. ADRs
+  [`0011`](../decisions/0011-entity-contract.md) (entity contract),
+  [`0012`](../decisions/0012-kvk-connector.md) (KvK),
+  [`0013`](../decisions/0013-entity-enrichment.md) (entity
+  enrichment),
+  [`0014`](../decisions/0014-connector-ingest.md) (connector
+  ingest),
+  [`0015`](../decisions/0015-secret-encryption.md) (secret
+  encryption),
+  [`0016`](../decisions/0016-google-calendar-connector.md) (Google
+  Calendar connector), and
+  [`0017`](../decisions/0017-todo-calendar-projection.md) (todo →
+  calendar projection) are accepted; the developer-side narrative
+  lives in [`architecture/entities.md`](../architecture/entities.md).
+  Smoke now covers four canonical entity flows + one cross-entity
+  bridge step (`apps/server/tests/smoke.test.ts` steps 12 / 13 /
+  14 / 15).
+
 ### Phase 5 — General scheduled tasks
 
 - Generic scheduler UI + storage.

@@ -831,7 +831,7 @@ dispatcher + runner (4a.2), `enrichmentJobs` (4a.3),
 `statsProvider` (4a.4), and `EntityConnector.ingest` (4b.2). The
 runner's per-module overwrite-list logic was a planned evolution,
 not a surprise: see the 4a.3 close-out in
-`docs/dev/plans/phase-04-first-entities.md` §14.
+`docs/dev/plans/done/phase-04-first-entities.md` §14.
 
 ---
 
@@ -1136,7 +1136,7 @@ choice is intentional: SQLite CHECKs can't reach into the JSON
 payload's mixed timestamp / date-only spaces.
 
 `rrule_string` is stored verbatim and **never expanded at runtime in
-v1** (§2 of `docs/dev/plans/phase-04-first-entities.md`). The web UI
+v1** (§2 of `docs/dev/plans/done/phase-04-first-entities.md`). The web UI
 in 4c.5 renders only the master occurrence; a future v2 will expand
 recurrence client-side.
 
@@ -1471,5 +1471,5 @@ This is the SIXTH zero-foundation-tweak commit in the phase-4 block
 - `docs/dev/decisions/0017-todo-calendar-projection.md` — todo →
   calendar projection bridge: stored derived-index, separate read
   endpoint, boot-time rebuild semantics, no-feedback-loop invariant.
-- `docs/dev/plans/phase-04-first-entities.md` — the phase plan;
+- `docs/dev/plans/done/phase-04-first-entities.md` — the phase plan;
   per-kind sub-phases (4a..4d) and the §13 risk table.

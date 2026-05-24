@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-24
 - Phase: 4 (4d.6 — cross-entity bridge on top of the §4.0 entity contract and the 4d.1 todos kind)
-- Related: `docs/dev/plans/phase-04-first-entities.md` §4.1 4d.6, §4.3 Q3;
+- Related: `docs/dev/plans/done/phase-04-first-entities.md` §4.1 4d.6, §4.3 Q3;
   ADR [`0011`](./0011-entity-contract.md) — entity contract;
   `apps/server/src/storage/migrations/0011_calendar_projection_todos.sql`;
   `apps/server/src/entities/todos/calendar-projection.ts`;

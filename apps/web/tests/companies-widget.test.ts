@@ -15,7 +15,7 @@
  *   - The widget registry registers the Companies widget on import and
  *     exposes a deterministic ordering for `LayerDashboardPage`.
  *   - The widget exposes the i18n keys promised by the plan in §4a.4 of
- *     `docs/dev/plans/phase-04-first-entities.md` — i18n discipline test
+ *     `docs/dev/plans/done/phase-04-first-entities.md` — i18n discipline test
  *     (`apps/web/tests/i18n-no-hardcoded-strings.test.ts`) covers
  *     en.json key presence; this file additionally asserts the
  *     widget's title key is the one wired into the registry, so a

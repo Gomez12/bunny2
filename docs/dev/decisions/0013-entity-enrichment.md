@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-24
 - Phase: 4 (4a.3 — companies AI enrichment lands on top of the §4.0 entity contract and the 4a.2 connector dispatch model)
-- Related: `docs/dev/plans/phase-04-first-entities.md` §1, §4a.3, §7, §13;
+- Related: `docs/dev/plans/done/phase-04-first-entities.md` §1, §4a.3, §7, §13;
   ADR [`0011`](./0011-entity-contract.md) — entity contract;
   ADR [`0012`](./0012-kvk-connector.md) — KvK connector + dispatch;
   `apps/server/src/entities/enrichment-runner.ts`;
@@ -335,7 +335,7 @@ regardless of the list. Per-module declarations:
 This is the SIXTH foundation extension on top of the §4.0
 contract, and the 4a.3 close-out predicted it. See
 `docs/dev/architecture/entities.md` §10c.i and
-`docs/dev/plans/phase-04-first-entities.md` §14 "4a.3 shipped"
+`docs/dev/plans/done/phase-04-first-entities.md` §14 "4a.3 shipped"
 follow-up bullet for the prediction.
 
 ## Update (4d.3) — LLM fallback is optional, not mandatory

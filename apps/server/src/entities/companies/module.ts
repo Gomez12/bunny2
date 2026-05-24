@@ -22,7 +22,7 @@ import { companyStatsProvider } from './stats';
  *    foundation gained `EntityModule.indexedColumns` in 4a.1 to support
  *    this without per-kind hacks in the store. See
  *    `docs/dev/architecture/entities.md` §2 and the §14 close-out in
- *    `docs/dev/plans/phase-04-first-entities.md`.
+ *    `docs/dev/plans/done/phase-04-first-entities.md`.
  *  - `toSummary` — picks a sensible subtitle (KvK number first, website
  *    second) so the listing page is useful without opening detail view.
  *  - `searchableText` — lowercase, space-joined digest of the fields a

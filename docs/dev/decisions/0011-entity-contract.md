@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-23
 - Phase: 4 (foundation lands in 4.0; written up alongside the migration)
-- Related: `docs/dev/plans/phase-04-first-entities.md` §1, §4.0, §4.3,
+- Related: `docs/dev/plans/done/phase-04-first-entities.md` §1, §4.0, §4.3,
   §5, §6, §7, §8, §13;
   `apps/server/src/storage/migrations/0005_entities_base.sql`;
   `apps/server/src/entities/module.ts`;

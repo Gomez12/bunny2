@@ -30,7 +30,7 @@
 --                              does NOT expand recurrence — the web
 --                              UI in 4c.5 renders only the master
 --                              occurrence. See §2 of
---                              `docs/dev/plans/phase-04-first-entities.md`.
+--                              `docs/dev/plans/done/phase-04-first-entities.md`.
 --   - `external_calendar_id` : nullable; set by the Google Calendar
 --                              connector in 4c.2 so events can be
 --                              linked back to their source calendar

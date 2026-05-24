@@ -51,4 +51,4 @@ slot.
 - `apps/server/src/entities/router.ts`
 - `apps/server/src/entities/store.ts`
 - `apps/web/src/pages/CalendarPage.tsx`
-- `docs/dev/plans/phase-04-first-entities.md` §4c.5 close-out
+- `docs/dev/plans/done/phase-04-first-entities.md` §4c.5 close-out

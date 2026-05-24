@@ -19,7 +19,7 @@ import { z } from 'zod';
  * v1 stance: single-occurrence events. `rruleString` is stored
  * verbatim but NEVER expanded at runtime — the web UI renders only
  * the master occurrence. See §2 of
- * `docs/dev/plans/phase-04-first-entities.md`.
+ * `docs/dev/plans/done/phase-04-first-entities.md`.
  */
 
 // ---------- payload sub-schemas ----------------------------------------

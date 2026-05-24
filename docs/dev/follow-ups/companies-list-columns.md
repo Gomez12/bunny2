@@ -80,4 +80,4 @@ Also: wire a relative-time formatter into the web app (Intl
 - `apps/server/src/entities/companies/module.ts` — where a future
   `summaryColumns` declaration would live.
 - `docs/dev/architecture/entities.md` §10a — companies module shape.
-- `docs/dev/plans/phase-04-first-entities.md` §14 — 4a.5 close-out.
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 — 4a.5 close-out.

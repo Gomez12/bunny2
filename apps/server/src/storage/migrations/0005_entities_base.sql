@@ -5,7 +5,7 @@
 -- todos) land in their own sub-phase migrations (0006..) and reference
 -- these by `entity_id` / `entity_kind`.
 --
--- See `docs/dev/plans/phase-04-first-entities.md` §5, ADR 0011
+-- See `docs/dev/plans/done/phase-04-first-entities.md` §5, ADR 0011
 -- (`docs/dev/decisions/0011-entity-contract.md`), and
 -- `docs/dev/architecture/entities.md`.
 --

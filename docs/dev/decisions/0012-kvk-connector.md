@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-24
 - Phase: 4 (4a.2 — KvK connector lands on top of the §4.0 entity contract)
-- Related: `docs/dev/plans/phase-04-first-entities.md` §1, §4a.2, §7, §13;
+- Related: `docs/dev/plans/done/phase-04-first-entities.md` §1, §4a.2, §7, §13;
   ADR [`0011`](./0011-entity-contract.md) — entity contract;
   ADR [`0009`](./0009-layer-model.md) — layer model;
   `apps/server/src/storage/migrations/0007_layer_attachments_connector_kind.sql`;

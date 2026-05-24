@@ -24,7 +24,7 @@ import {
  * Secrets must NEVER leave `entity_external_links.payload_json`. The
  * helpers in this file scrub the payload before publishing — phase-6
  * risk row "Connector tokens leak via event log" in
- * `docs/dev/plans/phase-04-first-entities.md §13`.
+ * `docs/dev/plans/done/phase-04-first-entities.md §13`.
  */
 export interface EntityConnector<Payload> {
   readonly id: string;

@@ -8,7 +8,7 @@
 ## What remains
 
 The 4b.3 close-out
-(`docs/dev/plans/phase-04-first-entities.md` §14 "4b.3 shipped") claims
+(`docs/dev/plans/done/phase-04-first-entities.md` §14 "4b.3 shipped") claims
 the i18n keys
 
 ```
@@ -56,6 +56,6 @@ text to keep the documentation honest.
 
 - `apps/web/src/i18n/locales/en.json`
 - `apps/web/src/i18n/locales/nl.json`
-- `docs/dev/plans/phase-04-first-entities.md` §14 "4b.3 shipped"
-- `docs/dev/plans/phase-04-first-entities.md` §14 "4b.6 shipped" (the
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 "4b.3 shipped"
+- `docs/dev/plans/done/phase-04-first-entities.md` §14 "4b.6 shipped" (the
   sweep that removed the keys as orphans)

@@ -13,7 +13,7 @@
  *   - The widget registry registers the Contacts widget on import and
  *     exposes a deterministic ordering for `LayerDashboardPage`.
  *   - The widget exposes the literal registration shape promised by the
- *     plan in §4b.4 of `docs/dev/plans/phase-04-first-entities.md` —
+ *     plan in §4b.4 of `docs/dev/plans/done/phase-04-first-entities.md` —
  *     a rename of the title key or registry kind is caught here before
  *     the dashboard drifts.
  */

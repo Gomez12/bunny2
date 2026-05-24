@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-05-24
 - Phase: 4 (4b.2 — vCard import lands on top of the §4.0 entity contract + 4a.2 dispatcher)
-- Related: `docs/dev/plans/phase-04-first-entities.md` §4.1 4b.2;
+- Related: `docs/dev/plans/done/phase-04-first-entities.md` §4.1 4b.2;
   ADR [`0011`](./0011-entity-contract.md) — entity contract;
   ADR [`0012`](./0012-kvk-connector.md) — KvK connector (pull, async dispatch);
   `apps/server/src/entities/connectors/base.ts` (`EntityConnector` extended with `ingest`);

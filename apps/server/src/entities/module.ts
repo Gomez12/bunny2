@@ -32,7 +32,7 @@ import type { EntityConnector } from './connectors/base';
  *    denormalized column alongside the JSON payload. Added in 4a.1 —
  *    needed by every per-kind table that wants an indexable column,
  *    designed once instead of patched per kind. See §4.3 question 1 in
- *    `docs/dev/plans/phase-04-first-entities.md`.
+ *    `docs/dev/plans/done/phase-04-first-entities.md`.
  *  - `connectors` — optional list of `EntityConnector` instances. The
  *    registry holds them so phase 5 / 6 can enumerate every connector
  *    in the system.

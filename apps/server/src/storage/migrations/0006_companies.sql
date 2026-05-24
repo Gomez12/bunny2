@@ -2,7 +2,7 @@
 --
 -- First concrete consumer of the §4.0 entity-contract foundation. The
 -- shared columns mirror the §5 "per-kind table shape" in
--- `docs/dev/plans/phase-04-first-entities.md`; the company-specific
+-- `docs/dev/plans/done/phase-04-first-entities.md`; the company-specific
 -- indexed columns (`kvk_number`, `website`) are written by the generic
 -- `EntityStore` via `companyModule.indexedColumns` (added in 4a.1 as a
 -- minimal foundation tweak — see `docs/dev/architecture/entities.md` §2

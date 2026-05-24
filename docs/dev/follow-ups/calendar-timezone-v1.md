@@ -59,4 +59,4 @@ change is:
 - `apps/web/src/pages/calendar-page-state.ts` (`serializeTimestamp`,
   `toInputFormat`)
 - `apps/web/src/pages/CalendarPage.tsx` (`dateFnsLocalizer`)
-- `docs/dev/plans/phase-04-first-entities.md` §4c.5 close-out
+- `docs/dev/plans/done/phase-04-first-entities.md` §4c.5 close-out

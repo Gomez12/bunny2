@@ -21,7 +21,7 @@ import type { TodoLinkedEntityKind, TodoPayload } from '@bunny2/shared';
  * the same shape (calendar attendee → contact validation has been
  * deferred to a follow-up), that's the trigger to extract a slot —
  * not now. See the 4d.1 close-out in
- * `docs/dev/plans/phase-04-first-entities.md` §14.
+ * `docs/dev/plans/done/phase-04-first-entities.md` §14.
  *
  * Validation rules:
  *   - `linkedEntityRef === undefined` → OK (no link, no check).

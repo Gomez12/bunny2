@@ -91,11 +91,21 @@ import {
   GOOGLE_CALENDAR_CONNECTOR_ID,
   GOOGLE_CALENDAR_INGEST_CONTENT_TYPE,
 } from '../src/entities/calendar';
+import {
+  createTodoCalendarProjection,
+  createTodoModule,
+  todoEnrichmentJobs,
+} from '../src/entities/todos';
 import { createSecretsService, generateEncryptionKey } from '../src/storage/secrets';
 import { createLayerAttachmentsRepo } from '../src/repos/layer-attachments-repo';
 import type { ChatRequest, ChatResponse, LlmClient } from '../src/llm';
 import type { EntityExternalLink } from '@bunny2/shared';
-import type { CompanyPayload, ContactPayload, CalendarEventPayload } from '@bunny2/shared';
+import type {
+  CompanyPayload,
+  ContactPayload,
+  CalendarEventPayload,
+  TodoPayload,
+} from '@bunny2/shared';
 import type { BusEvent } from '@bunny2/bus';
 
 interface ChatSuccessBody {
@@ -2247,5 +2257,587 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     // call ledger can lean on it without TS complaining about the
     // unread const. The leak canary above is the load-bearing assertion.
     expect(gcalUrls.length).toBeGreaterThan(0);
+
+    // -----------------------------------------------------------------
+    // 15. Phase 4d.7 — canonical Todos entity flow. Mirrors steps 12,
+    //     13, and 14 for the fourth (final) phase-4 entity kind. Covers:
+    //       - create / patch (CRUD via the generic router)
+    //       - cross-kind link validation (POST + PATCH)
+    //       - cross-kind link rejection for unknown targets
+    //       - AI auto-priority (deterministic keyword path — no LLM)
+    //       - AI auto-due (deterministic Dutch "morgen" path — no LLM)
+    //       - todo → calendar projection bridge (4d.6) materialises a
+    //         row in `calendar_projection_todos` and the
+    //         `GET /l/:slug/calendar/_projections/todos` endpoint
+    //         surfaces it.
+    //       - projection clears on soft-delete. PATCH-clear via
+    //         `dueAt: null` is intentionally NOT tested: `dueAt` is
+    //         `.optional()` (not nullable) on the schema, so a PATCH
+    //         carrying `dueAt: null` fails zod parse with 400 and the
+    //         soft-delete path is the only HTTP-driven way to clear
+    //         the projection. See the 4d.7 close-out and ADR 0017.
+    //       - stats endpoint independently observable.
+    //       - cross-layer isolation (todos in another layer do not
+    //         leak into the list / stats / projection endpoints).
+    //       - secret-strip canary mirrors prior steps (no apiKey-shaped
+    //         string in any captured bus event).
+    // -----------------------------------------------------------------
+
+    // 15a. Pre-register fresh module variants for the three kinds the
+    //      step needs: company + contact (the cross-kind link target
+    //      pool) and todo (with the production enrichment jobs wired).
+    //      The fake LLM is wired so we can assert the deterministic
+    //      paths never invoked it for the kickoff todos (the runner's
+    //      autoPriority job falls back to the LLM ONLY when the
+    //      deterministic word/tag/proximity scans return null; the
+    //      autoDue job has NO LLM fallback by design — see ADR 0013
+    //      Update (4d.3)).
+    const todosLlmCalls: { messages: string; flowId: string | undefined }[] = [];
+    const todosFakeLlm: LlmClient = {
+      endpoint: 'mock://smoke-todos',
+      defaultModel: 'mock-default',
+      async chat(req: ChatRequest): Promise<ChatResponse> {
+        const flowId = typeof req.metadata?.flowId === 'string' ? req.metadata.flowId : undefined;
+        todosLlmCalls.push({
+          messages: req.messages.map((m) => m.content).join('\n'),
+          flowId,
+        });
+        return {
+          id: crypto.randomUUID(),
+          model: 'mock-default',
+          content: '"keep"',
+          tokensIn: 4,
+          tokensOut: 2,
+          raw: null,
+        };
+      },
+    };
+    __resetEntityRegistryForTests();
+    const stepTodoCompanyModule = createCompanyModule({ connectors: [], enrichmentJobs: [] });
+    const stepTodoContactModule = createContactModule({ enrichmentJobs: [] });
+    const stepTodoModule = createTodoModule({ enrichmentJobs: todoEnrichmentJobs });
+    registerEntityModule(stepTodoCompanyModule);
+    registerEntityModule(stepTodoContactModule);
+    registerEntityModule(stepTodoModule);
+
+    const todoStore = createEntityStore<TodoPayload>({
+      module: stepTodoModule,
+      db: database,
+      bus,
+      llm: todosFakeLlm,
+    });
+    const companyStoreForTodos = createEntityStore<CompanyPayload>({
+      module: stepTodoCompanyModule,
+      db: database,
+      bus,
+      llm: todosFakeLlm,
+    });
+    const contactStoreForTodos = createEntityStore<ContactPayload>({
+      module: stepTodoContactModule,
+      db: database,
+      bus,
+      llm: todosFakeLlm,
+    });
+    const todosEnrichmentRunner = createEnrichmentRunner({
+      db: database,
+      bus,
+      llm: todosFakeLlm,
+      pricing: loaded.config.llm.pricing,
+      resolveStore: (mod) => {
+        if (mod.kind === 'todo') return todoStore as EntityStore<unknown>;
+        if (mod.kind === 'company') return companyStoreForTodos as EntityStore<unknown>;
+        if (mod.kind === 'contact') return contactStoreForTodos as EntityStore<unknown>;
+        return null;
+      },
+    });
+
+    // 15b. Start the projection bridge against the same DB + bus. The
+    //      smoke's `createApp(...)` call mounts the HTTP read endpoint
+    //      (`mountTodoCalendarProjectionRoutes`) but does NOT start the
+    //      bridge subscriber — production wires it in `index.ts`. Start
+    //      it here so the subscriber is attached for the lifetime of
+    //      this step; `stop()` in the finally block removes the
+    //      subscriber before later test files run. `rebuild()` would
+    //      pick up any stray dueAt-bearing todos from earlier steps;
+    //      none exist, but we run it to mirror the production boot path.
+    const todoProjection = createTodoCalendarProjection({ db: database, bus });
+    todoProjection.start();
+    todoProjection.rebuild();
+
+    todosEnrichmentRunner.start();
+    try {
+      // 15c. Use fresh slugs so this step does NOT depend on the rows
+      //      step 12/13/14 left behind. Per-(layer,kind) slug uniqueness
+      //      lets the seeded rows coexist with new ones.
+      const todoCompanyCreate = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'AMI BV',
+            slug: 'ami-todo-target',
+            originalLocale: 'en',
+            payload: { email: 'cs@ami.nl' },
+          }),
+        }),
+      );
+      expect(todoCompanyCreate.status).toBe(201);
+
+      const aliceForTodosCreate = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'Alice',
+            slug: 'alice-todo-target',
+            originalLocale: 'en',
+            payload: {
+              givenName: 'Alice',
+              emails: [{ value: 'alice@ami.nl', isPrimary: true }],
+            },
+          }),
+        }),
+      );
+      expect(aliceForTodosCreate.status).toBe(201);
+      const aliceForTodosBody = (await aliceForTodosCreate.json()) as {
+        entity: { id: string };
+      };
+      const aliceTodosId = aliceForTodosBody.entity.id;
+
+      // 15.1 POST /l/:slug/todo — create "Buy office supplies" with
+      //      open / priority 3 / dueAt = tomorrow. Version=1.
+      const today = new Date();
+      const tomorrowDate = new Date(today);
+      tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
+      const tomorrowIso = tomorrowDate.toISOString().slice(0, 10);
+
+      const officeCreate = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'Buy office supplies',
+            slug: 'buy-office-supplies',
+            originalLocale: 'en',
+            payload: {
+              status: 'open',
+              priority: 3,
+              dueAt: tomorrowIso,
+            },
+          }),
+        }),
+      );
+      expect(officeCreate.status).toBe(201);
+      const officeBody = (await officeCreate.json()) as {
+        entity: { id: string; slug: string; meta: { version: number; originalLocale: string } };
+      };
+      expect(officeBody.entity.slug).toBe('buy-office-supplies');
+      expect(officeBody.entity.meta.version).toBe(1);
+      expect(officeBody.entity.meta.originalLocale).toBe('en');
+
+      // 15.2 GET detail — assert original locale, deletedAt null.
+      const officeGet = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo/buy-office-supplies`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(officeGet.status).toBe(200);
+      const officeGetBody = (await officeGet.json()) as {
+        entity: {
+          meta: { version: number; originalLocale: string; deletedAt: string | null };
+          payload: TodoPayload;
+        };
+      };
+      expect(officeGetBody.entity.meta.originalLocale).toBe('en');
+      expect(officeGetBody.entity.meta.deletedAt).toBeNull();
+      expect(officeGetBody.entity.payload.dueAt).toBe(tomorrowIso);
+
+      // 15.3 PATCH — bump priority to 1. Version advances to 2.
+      const officePatch = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo/buy-office-supplies`, {
+          method: 'PATCH',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            payload: { priority: 1 },
+          }),
+        }),
+      );
+      expect(officePatch.status).toBe(200);
+      const officePatchBody = (await officePatch.json()) as {
+        entity: { meta: { version: number }; payload: TodoPayload };
+      };
+      expect(officePatchBody.entity.meta.version).toBe(2);
+      expect(officePatchBody.entity.payload.priority).toBe(1);
+      // The PATCH-merge contract preserves `dueAt` that was not in the
+      // request body.
+      expect(officePatchBody.entity.payload.dueAt).toBe(tomorrowIso);
+
+      // 15.4 Cross-kind link via PATCH — link to Alice (the contact
+      //      seeded above). Validator inside `mountTodoRoutes`
+      //      confirms the target exists in this layer and the row's
+      //      `linked_entity_id` column is updated.
+      const officeLinkPatch = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo/buy-office-supplies`, {
+          method: 'PATCH',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            payload: {
+              linkedEntityRef: { kind: 'contact', entityId: aliceTodosId },
+            },
+          }),
+        }),
+      );
+      expect(officeLinkPatch.status).toBe(200);
+      const officeLinkBody = (await officeLinkPatch.json()) as {
+        entity: { payload: TodoPayload };
+      };
+      expect(officeLinkBody.entity.payload.linkedEntityRef?.kind).toBe('contact');
+      expect(officeLinkBody.entity.payload.linkedEntityRef?.entityId).toBe(aliceTodosId);
+      // Confirm the sparse-indexed column is populated alongside the
+      // payload — the §4.0 `indexedColumns` projection.
+      const officeLinkRow = database
+        .query<
+          { linked_entity_id: string | null; linked_entity_kind: string | null },
+          [string]
+        >(`SELECT linked_entity_id, linked_entity_kind FROM todos WHERE slug = ?`)
+        .get('buy-office-supplies');
+      expect(officeLinkRow?.linked_entity_id).toBe(aliceTodosId);
+      expect(officeLinkRow?.linked_entity_kind).toBe('contact');
+
+      // 15.5 Cross-kind link rejection — PATCH with a random UUID
+      //      that does not resolve to any contact in the layer.
+      const bogusContactId = crypto.randomUUID();
+      const officeBadLink = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo/buy-office-supplies`, {
+          method: 'PATCH',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            payload: {
+              linkedEntityRef: { kind: 'contact', entityId: bogusContactId },
+            },
+          }),
+        }),
+      );
+      expect(officeBadLink.status).toBe(400);
+      const officeBadLinkBody = (await officeBadLink.json()) as { error: string };
+      expect(officeBadLinkBody.error).toBe('errors.entity.todos.linkedEntityNotFound');
+
+      // 15.6 AI auto-priority via deterministic keyword scan. "URGENT"
+      //      maps to priority 1 via the lowercase word scan (see
+      //      `apps/server/src/entities/todos/enrichment.ts`
+      //      PRIORITY_1_WORDS). The fake LLM is NOT consulted: the
+      //      keyword match short-circuits the job before the LLM
+      //      fallback runs.
+      const llmCallsBeforeAutoPrio = todosLlmCalls.length;
+      const urgentCreate = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'URGENT: ship CI pipeline',
+            slug: 'urgent-ship-ci',
+            originalLocale: 'en',
+            payload: {},
+          }),
+        }),
+      );
+      expect(urgentCreate.status).toBe(201);
+      const urgentBody = (await urgentCreate.json()) as {
+        entity: { id: string; payload: TodoPayload };
+      };
+      const urgentTodoId = urgentBody.entity.id;
+      expect(urgentBody.entity.payload.priority).toBe(3); // default before runner.
+
+      // Subscribe to the enrichment-succeeded event before the runner
+      // fires so we can assert the patch was applied via the runner
+      // (NOT a direct write).
+      const enrichmentEvents: BusEvent[] = [];
+      const unsubEnrichmentSucceeded = bus.subscribe('entity.enrichment.succeeded', (ev) => {
+        enrichmentEvents.push(ev);
+      });
+
+      await todosEnrichmentRunner.tickOnce();
+
+      const urgentAfter = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo/urgent-ship-ci`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const urgentAfterBody = (await urgentAfter.json()) as {
+        entity: { payload: TodoPayload };
+      };
+      expect(urgentAfterBody.entity.payload.priority).toBe(1);
+
+      // The enrichment-succeeded event for `todos.autoPriority` fired
+      // for the urgent todo with a non-empty patch. There is no LLM
+      // call carrying the `enrichment:todos.autoPriority` flowId
+      // because the deterministic keyword scan short-circuited the
+      // job before the LLM fallback.
+      const autoPriorityEvents = enrichmentEvents.filter((ev) => {
+        const p = ev.payload as { jobId?: string; entityId?: string; hasPatch?: boolean };
+        return (
+          p.jobId === 'todos.autoPriority' && p.entityId === urgentTodoId && p.hasPatch === true
+        );
+      });
+      expect(autoPriorityEvents.length).toBeGreaterThanOrEqual(1);
+      const autoPriorityLlmCalls = todosLlmCalls
+        .slice(llmCallsBeforeAutoPrio)
+        .filter((c) => c.flowId === 'enrichment:todos.autoPriority');
+      expect(autoPriorityLlmCalls.length).toBe(0);
+
+      // 15.7 AI auto-due via deterministic Dutch "morgen" phrase. The
+      //      autoDue job has no LLM fallback — a title without any
+      //      recognised date phrase yields no patch. "morgen" maps to
+      //      tomorrow (`addDays(now, 1)` formatted as YYYY-MM-DD —
+      //      see `parseDueAtFromTitle` in
+      //      `apps/server/src/entities/todos/enrichment.ts`).
+      const llmCallsBeforeAutoDue = todosLlmCalls.length;
+      const morgenCreate = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'Bel terug morgen',
+            slug: 'bel-terug-morgen',
+            originalLocale: 'nl',
+            payload: {},
+          }),
+        }),
+      );
+      expect(morgenCreate.status).toBe(201);
+      const morgenBody = (await morgenCreate.json()) as {
+        entity: { id: string; payload: TodoPayload };
+      };
+      const morgenTodoId = morgenBody.entity.id;
+      expect(morgenBody.entity.payload.dueAt).toBeUndefined();
+
+      await todosEnrichmentRunner.tickOnce();
+
+      const morgenAfter = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo/bel-terug-morgen`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const morgenAfterBody = (await morgenAfter.json()) as {
+        entity: { payload: TodoPayload };
+      };
+      // Tomorrow's UTC date computed from the same `now` semantics the
+      // runner uses (production reads `new Date()` inside the job; the
+      // tests do not pin the clock for this step). One millisecond of
+      // drift between `tomorrowIso` and the runner's `now` is fine —
+      // the assertion is "same calendar day", not "same instant".
+      expect(morgenAfterBody.entity.payload.dueAt).toBe(tomorrowIso);
+
+      // No LLM call carried the autoDue flowId (the job has no LLM
+      // fallback per the 4d.3 close-out).
+      const autoDueLlmCalls = todosLlmCalls
+        .slice(llmCallsBeforeAutoDue)
+        .filter((c) => c.flowId === 'enrichment:todos.autoDue');
+      expect(autoDueLlmCalls.length).toBe(0);
+      const autoDueEvents = enrichmentEvents.filter((ev) => {
+        const p = ev.payload as { jobId?: string; entityId?: string; hasPatch?: boolean };
+        return p.jobId === 'todos.autoDue' && p.entityId === morgenTodoId && p.hasPatch === true;
+      });
+      expect(autoDueEvents.length).toBeGreaterThanOrEqual(1);
+
+      // 15.8 Projection bridge — the auto-due tick emitted
+      //      `entity.todo.updated`; the bridge subscribed at step 15b
+      //      re-read the todo and upserted a projection row. The
+      //      `/calendar/_projections/todos` endpoint should now return
+      //      exactly one row for the "Bel terug morgen" todo whose
+      //      `dueAt` matches the runner-written date.
+      const projectionList = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/calendar/_projections/todos`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(projectionList.status).toBe(200);
+      const projectionListBody = (await projectionList.json()) as {
+        items: ReadonlyArray<{
+          todoId: string;
+          dueAt: string;
+          priority: number;
+          status: string;
+          todoSlug: string;
+        }>;
+      };
+      // Two projected todos exist: "buy-office-supplies" (the user
+      // PATCHed it to priority 1 with dueAt=tomorrow) AND
+      // "bel-terug-morgen" (the auto-due runner just stamped its
+      // dueAt to tomorrow). The "URGENT" todo has NO dueAt and is
+      // therefore not projected.
+      const morgenProjection = projectionListBody.items.find((it) => it.todoId === morgenTodoId);
+      expect(morgenProjection).toBeDefined();
+      expect(morgenProjection?.dueAt).toBe(tomorrowIso);
+      expect(morgenProjection?.priority).toBe(2); // "morgen" hits PRIORITY_2_WORDS too.
+      expect(morgenProjection?.status).toBe('open');
+      expect(morgenProjection?.todoSlug).toBe('bel-terug-morgen');
+      const officeProjection = projectionListBody.items.find(
+        (it) => it.todoSlug === 'buy-office-supplies',
+      );
+      expect(officeProjection).toBeDefined();
+      expect(projectionListBody.items.some((it) => it.todoSlug === 'urgent-ship-ci')).toBe(false);
+
+      // 15.9 Stats — `_stats` returns the four counters
+      //      independently. After steps 15.1–15.8:
+      //        - "buy-office-supplies" — open, priority 1, dueAt
+      //          tomorrow → totalOpen+1, highPriorityOpen+1.
+      //        - "urgent-ship-ci" — open, priority 1 → totalOpen+1,
+      //          highPriorityOpen+1. No dueAt.
+      //        - "bel-terug-morgen" — open, priority 2 (autoPriority
+      //          rewrote it on the same tick), dueAt tomorrow →
+      //          totalOpen+1, highPriorityOpen+1.
+      const todoStatsRes = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo/_stats`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(todoStatsRes.status).toBe(200);
+      const todoStatsBody = (await todoStatsRes.json()) as {
+        stats: {
+          totalOpen: number;
+          dueToday: number;
+          overdue: number;
+          highPriorityOpen: number;
+        };
+      };
+      expect(todoStatsBody.stats.totalOpen).toBe(3);
+      expect(todoStatsBody.stats.overdue).toBe(0);
+      expect(todoStatsBody.stats.dueToday).toBe(0);
+      expect(todoStatsBody.stats.highPriorityOpen).toBe(3);
+
+      // 15.10 Projection clears on soft-delete. PATCH-clear via
+      //       `dueAt: null` is NOT supported via HTTP: the zod
+      //       schema declares `dueAt` as `.optional()` (not nullable)
+      //       so a PATCH carrying `dueAt: null` fails parse with 400
+      //       at the router boundary. The soft-delete path is the
+      //       only HTTP-driven removal route. See the 4d.7 close-out
+      //       in `docs/dev/plans/done/phase-04-first-entities.md` §14.
+      const morgenDelete = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo/bel-terug-morgen`, {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(morgenDelete.status).toBe(200);
+      const projectionAfterDelete = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/calendar/_projections/todos`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(projectionAfterDelete.status).toBe(200);
+      const projectionAfterDeleteBody = (await projectionAfterDelete.json()) as {
+        items: ReadonlyArray<{ todoId: string }>;
+      };
+      expect(projectionAfterDeleteBody.items.some((it) => it.todoId === morgenTodoId)).toBe(false);
+
+      // The soft-deleted todo is omitted from the list endpoint.
+      const todoListAfterDelete = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/todo`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const todoListAfterDeleteBody = (await todoListAfterDelete.json()) as {
+        entities: ReadonlyArray<{ slug: string }>;
+      };
+      expect(todoListAfterDeleteBody.entities.some((e) => e.slug === 'bel-terug-morgen')).toBe(
+        false,
+      );
+
+      // 15.11 Cross-layer isolation — the `contact-isolation` project
+      //       layer created in step 13.8 stays empty of todos, todo
+      //       projections, and reports zero counters via `_stats`.
+      const isolationTodoList = await app.fetch(
+        new Request('http://localhost/l/contact-isolation/todo', {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(isolationTodoList.status).toBe(200);
+      const isolationTodoListBody = (await isolationTodoList.json()) as {
+        entities: ReadonlyArray<unknown>;
+      };
+      expect(isolationTodoListBody.entities.length).toBe(0);
+
+      const isolationProjection = await app.fetch(
+        new Request('http://localhost/l/contact-isolation/calendar/_projections/todos', {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(isolationProjection.status).toBe(200);
+      const isolationProjectionBody = (await isolationProjection.json()) as {
+        items: ReadonlyArray<unknown>;
+      };
+      expect(isolationProjectionBody.items.length).toBe(0);
+
+      const isolationTodoStats = await app.fetch(
+        new Request('http://localhost/l/contact-isolation/todo/_stats', {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(isolationTodoStats.status).toBe(200);
+      const isolationTodoStatsBody = (await isolationTodoStats.json()) as {
+        stats: {
+          totalOpen: number;
+          dueToday: number;
+          overdue: number;
+          highPriorityOpen: number;
+        };
+      };
+      expect(isolationTodoStatsBody.stats).toEqual({
+        totalOpen: 0,
+        dueToday: 0,
+        overdue: 0,
+        highPriorityOpen: 0,
+      });
+
+      // 15.12 Secret-strip canary mirrors the prior steps. No connector
+      //       attachment was created for todos (the v1 module declares
+      //       NO connectors), so there is no apiKey on a
+      //       `layer_attachments.config` row to leak — but the canary
+      //       still asserts no obviously-suspect literal appeared in
+      //       any captured LLM prompt or any enrichment-succeeded
+      //       event payload during this step. Together with the prior
+      //       three steps' canaries this completes the per-entity
+      //       coverage promised in `architecture/event-bus.md`.
+      const todosEventHaystack = JSON.stringify(
+        enrichmentEvents.map((e) => ({ type: e.type, payload: e.payload })),
+      );
+      expect(todosEventHaystack).not.toContain('apiKey');
+      expect(todosEventHaystack).not.toContain('refreshToken');
+      for (const c of todosLlmCalls) {
+        expect(c.messages).not.toContain('apiKey');
+        expect(c.messages).not.toContain('refreshToken');
+      }
+
+      unsubEnrichmentSucceeded();
+    } finally {
+      todosEnrichmentRunner.stop();
+      todoProjection.stop();
+      __resetEntityRegistryForTests();
+    }
   });
 });
