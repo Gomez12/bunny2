@@ -9,7 +9,7 @@ import { createEntityStore } from '../store';
 import { mountEntityRoutes } from '../router';
 import { getEntityModule, registerEntityModule } from '../registry';
 import type { EntityModule } from '../module';
-import { todoModule } from './module';
+import { todoModule, createTodoModule } from './module';
 import { validateTodoLinkedEntity } from './validate-link';
 
 export {
@@ -81,6 +81,25 @@ export function registerTodoModule(
   if (existing !== null) return existing as EntityModule<TodoPayload>;
   registerEntityModule(module);
   return module;
+}
+
+/**
+ * Phase 4d.2 — build the todo module for production. Mirrors
+ * `buildProductionCalendarEventModule` from the calendar precedent so
+ * the wiring site in `apps/server/src/http/router.ts` calls a uniform
+ * `build…` helper per kind. In v1 the body is intentionally empty:
+ * NO Trello, Linear, Asana, or Google Tasks connector ships. The
+ * helper exists so a future "Trello import" connector can be wired
+ * here without touching `module.ts`. Tests bypass this helper and
+ * call `createTodoModule({ connectors: [stub] })` directly.
+ *
+ * Returns a module whose `connectors` field is `undefined` (not
+ * `[]`) so the registry's `rebuildConnectorIndex` correctly leaves
+ * the `todo` bucket absent — matching `listConnectorsForKind('todo')
+ * === []` as a contract assertion.
+ */
+export function buildProductionTodoModule(): EntityModule<TodoPayload> {
+  return createTodoModule();
 }
 
 const NOT_VISIBLE = { error: 'errors.layer.notVisible' } as const;

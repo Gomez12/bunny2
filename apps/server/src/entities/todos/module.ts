@@ -1,6 +1,7 @@
 import type { ZodType } from 'zod';
 import { TodoPayloadSchema, type TodoPayload } from '@bunny2/shared';
 import type { EntityModule } from '../module';
+import type { EntityConnector } from '../connectors/base';
 
 /**
  * Phase 4d.1 — fourth concrete `EntityModule`.
@@ -31,11 +32,15 @@ import type { EntityModule } from '../module';
  *    a user is most likely to search for (title is added by the
  *    generic router; we add description, tags, status, dueAt).
  *
- * No connectors / enrichment jobs / stats provider in 4d.1 — the
- * connector placeholder lands in 4d.2, auto-priority + auto-due
- * enrichment in 4d.3, the dashboard widget in 4d.4. The factory
- * shape mirrors `createCalendarEventModule` so those sub-phases stay
- * additive.
+ * No enrichment jobs / stats provider in 4d.1 — auto-priority +
+ * auto-due enrichment lands in 4d.3, the dashboard widget in 4d.4.
+ * Phase 4d.2 added an OPTIONAL `connectors?` slot on
+ * `CreateTodoModuleOptions` so a future Trello / Linear / Asana
+ * import lands additively without touching this file's exported
+ * surface. Production still ships ZERO concrete connectors in v1 —
+ * `buildProductionTodoModule()` returns a connector-less module on
+ * purpose (see `index.ts`). The factory shape mirrors
+ * `createCalendarEventModule` so future sub-phases stay additive.
  */
 export const TODO_KIND = 'todo';
 export const TODO_TABLE = 'todos';
@@ -43,24 +48,42 @@ export const TODO_TABLE = 'todos';
 const SUBTITLE_MAX_LENGTH = 120;
 
 /**
- * Phase 4d.1 factory options. Currently empty; the slot exists so
- * 4d.2 (connector placeholder) can add a `connectors?` field and
- * 4d.3 (enrichment) can add an `enrichmentJobs?` field without
- * touching the module's exported surface.
+ * Phase 4d.2 — extended with an OPTIONAL `connectors?` slot. The slot
+ * is empty in v1 production wiring (no Trello / Linear / Asana /
+ * Google Tasks connector ships in this release; see
+ * `docs/dev/plans/phase-04-first-entities.md` §14 — 4d.2 close-out).
+ * The shape exists so a future connector — e.g. a `trelloConnector`
+ * — can be threaded through `buildProductionTodoModule()` without
+ * touching this file. 4d.3 (enrichment) will extend the same options
+ * shape additively with `enrichmentJobs?`, mirroring the
+ * companies / contacts / calendar precedent.
+ *
+ * Strictly typed as `readonly EntityConnector<TodoPayload>[]` so any
+ * mistyped placeholder (e.g. a connector built for a different
+ * payload kind) fails at compile time.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface CreateTodoModuleOptions {}
+export interface CreateTodoModuleOptions {
+  readonly connectors?: readonly EntityConnector<TodoPayload>[];
+}
 
 /**
  * Build a fresh `todoModule`. Production wiring calls this once at
  * boot (via `registerTodoModule`); tests call it per-fixture so they
  * can later inject stubs without colliding on registry state. The
  * default export `todoModule` uses the no-deps factory call.
+ *
+ * Phase 4d.2 — `opts.connectors` is threaded through with a
+ * conditional spread so the module's `connectors` field stays
+ * `undefined` when the slot is omitted (matching the calendar
+ * precedent and what the registry's `rebuildConnectorIndex`
+ * treats as "no bucket"). DO NOT default to `[]` — the contract
+ * tests assert `connectors === undefined` for the empty case.
  */
-export function createTodoModule(_opts: CreateTodoModuleOptions = {}): EntityModule<TodoPayload> {
+export function createTodoModule(opts: CreateTodoModuleOptions = {}): EntityModule<TodoPayload> {
   return {
     kind: TODO_KIND,
     tableName: TODO_TABLE,
+    ...(opts.connectors === undefined ? {} : { connectors: opts.connectors }),
     // The shared schema has `status: z.enum(...).default('open')` and
     // `priority: z.number().int().min(1).max(5).default(3)`, so its
     // INPUT type is `{ status?, priority?, ... }` while the PARSED

@@ -26,7 +26,7 @@ import {
   registerCalendarEventModule,
   buildProductionCalendarEventModule,
 } from '../entities/calendar';
-import { mountTodoRoutes, registerTodoModule } from '../entities/todos';
+import { buildProductionTodoModule, mountTodoRoutes, registerTodoModule } from '../entities/todos';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -207,11 +207,22 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
   // `mountTodoRoutes` BEFORE `mountEntityRoutes` — keeps the §4.0
   // generic router unaware of cross-kind concerns. See
   // `apps/server/src/entities/todos/validate-link.ts`.
-  registerTodoModule();
+  //
+  // Phase 4d.2 — `buildProductionTodoModule()` returns the production
+  // module shape. In v1 it carries NO connectors (the
+  // `CreateTodoModuleOptions.connectors?` slot exists so a future
+  // Trello / Linear / Asana import lands additively). Mirrors the
+  // calendar wiring: build → register (idempotent) → mount using the
+  // module that ended up in the registry, so tests that pre-register
+  // a fixture variant before `createApp` still drive the same module
+  // the router mounts against.
+  const productionTodoModule = buildProductionTodoModule();
+  const registeredTodoModule = registerTodoModule(productionTodoModule);
   mountTodoRoutes(app, {
     db: deps.db,
     bus: deps.bus,
     llm: deps.llmClient,
+    module: registeredTodoModule,
   });
 
   return app;

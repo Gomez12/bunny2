@@ -3365,3 +3365,72 @@ updated,deleted}` and emit a read-only `calendar.projection.todo`
   business; the calendar projection is the read-only secondary
   surface. The `TodoLinkedEntityKindSchema` enum is locked at
   `'company' | 'contact'` for exactly this reason.
+
+### 4d.2 shipped (2026-05-24)
+
+**What landed**
+
+Deliberately tiny — one focused commit. The §4.0 `EntityModule`
+contract has carried a `connectors?: readonly EntityConnector<P>[]`
+slot since 4a.2; companies / contacts / calendar all consume it.
+4d.2 adopts the same slot for todos without adding a real
+connector.
+
+- `CreateTodoModuleOptions` (in
+  `apps/server/src/entities/todos/module.ts`) gained an OPTIONAL
+  `connectors?: readonly EntityConnector<TodoPayload>[]` field. When
+  omitted, the factory leaves `module.connectors` as `undefined`
+  (via a conditional spread, matching the calendar precedent) so the
+  registry's `rebuildConnectorIndex` correctly leaves the `todo`
+  bucket absent — `listConnectorsForKind('todo') === []`.
+- `buildProductionTodoModule()` exported from
+  `apps/server/src/entities/todos/index.ts`. Mirrors
+  `buildProductionCalendarEventModule` shape-for-shape so the
+  wiring site calls a uniform `build…` helper per kind. In v1 the
+  body is just `return createTodoModule();` — the placeholder slot
+  is empty on purpose.
+- Production wiring in `apps/server/src/http/router.ts` now does
+  `build → register (idempotent) → mount using the registered
+module`, identical to the calendar wiring. The
+  `MountTodoRoutesDeps.module?` test-override slot keeps working.
+- `apps/server/tests/entities/todos-module.test.ts` (new) — four
+  pure-unit assertions: `connectors === undefined` when omitted,
+  the array threads through verbatim when present (same reference),
+  `listConnectorsForKind('todo') === []` after registering the
+  connector-less module, and reflects the stub when present.
+
+**Production decision (v1)**
+
+NO external todos connector ships. Specifically: no Trello, no
+Linear, no Asana, no Google Tasks, no Todoist. The placeholder slot
+exists so a future "Trello import" (or similar) can land
+additively without re-opening the module file. When the real
+connector does arrive it will come with its own ADR + design.
+
+**No fake / stub connector committed.** Per the brief's "empty
+slot only" directive, no skeleton `todoTrelloConnector` was added.
+A premature stub would be tech debt the next sub-phase has to
+either delete or migrate.
+
+**Foundation tweaks**
+
+- **None.** The connector slot already exists on the §4.0
+  `EntityModule` shape; 4d.2 just consumes it. ADR 0011 /
+  ADR 0014 / ADR 0016 already cover the connector + dispatcher +
+  runner pattern. No new ADR.
+
+**Notable for 4d.3 (auto-priority + auto-due AI enrichment)**
+
+- `CreateTodoModuleOptions` will gain an `enrichmentJobs?` field
+  alongside the existing `connectors?`. The same conditional-spread
+  pattern keeps the factory's emitted shape lean — `enrichmentJobs`
+  stays `undefined` when omitted, matching companies' precedent.
+- `buildProductionTodoModule()` is the natural seam to wire the
+  production jobs list: `return createTodoModule({ enrichmentJobs:
+todoEnrichmentJobs });`. No further router change needed —
+  `module.enrichmentJobs` is consumed entirely by the foundation's
+  enrichment runner.
+- `enrichmentOverwriteFields` (added in 4c.3) is the knob if a
+  future job needs to overwrite a non-empty field. For 4d.3 the
+  "fill the blank" default is the right call — never clobber a
+  user-set `priority` or `dueAt`.
