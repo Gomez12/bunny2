@@ -70,6 +70,18 @@
           "statWithCompanyLink": "Gekoppeld aan een bedrijf",
           "statMissingEmail": "Zonder e-mailadres",
           "statRecentlyEnriched": "Verrijkt in laatste 24 uur"
+        },
+        "calendar": {
+          "title": "Agenda",
+          "loading": "Agenda laden…",
+          "error": "Kon agendastatistieken niet laden.",
+          "empty": "Nog geen afspraken in deze laag. Maak de eerste aan om te beginnen.",
+          "viewAllCta": "Agenda bekijken",
+          "newEventCta": "Nieuwe afspraak",
+          "statTotal": "Totaal afspraken",
+          "statUpcoming": "Komende 7 dagen",
+          "statWithAttendeesLinked": "Met aan contacten gekoppelde deelnemers",
+          "statRecentlyEnriched": "Verrijkt in laatste 24 uur"
         }
       }
     }

@@ -311,6 +311,18 @@
           "statWithCompanyLink": "Linked to a company",
           "statMissingEmail": "Without an email address",
           "statRecentlyEnriched": "Enriched in last 24h"
+        },
+        "calendar": {
+          "title": "Calendar",
+          "loading": "Loading calendar…",
+          "error": "Could not load calendar stats.",
+          "empty": "No events in this layer yet. Create the first one to get started.",
+          "viewAllCta": "View calendar",
+          "newEventCta": "New event",
+          "statTotal": "Total events",
+          "statUpcoming": "Upcoming in next 7 days",
+          "statWithAttendeesLinked": "With attendees linked to contacts",
+          "statRecentlyEnriched": "Enriched in last 24h"
         }
       }
     },

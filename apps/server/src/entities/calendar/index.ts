@@ -25,6 +25,8 @@ export {
   calendarEventEnrichmentJobs,
 } from './enrichment';
 
+export { calendarEventStatsProvider, type CalendarEventStats } from './stats';
+
 export {
   createGoogleCalendarConnector,
   createGoogleCalendarConfigResolver,

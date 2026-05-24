@@ -2,6 +2,7 @@ import type { ZodType } from 'zod';
 import { CalendarEventPayloadSchema, type CalendarEventPayload } from '@bunny2/shared';
 import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
+import { calendarEventStatsProvider } from './stats';
 
 /**
  * Phase 4c.1 — third concrete `EntityModule`.
@@ -84,6 +85,13 @@ export function createCalendarEventModule(
     // job). `meetingSummaryNote` is the AI-managed surface for meeting
     // summaries; the user never edits it directly in v1.
     enrichmentOverwriteFields: ['attendees', 'meetingSummaryNote'],
+    // Phase 4c.4 — third consumer of the §4a.4 `statsProvider` slot.
+    // Pure-SQL aggregate counts for the calendar dashboard widget. The
+    // default singleton inherits the provider automatically; tests that
+    // build a per-fixture variant via `createCalendarEventModule({...})`
+    // also inherit it (the factory wires it unconditionally, same as
+    // contacts).
+    statsProvider: calendarEventStatsProvider,
     // The shared schema has `allDay: z.boolean().default(false)` so
     // its input type is `boolean | undefined` while the parsed type
     // is `boolean`. The `EntityModule<Payload>` slot wants

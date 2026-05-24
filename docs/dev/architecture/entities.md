@@ -816,6 +816,20 @@ column from 4b.1 directly; `missingEmail` reads the indexed
 `primary_email` column. Stats remain pure SQL, layer-scoped, and
 clock-injectable per the design rules above.
 
+Phase 4c.4 added the third consumer: `calendarEventStatsProvider`
+(`apps/server/src/entities/calendar/stats.ts`) returns
+`{ total, upcomingNext7d, withAttendeesLinked, recentlyEnriched }`
+for the Calendar dashboard widget. Same slot, same shape, same zero
+contract changes — a third empirical validation of the §4a.4
+foundation. `upcomingNext7d` reads the indexed `starts_at` column
+from 4c.1 with a `[now, now+7d)` range scan; `withAttendeesLinked`
+walks the per-event `payload.attendees[]` array via SQLite's
+`json_each(json_extract(...))` and counts events with at least one
+attendee carrying a `contactEntityId` — the JSON1 path stays cleaner
+than a `LIKE '%contactEntityId%'` approximation while remaining
+read-only against the existing `payload_json` column. Stats remain
+pure SQL, layer-scoped, and clock-injectable.
+
 The dashboard widget lives in `apps/web/src/dashboard/`. A minimal
 client-side registry (`widget-registry.ts`) lets each per-kind
 sub-phase add a widget by importing `CompaniesWidget`-style modules

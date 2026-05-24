@@ -513,6 +513,32 @@ export async function getContactStats(slug: string): Promise<ContactStatsRespons
   return res.stats;
 }
 
+/**
+ * Calendar-event aggregate stats — shape mirrors the server-side
+ * `CalendarEventStats` type in
+ * `apps/server/src/entities/calendar/stats.ts`. Third consumer of the
+ * §4a.4 stats route (`GET /l/:slug/<kind>/_stats`) — empirical
+ * validation that the entity-foundation slot generalises cleanly with
+ * zero contract changes.
+ *
+ * The URL uses the singular `/calendar_event` segment per the §4.0
+ * router naming; the web UI in 4c.5 will surface a friendlier
+ * `/l/:slug/calendar` page that calls this URL underneath.
+ */
+export interface CalendarEventStatsResponse {
+  readonly total: number;
+  readonly upcomingNext7d: number;
+  readonly withAttendeesLinked: number;
+  readonly recentlyEnriched: number;
+}
+
+export async function getCalendarEventStats(slug: string): Promise<CalendarEventStatsResponse> {
+  const res = await request<{ stats: CalendarEventStatsResponse }>(
+    `/l/${encodeURIComponent(slug)}/calendar_event/_stats`,
+  );
+  return res.stats;
+}
+
 // ---------- companies CRUD (phase 4a.5) ------------------------------------
 //
 // Web URLs use the plural `/l/:slug/companies` segment (see

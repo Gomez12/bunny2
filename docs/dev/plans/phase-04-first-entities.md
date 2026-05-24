@@ -2580,3 +2580,114 @@ addendum, not a successor.
   should treat the field as read-only (the runner manages it via
   the `enrichmentOverwriteFields` slot; user edits would be
   immediately re-written).
+
+### 4c.4 shipped (2026-05-24)
+
+**What landed**
+
+- `apps/server/src/entities/calendar/stats.ts` —
+  `calendarEventStatsProvider` returns
+  `{ total, upcomingNext7d, withAttendeesLinked, recentlyEnriched }`
+  for the calendar dashboard widget. Pure SQL, no event-bus
+  subscription, no live state. Reads:
+  - `total` — `COUNT(*) WHERE layer_id = ? AND deleted_at IS NULL`.
+  - `upcomingNext7d` — `[now, now+7d)` range scan on the indexed
+    `starts_at` column from 4c.1. The `+7d` boundary is computed in
+    JS and passed as a fully-formed ISO string; SQLite's
+    lexicographic comparison of fixed-width ISO timestamps matches
+    real timestamp comparison.
+  - `withAttendeesLinked` — `EXISTS` subquery over
+    `json_each(json_extract(payload_json, '$.attendees'))` with a
+    `json_extract(je.value, '$.contactEntityId') IS NOT NULL`
+    filter. JSON1 is available in `bun:sqlite`; `json_each` over a
+    NULL / missing array yields zero rows so the subquery degrades
+    to `false` for events without attendees without an error path.
+    The plan permitted a `LIKE '%contactEntityId%'` approximation
+    fallback — not needed; the JSON1 path stays cleaner.
+  - `recentlyEnriched` — `entity_souls.updated_at > now - 24h`
+    joined on `entity_id`. Mirrors companies / contacts exactly.
+- `statsProvider: calendarEventStatsProvider` slotted directly onto
+  the object returned by `createCalendarEventModule(...)` — same
+  spot as contacts (4b.4). No `CreateOptions` extension was needed;
+  the default singleton and the production-built variant
+  (`buildProductionCalendarEventModule`) both inherit it.
+- The endpoint surface is automatic: `GET /l/:slug/calendar_event/_stats`
+  exists once the slot is set, per the 4a.4 router wiring.
+- `apps/web/src/dashboard/CalendarWidget.tsx`
+  - `apps/web/src/dashboard/calendar-widget-state.ts` — pure-reducer
+  - shadcn `<Card>` mirroring `ContactsWidget`. Side-effect-registers
+    itself at `order: 300` (Companies = 100, Contacts = 200). The
+    barrel `widgets.ts` imports it once for the registration side
+    effect.
+- `apps/web/src/lib/api.ts` — `getCalendarEventStats(layerSlug)`
+  helper + `CalendarEventStatsResponse` type. Targets the singular
+  server URL `/l/:slug/calendar_event/_stats`; the widget's "View
+  calendar" / "New event" CTAs use the friendlier plural
+  `/l/:slug/calendar` route the 4c.5 web UI will mount.
+
+**Foundation tweaks**
+
+- **ZERO.** The §4a.4 `statsProvider` slot designed for the
+  companies widget absorbed the third consumer with no contract
+  change — third empirical validation in a row (after contacts in
+  4b.4). The slot's additive shape (`compute(ctx): Record<string,
+unknown>`) keeps the per-kind shape opaque to the router and the
+  widget on the web side knows what to expect via the typed
+  client.
+
+**Tests**
+
+- `apps/server/tests/entities/calendar-stats.test.ts` — three
+  scenarios:
+  1. Empty layer returns zero counts.
+  2. Five events spaced across time (E1 ~7d past decoy; E2 +1d
+     with `contactEntityId` set; E3 +3d, stamped recently
+     enriched; E4 +30d decoy; E5 ~14d past with attendees but
+     none carrying `contactEntityId`) plus a stale soul-stamp
+     decoy on E1 — counts come out `{ total: 5, upcomingNext7d:
+2, withAttendeesLinked: 1, recentlyEnriched: 1 }`.
+  3. Cross-layer isolation: events in a sibling layer do not
+     contribute to the requesting layer's counts.
+     The seed assigns `contactEntityId` directly in the create
+     payload (any UUID — the schema requires only the string shape
+     and the calendar table holds no foreign-key check on it),
+     avoiding the enrichment runner.
+- `apps/web/tests/calendar-widget.test.ts` — reducer matrix
+  (loading / error / empty / ready / single-row ready) plus the
+  registry contract test (registration shape + ordering after
+  Companies and Contacts).
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10d gained a paragraph
+  noting calendar as the third `statsProvider` consumer and
+  documenting the `json_each` / `json_extract` path the linked
+  counter uses.
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this
+  close-out.
+- `docs/dev/tasklist.md` 4c.4 row → `done`.
+
+**No new ADR** — 4c.4 consumes the §4a.4 slot cleanly with zero
+contract changes.
+
+**Follow-ups noted**
+
+- None. The 4c.3 close-out's "links suggested today" subscriber
+  hint remains future work; the 4c.4 widget surfaces the current
+  link state from `payload.attendees[]` directly, which is enough
+  for v1.
+
+**Notable for 4c.5 (web UI — calendar grid)**
+
+- The widget's "View calendar" CTA already targets
+  `/l/:slug/calendar`; 4c.5 needs to mount that route. The
+  singular ↔ plural seam (`/calendar_event` server URL ↔
+  `/calendar` web URL) follows the same pattern Companies / Contacts
+  established — see `apps/web/src/lib/companies-routes.ts` and
+  `apps/web/src/lib/contacts-routes.ts` for the precedent.
+- The widget's "New event" CTA assumes `/l/:slug/calendar/new`
+  will mount the create form. 4c.5 should land the route to make
+  the CTA live; until then it routes through the App router's
+  404 (the widget's empty-state CTA path already accepts that —
+  empty layers also have nothing to ingest from a Google
+  connector yet).
