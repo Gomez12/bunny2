@@ -408,40 +408,82 @@ agent. Pseudo-shape:
 
 ```ts
 async function run(ctx) {
-  const layerId = ctx.task.layerId;
+  // 7.3 reality (Pattern A): the seed is `everyone`-scoped so the
+  // single task row drives the run; the handler iterates every
+  // non-deleted layer in-process and does the per-layer work for
+  // each. The seed itself is not re-shaped (no phase 5/6 churn).
+  const layerIds = layersRepo.listAllNonDeleted().map(l => l.id);
   const window = { from: now() - 7d, to: now() };
-  const messages = chatRepo.listForReview(layerId, window);
-  const feedback = feedbackRepo.byMessageIds(messages.map(m => m.id));
-  const steps    = stepsRepo.byMessageIds(messages.map(m => m.id));
-  const llmCalls = llmRepo.byCorrelationIds(messages.map(m => m.correlationId));
+  for (const layerId of layerIds) {
+    const messages = listMessagesInWindow(layerId, window);   // raw SQL helper local to the handler
+    const feedback = listFeedbackByMessageIds(messages.ids);
+    const steps    = listStepsByMessageIds(messages.ids);
+    const llmCalls = [];                                       // reserved for 7.4+; signature stays stable
 
-  const clusters = clusterFailureModes({ messages, feedback, steps, llmCalls });
-  // ^ pure code: zero-hit retrieval; thumbs_down; invalid_step_output;
-  //   latency-over-budget; error_code patterns. Deterministic.
+    const clusters = groupClusters({ messages, feedback, steps, llmCalls });
+    // ^ pure code: zero-hit retrieval; thumbs-down; invalid-step-output;
+    //   latency-over-budget; repeated-error-code. Deterministic.
 
-  for (const cluster of clusters) {
-    const spec = await llmMintProposal(cluster, capabilitySnapshot(layerId));
-    //   ^ one LLM call per cluster; output zod-validated against
-    //     ProposalSpec; on parse failure: retry once, then skip.
-    proposalsRepo.insert({
-      layerId,
-      artifactKind: spec.artifactKind,
-      problemSummary: spec.summary,
-      proposedSpec: spec,
-      expectedImpact: spec.expectedImpact,
-      threshold: spec.threshold,
-      capabilitySnapshot: capabilitySnapshot(layerId),
-      mintedByRunId: ctx.runId,
-      mintedAt: now(),
-      status: 'new',
-    });
-    bus.publish('proposal.minted', { proposalId, layerId });
+    for (const cluster of clusters) {
+      const mintResult = await mintProposalViaLlm(ctx.llm, {
+        cluster,
+        capabilitySnapshot: snapshot(layerId),
+        layerId,
+        messageSnippets: ...,
+        flowId: `proposal.mint:${ctx.run.id}`,
+        correlationId: ctx.correlationId,
+      });
+      //   ^ one LLM call per cluster; on parse / contract failure
+      //     the minter retries once internally, then returns `err`.
+
+      if ('err' in mintResult) {
+        ctx.logger.warn('proposal.mint.skipped', { reason: 'invalid_spec_output', ... });
+        continue;
+      }
+      const { spec, expectedImpact, threshold } = mintResult.ok;
+      // The mint LLM emits a wrapper { spec, expectedImpact, threshold }.
+      // `spec` is the discriminated-union ProposalSpec; the wrapper
+      // matches the proposals-repo's row shape that landed in 7.2
+      // (problemSummary is the cluster's template summary — the spec
+      // schema has no `summary` field).
+      const proposalId = proposalsRepo.insertProposal({
+        id: newId(),
+        layerId,
+        artifactKind: spec.artifactKind,
+        problemSummary: cluster.summary,
+        proposedSpecJson: JSON.stringify(spec),
+        expectedImpactJson: JSON.stringify(expectedImpact),
+        threshold,
+        capabilitySnapshotJson: JSON.stringify(snapshot(layerId)),
+        mintedByRunId: ctx.run.id,
+        mintedAt: ctx.now(),
+        status: 'new',
+      }).id;
+      evidenceRepo.insertMany(cluster.messageIds.map(...));
+      bus.publish({ type: 'proposal.minted', payload: { proposalId, layerId, artifactKind, threshold, mintedByRunId } });
+    }
   }
 }
 ```
 
 - One LLM call per cluster (not per message). `llm_calls` row
-  per cluster.
+  per cluster, all with `flow_id = 'proposal.mint:<runId>'` so a
+  retry + a successful call share the same flow id.
+- The LLM emits a **wrapper** `{ spec, expectedImpact, threshold }`
+  — not a flat `ProposalSpec` — because the `ProposalSpecSchema`
+  shipped in 7.2 only carries artifact-shape fields (no `summary`,
+  no `expectedImpact`, no `threshold`). The wrapper matches the
+  proposals-repo's row shape; `problemSummary` is filled from the
+  cluster grouper's template summary (no extra LLM cost). This is
+  the only place the 7.3 contract diverges from the bullet
+  earlier in this section that mentioned `spec.summary` /
+  `spec.expectedImpact` / `spec.threshold` — those were
+  shorthand; the row's contract wins.
+- `addressesTags` on the spec MUST include the cluster's reason —
+  the minter enforces it after zod parsing. A spec that omits the
+  cluster reason is treated as a parse failure (retry once, then
+  skip with `proposal.mint.skipped` + `reason='invalid_spec_output'`).
+  Pinned by ADR 0025 §2 (`failureModeTags` ↔ `addressesTags`).
 - Capability snapshot is the JSON serialization of
   `layer_capabilities` rows where `deactivated_at IS NULL` plus
   the built-in capability list (constant). The snapshot lives on

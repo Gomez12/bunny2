@@ -1,0 +1,46 @@
+/**
+ * Phase 7.3 — `proposal.*` bus event taxonomy.
+ *
+ * Mirrors the shape used by `chat/events.ts` and
+ * `scheduled/events.ts`: a closed const tuple of event-type strings
+ * plus one typed payload interface per row. The per-layer review
+ * agent (`chat.review-layer`) publishes `proposal.minted` once per
+ * proposal it inserts; later sub-phases (7.4 sandbox, 7.5
+ * activation) extend this taxonomy with `proposal.activated` /
+ * `proposal.superseded` / `proposal.rejected`.
+ *
+ * Anti-leak invariants (per `phase-07-self-learning.md` §10):
+ *  - Payloads carry IDs only — `proposalId`, `layerId`, `artifactKind`,
+ *    `threshold`, `mintedByRunId`. They MUST NOT carry the cluster
+ *    summary, the proposed-spec body, or any chat message content;
+ *    those live in `improvement_proposals` rows behind the
+ *    authenticated proposals routes (phase 7.6).
+ *  - `artifactKind` is the closed enum from
+ *    `packages/shared/src/proposals.ts` so subscribers can fan-out
+ *    on the value without joining the proposals table.
+ *  - The event is published through the in-process bus (the chat
+ *    pipeline + scheduled-task subscriber model), not the durable
+ *    outbox; UI widgets and the future tool-calling answerer
+ *    subscribe in-process.
+ */
+
+import type { ArtifactKind } from '@bunny2/shared';
+
+export const PROPOSAL_EVENT_TYPES = ['proposal.minted'] as const;
+
+export type ProposalEventType = (typeof PROPOSAL_EVENT_TYPES)[number];
+
+/**
+ * Fired once per proposal inserted by the per-layer review agent.
+ * The subscriber-side `ProposalsWidget` (phase 7.6) and the future
+ * threshold-gated activation path (phase 8) both consume it.
+ */
+export interface ProposalMintedPayload {
+  readonly proposalId: string;
+  readonly layerId: string;
+  readonly artifactKind: ArtifactKind;
+  readonly threshold: number;
+  readonly mintedByRunId: string;
+}
+
+export const PROPOSAL_MINTED_EVENT_TYPE: ProposalEventType = 'proposal.minted';
