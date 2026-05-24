@@ -21,7 +21,9 @@
     "chat": "Chat",
     "layers": "Layers",
     "adminUsers": "Admin · Users",
-    "adminGroups": "Admin · Groups"
+    "adminGroups": "Admin · Groups",
+    "adminScheduledTasks": "Admin · Scheduled tasks",
+    "adminBusDlq": "Admin · DLQ"
   },
   "auth": {
     "login": {
@@ -270,6 +272,42 @@
         "confirmBody": "“{{name}}” will disappear from your switcher and from every other member’s view. This cannot be undone from the UI.",
         "deleted": "Layer “{{name}}” deleted."
       }
+    },
+    "scheduledTasks": {
+      "title": "Scheduled tasks (all layers)",
+      "empty": "No scheduled tasks registered yet.",
+      "columns": {
+        "name": "Name",
+        "layer": "Layer",
+        "kind": "Kind",
+        "schedule": "Schedule",
+        "nextRun": "Next run",
+        "lastRun": "Last run",
+        "status": "Status"
+      },
+      "openInLayerCta": "Open in layer"
+    },
+    "bus": {
+      "dlq": {
+        "title": "Dead-letter queue",
+        "empty": "No dead-letter rows. The bus is healthy.",
+        "refresh": "Refresh",
+        "columns": {
+          "eventType": "Event type",
+          "subscriberKey": "Subscriber",
+          "attempts": "Attempts",
+          "error": "Error",
+          "failedAt": "Failed at",
+          "action": "Action"
+        },
+        "replay": "Replay",
+        "replayConfirm": {
+          "title": "Replay this dead-letter row?",
+          "body": "The bus will re-enqueue this event for the subscriber. If the underlying failure still applies, the row may return to the queue.",
+          "cta": "Replay"
+        },
+        "replayed": "Row replayed."
+      }
     }
   },
   "layer": {
@@ -343,6 +381,19 @@
           "statDueToday": "Due today",
           "statOverdue": "Overdue",
           "statHighPriorityOpen": "High priority"
+        },
+        "recentRuns": {
+          "title": "Recent runs",
+          "loading": "Loading recent runs…",
+          "error": "Could not load recent runs.",
+          "empty": "No scheduled runs yet in this layer.",
+          "viewAllCta": "Open scheduled tasks",
+          "columns": {
+            "task": "Task",
+            "status": "Status",
+            "finishedAt": "Finished",
+            "triggeredBy": "Triggered by"
+          }
         }
       }
     },
@@ -354,7 +405,10 @@
         "companies": "Companies",
         "contacts": "Contacts",
         "calendar": "Calendar",
-        "todos": "Todos"
+        "todos": "Todos",
+        "scheduledTasks": "Scheduled tasks",
+        "adminScheduledTasks": "Admin · Scheduled tasks",
+        "adminBusDlq": "Admin · Dead-letter queue"
       }
     }
   },
@@ -816,6 +870,120 @@
       "importSuccess": "Imported {{created}} new and updated {{updated}} existing contacts.",
       "importWarningsTitle": "Warnings",
       "importNoFile": "Please choose a .vcf file first."
+    }
+  },
+  "scheduledTasks": {
+    "list": {
+      "title": "{{name}} · Scheduled tasks",
+      "empty": "No scheduled tasks in this layer yet.",
+      "loading": "Loading scheduled tasks…",
+      "error": "Could not load scheduled tasks.",
+      "createCta": "Add task",
+      "refresh": "Refresh",
+      "columns": {
+        "name": "Name",
+        "kind": "Kind",
+        "schedule": "Schedule",
+        "nextRun": "Next run",
+        "lastRun": "Last run",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "lastRunNever": "Never",
+      "expand": "Show recent runs",
+      "collapse": "Hide recent runs",
+      "runsTitle": "Recent runs",
+      "runsEmpty": "No runs for this task yet.",
+      "runsLoading": "Loading run history…",
+      "runsError": "Could not load run history.",
+      "runsColumns": {
+        "status": "Status",
+        "started": "Started",
+        "duration": "Duration",
+        "triggeredBy": "Triggered by",
+        "attempt": "Attempt",
+        "error": "Error"
+      },
+      "durationMs": "{{ms}} ms"
+    },
+    "status": {
+      "active": "Active",
+      "paused": "Paused",
+      "canceled": "Canceled"
+    },
+    "schedule": {
+      "cron": "cron: {{expression}} · {{timezone}}",
+      "interval": "every {{minutes}} min"
+    },
+    "trigger": {
+      "schedule": "Schedule",
+      "manual": "Manual",
+      "retry": "Retry"
+    },
+    "run": {
+      "status": {
+        "requested": "Requested",
+        "started": "Started",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "skipped_offline": "Skipped (offline)",
+        "skipped_no_handler": "Skipped (no handler)",
+        "skipped_crashed": "Skipped (crashed)"
+      }
+    },
+    "dialog": {
+      "title": "Add scheduled task",
+      "nameLabel": "Name",
+      "slugLabel": "Slug",
+      "slugHint": "Derived from name. URL-safe lowercase letters, digits, and dashes.",
+      "kindLabel": "Kind",
+      "kindPlaceholder": "Select a registered handler",
+      "scheduleKindCron": "Cron",
+      "scheduleKindInterval": "Interval",
+      "cronExpression": "Cron expression",
+      "cronExpressionHint": "Five fields, for example 0 7 * * MON.",
+      "cronTimezone": "Timezone (IANA)",
+      "intervalMinutes": "Every N minutes",
+      "maxAttempts": "Max attempts",
+      "backoffBaseMs": "Backoff base (ms)",
+      "backoffMaxMs": "Backoff max (ms)",
+      "submit": "Create task",
+      "cancel": "Cancel",
+      "validation": {
+        "nameRequired": "Name is required.",
+        "kindRequired": "Pick a handler kind.",
+        "cronEmpty": "Cron expression is required.",
+        "cronShape": "Cron expression must have five whitespace-separated fields.",
+        "cronTimezoneRequired": "Timezone is required.",
+        "intervalPositive": "Interval must be at least 1 minute.",
+        "maxAttemptsPositive": "Max attempts must be a positive integer.",
+        "backoffBasePositive": "Backoff base must be a positive integer (ms).",
+        "backoffMaxPositive": "Backoff max must be a positive integer (ms).",
+        "backoffOrder": "Backoff max must be greater than or equal to backoff base."
+      }
+    },
+    "actions": {
+      "runNow": "Run now",
+      "pause": "Pause",
+      "resume": "Resume",
+      "delete": "Delete",
+      "refresh": "Refresh"
+    },
+    "deleteConfirm": {
+      "title": "Delete this scheduled task?",
+      "body": "“{{name}}” will be removed from this layer. The run history is kept for audit.",
+      "cta": "Delete task"
+    },
+    "toast": {
+      "created": "Scheduled task created.",
+      "runQueued": "Run queued.",
+      "paused": "Task paused.",
+      "resumed": "Task resumed.",
+      "deleted": "Task deleted."
+    },
+    "dashboard": {
+      "recentRunsTitle": "Recent runs",
+      "empty": "No scheduled runs yet in this layer."
     }
   }
 }

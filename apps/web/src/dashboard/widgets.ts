@@ -8,5 +8,6 @@ import './CompaniesWidget';
 import './ContactsWidget';
 import './CalendarWidget';
 import './TodosWidget';
+import './RecentRunsWidget';
 
 export { listDashboardWidgets, type DashboardWidget, type WidgetProps } from './widget-registry';

@@ -17,10 +17,12 @@ import type {
   AddCompanyExternalLinkPayload,
   AddLayerMemberPayload,
   AddLayerVisibilityPayload,
+  AdminBusDlqRow,
   AdminGroupDetailResponse,
   AdminGroupListResponse,
   AdminGroupRow,
   AdminResetPasswordResponse,
+  AdminScheduledTaskRow,
   AdminUserCreateResponse,
   AdminUserDetailResponse,
   AdminUserListResponse,
@@ -33,6 +35,7 @@ import type {
   CreateContactPayload,
   CreateGroupPayload,
   CreateLayerPayload,
+  CreateScheduledTaskPayload,
   CreateTodoPayload,
   CreateUserPayload,
   EntityExternalLink,
@@ -49,6 +52,10 @@ import type {
   RegisterLayerAttachmentPayload,
   SafeGroup,
   SafeUser,
+  ScheduledTaskHandlerInfo,
+  ScheduledTaskRecentRun,
+  ScheduledTaskRunSummary,
+  ScheduledTaskSummary,
   SetLayerLocalesPayload,
   SystemLocalesResponse,
   Todo,
@@ -57,6 +64,7 @@ import type {
   UpdateContactPayload,
   UpdateGroupPayload,
   UpdateLayerPayload,
+  UpdateScheduledTaskPayload,
   UpdateTodoPayload,
   UpdateUserPayload,
 } from './api-types';
@@ -962,4 +970,131 @@ export async function listTodoProjectionsForCalendar(
     `/l/${encodeURIComponent(layerSlug)}/calendar/_projections/todos`,
   );
   return res;
+}
+
+// ---------- scheduled tasks (phase 5.6) ------------------------------------
+
+function scheduledTasksBase(layerSlug: string): string {
+  return `/l/${encodeURIComponent(layerSlug)}/scheduled-tasks`;
+}
+
+export async function listScheduledTasks(
+  layerSlug: string,
+): Promise<readonly ScheduledTaskSummary[]> {
+  const res = await request<{ tasks: readonly ScheduledTaskSummary[] }>(
+    scheduledTasksBase(layerSlug),
+  );
+  return res.tasks;
+}
+
+export async function listScheduledTaskKinds(
+  layerSlug: string,
+): Promise<readonly ScheduledTaskHandlerInfo[]> {
+  const res = await request<{ kinds: readonly ScheduledTaskHandlerInfo[] }>(
+    `${scheduledTasksBase(layerSlug)}/_kinds`,
+  );
+  return res.kinds;
+}
+
+export async function listRecentScheduledRuns(
+  layerSlug: string,
+  limit = 10,
+): Promise<readonly ScheduledTaskRecentRun[]> {
+  const res = await request<{ runs: readonly ScheduledTaskRecentRun[] }>(
+    `${scheduledTasksBase(layerSlug)}/_recent-runs?limit=${encodeURIComponent(String(limit))}`,
+  );
+  return res.runs;
+}
+
+export async function createScheduledTask(
+  layerSlug: string,
+  payload: CreateScheduledTaskPayload,
+): Promise<ScheduledTaskSummary> {
+  const res = await request<{ task: ScheduledTaskSummary }>(scheduledTasksBase(layerSlug), {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return res.task;
+}
+
+export async function updateScheduledTask(
+  layerSlug: string,
+  taskSlug: string,
+  payload: UpdateScheduledTaskPayload,
+): Promise<ScheduledTaskSummary> {
+  const res = await request<{ task: ScheduledTaskSummary }>(
+    `${scheduledTasksBase(layerSlug)}/${encodeURIComponent(taskSlug)}`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+  );
+  return res.task;
+}
+
+export async function deleteScheduledTask(layerSlug: string, taskSlug: string): Promise<void> {
+  await request<{ ok: true }>(`${scheduledTasksBase(layerSlug)}/${encodeURIComponent(taskSlug)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function pauseScheduledTask(
+  layerSlug: string,
+  taskSlug: string,
+): Promise<ScheduledTaskSummary> {
+  const res = await request<{ task: ScheduledTaskSummary }>(
+    `${scheduledTasksBase(layerSlug)}/${encodeURIComponent(taskSlug)}/pause`,
+    { method: 'POST' },
+  );
+  return res.task;
+}
+
+export async function resumeScheduledTask(
+  layerSlug: string,
+  taskSlug: string,
+): Promise<ScheduledTaskSummary> {
+  const res = await request<{ task: ScheduledTaskSummary }>(
+    `${scheduledTasksBase(layerSlug)}/${encodeURIComponent(taskSlug)}/resume`,
+    { method: 'POST' },
+  );
+  return res.task;
+}
+
+export async function runScheduledTaskNow(
+  layerSlug: string,
+  taskSlug: string,
+): Promise<ScheduledTaskRunSummary> {
+  const res = await request<{ run: ScheduledTaskRunSummary }>(
+    `${scheduledTasksBase(layerSlug)}/${encodeURIComponent(taskSlug)}/runs`,
+    { method: 'POST' },
+  );
+  return res.run;
+}
+
+export async function listScheduledTaskRuns(
+  layerSlug: string,
+  taskSlug: string,
+  limit = 50,
+): Promise<readonly ScheduledTaskRunSummary[]> {
+  const res = await request<{ runs: readonly ScheduledTaskRunSummary[] }>(
+    `${scheduledTasksBase(layerSlug)}/${encodeURIComponent(taskSlug)}/runs?limit=${encodeURIComponent(String(limit))}`,
+  );
+  return res.runs;
+}
+
+// ---------- admin: scheduled tasks + bus DLQ (phase 5.6) -------------------
+
+export async function listAdminScheduledTasks(): Promise<readonly AdminScheduledTaskRow[]> {
+  const res = await request<{ tasks: readonly AdminScheduledTaskRow[] }>('/admin/scheduled-tasks');
+  return res.tasks;
+}
+
+export async function listAdminBusDlq(limit = 50): Promise<readonly AdminBusDlqRow[]> {
+  const res = await request<{ items: readonly AdminBusDlqRow[] }>(
+    `/admin/bus/dlq?limit=${encodeURIComponent(String(limit))}`,
+  );
+  return res.items;
+}
+
+export async function replayAdminBusDlq(outboxId: string): Promise<void> {
+  await request<{ ok: true }>(`/admin/bus/dlq/${encodeURIComponent(outboxId)}/replay`, {
+    method: 'POST',
+  });
 }

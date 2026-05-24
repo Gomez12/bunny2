@@ -14,7 +14,10 @@ import { ADMIN_GROUP_ID_KEY } from '../../auth/seed';
 import { getMeta } from '../../storage/kv-meta';
 import type { GroupResolver } from '../../auth/group-resolver';
 import type { ScheduledTask, ScheduledTaskRun, ScheduledTasksRepo } from '../../scheduled/repo';
-import { getScheduledTaskHandler } from '../../scheduled/registry';
+import {
+  getScheduledTaskHandler,
+  listRegisteredScheduledTaskHandlers,
+} from '../../scheduled/registry';
 import { computeNextRun } from '../../scheduled/schedule';
 import type {
   ScheduledTaskCreatedPayload,
@@ -89,6 +92,70 @@ export function registerScheduledTasksRoutes(
     if (layer === undefined) return c.json(NOT_VISIBLE, 404);
     const tasks = deps.repo.listTasks({ layerId: layer.id });
     return c.json({ tasks: tasks.map(toSummary) });
+  });
+
+  // ---------- GET /l/:slug/scheduled-tasks/_kinds -------------------------
+  //
+  // Lists the registered handler `kind`s the server knows about, with
+  // their optional `defaultSchedule`. The phase-5.6 create dialog reads
+  // this to populate its Kind dropdown (plan §15 #1 resolution — the
+  // handler may carry a sensible pre-fill). Read-allowed to any layer
+  // member because the kind set is global, not layer-scoped; gating it
+  // behind `canEditLayer` would surface a confusing "you may not view
+  // the catalog" copy on read-only members who would still benefit from
+  // seeing the page.
+  //
+  // Hono first-match dispatch — this route MUST be declared before the
+  // `/:taskSlug` routes below, otherwise the literal `_kinds` segment
+  // would land on the parameterized matcher.
+
+  app.get('/l/:slug/scheduled-tasks/_kinds', requireLayer, (c) => {
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    const kinds = listRegisteredScheduledTaskHandlers();
+    return c.json({ kinds });
+  });
+
+  // ---------- GET /l/:slug/scheduled-tasks/_recent-runs -------------------
+  //
+  // Powers the phase-5.6 "Recent runs" dashboard widget. Returns the
+  // most recent run rows across every task in the current layer in
+  // `requested_at DESC` order, enriched with `taskSlug` + `taskName`
+  // so the widget can link straight to the per-layer list page
+  // without a second round-trip.
+  //
+  // Read-allowed to any layer member (same authorization as the list +
+  // get routes — plan §8). `limit` defaults to 10, clamps to 50.
+  //
+  // SQL note: filter on `t.deleted_at IS NULL` so runs from a
+  // soft-deleted task do not surface. The `scheduled_task_runs` row
+  // itself does not carry `deleted_at` (no soft-delete on runs); the
+  // task gate is enough.
+
+  app.get('/l/:slug/scheduled-tasks/_recent-runs', requireLayer, (c) => {
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    const limit = parseRecentLimit(c.req.query('limit'));
+    const rows = deps.db
+      .query<RecentRunRow, [string, number]>(
+        `SELECT r.id, r.task_id, r.status, r.attempt, r.triggered_by,
+                r.requested_at, r.started_at, r.finished_at,
+                r.duration_ms, r.error, r.correlation_id,
+                t.slug AS task_slug, t.name AS task_name
+           FROM scheduled_task_runs r
+           JOIN scheduled_tasks t ON t.id = r.task_id
+          WHERE t.layer_id = ?
+            AND t.deleted_at IS NULL
+          ORDER BY r.requested_at DESC
+          LIMIT ?`,
+      )
+      .all(layer.id, limit);
+    const runs = rows.map((row) => ({
+      ...toRunSummaryFromRow(row),
+      taskSlug: row.task_slug,
+      taskName: row.task_name,
+    }));
+    return c.json({ runs });
   });
 
   // ---------- GET /l/:slug/scheduled-tasks/:taskSlug ----------------------
@@ -442,6 +509,48 @@ function parseLimit(raw: string | undefined): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return DEFAULT_RUNS_LIMIT;
   return Math.min(Math.floor(n), MAX_RUNS_LIMIT);
+}
+
+const DEFAULT_RECENT_LIMIT = 10;
+const MAX_RECENT_LIMIT = 50;
+
+function parseRecentLimit(raw: string | undefined): number {
+  if (raw === undefined || raw === '') return DEFAULT_RECENT_LIMIT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_RECENT_LIMIT;
+  return Math.min(Math.floor(n), MAX_RECENT_LIMIT);
+}
+
+interface RecentRunRow {
+  readonly id: string;
+  readonly task_id: string;
+  readonly status: string;
+  readonly attempt: number;
+  readonly triggered_by: string;
+  readonly requested_at: string;
+  readonly started_at: string | null;
+  readonly finished_at: string | null;
+  readonly duration_ms: number | null;
+  readonly error: string | null;
+  readonly correlation_id: string | null;
+  readonly task_slug: string;
+  readonly task_name: string;
+}
+
+function toRunSummaryFromRow(row: RecentRunRow): ScheduledTaskRunSummary {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    status: row.status as ScheduledTaskRunSummary['status'],
+    attempt: row.attempt,
+    triggeredBy: row.triggered_by as ScheduledTaskRunSummary['triggeredBy'],
+    requestedAt: row.requested_at,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    durationMs: row.duration_ms,
+    error: row.error,
+    correlationId: row.correlation_id,
+  };
 }
 
 function deriveSlug(name: string): string {

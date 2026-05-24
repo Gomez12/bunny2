@@ -19,6 +19,9 @@ import { LoginPage } from './pages/LoginPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminGroupsPage } from './pages/admin/AdminGroupsPage';
+import { AdminScheduledTasksPage } from './pages/admin/AdminScheduledTasksPage';
+import { AdminBusDlqPage } from './pages/admin/AdminBusDlqPage';
+import { ScheduledTasksListPage } from './pages/ScheduledTasksListPage';
 import { MyLayersPage } from './pages/MyLayersPage';
 import { LayerSettingsPage } from './pages/LayerSettingsPage';
 import { LayerDashboardPage } from './pages/LayerDashboardPage';
@@ -220,6 +223,10 @@ function AppShell(): JSX.Element {
           />
           {isAdmin ? <Route path="/admin/users" element={<AdminUsersPage />} /> : null}
           {isAdmin ? <Route path="/admin/groups" element={<AdminGroupsPage />} /> : null}
+          {isAdmin ? (
+            <Route path="/admin/scheduled-tasks" element={<AdminScheduledTasksPage />} />
+          ) : null}
+          {isAdmin ? <Route path="/admin/bus/dlq" element={<AdminBusDlqPage />} /> : null}
           <Route path="/l/:layerSlug/dashboard" element={<LayerDashboardPage />} />
           <Route path="/l/:layerSlug/settings" element={<LayerSettingsPage />} />
           <Route path="/l/:layerSlug/companies" element={<CompaniesListPage />} />
@@ -235,6 +242,7 @@ function AppShell(): JSX.Element {
           <Route path="/l/:layerSlug/todos" element={<TodosPage />} />
           <Route path="/l/:layerSlug/todos/new" element={<TodosPage />} />
           <Route path="/l/:layerSlug/todos/:todoSlug" element={<TodoDetailPage />} />
+          <Route path="/l/:layerSlug/scheduled-tasks" element={<ScheduledTasksListPage />} />
           <Route path="/l/:layerSlug" element={<LayerSlugIndexRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -283,6 +291,7 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
     if (sub === 'contacts') return t('layer.shell.subpages.contacts');
     if (sub === 'calendar') return t('layer.shell.subpages.calendar');
     if (sub === 'todos') return t('layer.shell.subpages.todos');
+    if (sub === 'scheduled-tasks') return t('layer.shell.subpages.scheduledTasks');
     return null;
   }
   if (pathname.startsWith('/layers')) return t('admin.layers.list.title');
@@ -290,6 +299,9 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
   if (pathname.startsWith('/chat')) return t('nav.chat');
   if (pathname.startsWith('/admin/users')) return t('nav.adminUsers');
   if (pathname.startsWith('/admin/groups')) return t('nav.adminGroups');
+  if (pathname.startsWith('/admin/scheduled-tasks'))
+    return t('layer.shell.subpages.adminScheduledTasks');
+  if (pathname.startsWith('/admin/bus/dlq')) return t('layer.shell.subpages.adminBusDlq');
   if (pathname.startsWith('/account')) return t('auth.changePassword.title');
   return null;
 }

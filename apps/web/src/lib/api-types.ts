@@ -426,3 +426,120 @@ export interface UpdateTodoPayload {
   readonly title?: string;
   readonly payload: TodoPayload;
 }
+
+// ---------- scheduled tasks (phase 5.6) ------------------------------------
+//
+// Hand-mirrored from `packages/shared/src/scheduled-tasks.ts` per the
+// same rationale as the rest of this file — we keep the web bundle
+// zod-free; the server's zod parse is the authoritative validator.
+
+export type ScheduledTaskStatus = 'active' | 'paused' | 'canceled';
+export type ScheduledTaskPauseReason = 'manual' | 'max_attempts';
+export type ScheduledTaskRunStatus =
+  | 'requested'
+  | 'started'
+  | 'succeeded'
+  | 'failed'
+  | 'skipped_offline'
+  | 'skipped_no_handler'
+  | 'skipped_crashed';
+export type ScheduledTaskRunTrigger = 'schedule' | 'manual' | 'retry';
+
+export interface CronSchedule {
+  readonly kind: 'cron';
+  readonly cronExpression: string;
+  readonly cronTimezone: string;
+}
+
+export interface IntervalSchedule {
+  readonly kind: 'interval';
+  readonly intervalMinutes: number;
+}
+
+export type ScheduledTaskSchedule = CronSchedule | IntervalSchedule;
+
+export interface ScheduledTaskSummary {
+  readonly id: string;
+  readonly layerId: string;
+  readonly slug: string;
+  readonly kind: string;
+  readonly name: string;
+  readonly status: ScheduledTaskStatus;
+  readonly pauseReason: ScheduledTaskPauseReason | null;
+  readonly schedule: ScheduledTaskSchedule;
+  readonly maxAttempts: number;
+  readonly backoffBaseMs: number;
+  readonly backoffMaxMs: number;
+  readonly nextRunAt: string;
+  readonly lastRunAt: string | null;
+  readonly attempt: number;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly createdBy: string;
+  readonly updatedAt: string;
+  readonly updatedBy: string;
+  readonly deletedAt: string | null;
+}
+
+export interface ScheduledTaskRunSummary {
+  readonly id: string;
+  readonly taskId: string;
+  readonly status: ScheduledTaskRunStatus;
+  readonly attempt: number;
+  readonly triggeredBy: ScheduledTaskRunTrigger;
+  readonly requestedAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly durationMs: number | null;
+  readonly error: string | null;
+  readonly correlationId: string | null;
+}
+
+/** Recent-runs widget row — `ScheduledTaskRunSummary` + task hints. */
+export interface ScheduledTaskRecentRun extends ScheduledTaskRunSummary {
+  readonly taskSlug: string;
+  readonly taskName: string;
+}
+
+export interface ScheduledTaskHandlerInfo {
+  readonly kind: string;
+  readonly defaultSchedule?: ScheduledTaskSchedule;
+}
+
+export interface CreateScheduledTaskPayload {
+  readonly name: string;
+  readonly slug?: string;
+  readonly kind: string;
+  readonly schedule: ScheduledTaskSchedule;
+  readonly maxAttempts?: number;
+  readonly backoffBaseMs?: number;
+  readonly backoffMaxMs?: number;
+  readonly config?: Record<string, unknown>;
+}
+
+export interface UpdateScheduledTaskPayload {
+  readonly name?: string;
+  readonly schedule?: ScheduledTaskSchedule;
+  readonly status?: 'active' | 'paused';
+  readonly maxAttempts?: number;
+  readonly backoffBaseMs?: number;
+  readonly backoffMaxMs?: number;
+  readonly config?: Record<string, unknown>;
+}
+
+/** Admin DLQ list row from `GET /admin/bus/dlq`. */
+export interface AdminBusDlqRow {
+  readonly id: string;
+  readonly outboxId: string;
+  readonly subscriberKey: string;
+  readonly eventType: string;
+  readonly payloadPreview: string;
+  readonly attempts: number;
+  readonly error: string;
+  readonly failedAt: string;
+}
+
+/** Admin cross-layer task row from `GET /admin/scheduled-tasks`. */
+export interface AdminScheduledTaskRow extends ScheduledTaskSummary {
+  readonly layerSlug: string;
+}
