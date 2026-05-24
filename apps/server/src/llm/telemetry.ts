@@ -8,6 +8,15 @@ export interface TelemetryOpts {
   readonly pricing?: PricingMap;
   /** Override the clock for tests. Returns a Date. */
   readonly clock?: () => Date;
+  /**
+   * Phase 6.3 — optional callback invoked with the freshly-minted
+   * `llm_calls.id` BEFORE the upstream call returns. The chat
+   * orchestrator uses it to record `chat_pipeline_steps.llm_call_id`
+   * without having to query the table back. Invoked exactly once per
+   * `chat()` call (success or failure). Errors thrown from the
+   * callback are swallowed — telemetry must never break a model call.
+   */
+  readonly onCall?: (id: string) => void;
 }
 
 /**
@@ -33,6 +42,13 @@ export function withTelemetry(client: LlmClient, opts: TelemetryOpts): LlmClient
     defaultModel: client.defaultModel,
     async chat(req: ChatRequest): Promise<ChatResponse> {
       const id = crypto.randomUUID();
+      if (opts.onCall !== undefined) {
+        try {
+          opts.onCall(id);
+        } catch {
+          // Swallow — telemetry must never break a model call.
+        }
+      }
       const start = clock();
       const startMs = start.getTime();
       const model = req.model ?? client.defaultModel;

@@ -24,11 +24,7 @@ import {
   getScheduledTaskHandler,
   type ScheduledTaskHandler,
 } from '../scheduled';
-import {
-  createChatEmbeddingsBackfillHandler,
-  type Embedder,
-  type LanceWriter,
-} from './embeddings';
+import { createChatEmbeddingsBackfillHandler, type Embedder, type LanceWriter } from './embeddings';
 
 export interface RegisterChatScheduledTaskHandlersDeps {
   readonly embedder: Embedder;
@@ -61,3 +57,5 @@ export function registerChatScheduledTaskHandlers(
 }
 
 export * from './embeddings';
+export * from './pipeline';
+export * from './events';
