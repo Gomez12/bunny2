@@ -3907,3 +3907,145 @@ zero contract changes; ADR 0011 still governs the entity contract.
 - The 4d.4 "View todos" / "New todo" CTAs now resolve to real
   pages instead of the App router's 404; the smoke pass that
   follows the widget links can stop expecting the 404 branch.
+
+### 4d.6 shipped (2026-05-24)
+
+**What landed**
+
+- Migration
+  `apps/server/src/storage/migrations/0011_calendar_projection_todos.sql`
+  — flat derived-index table outside the `entity_*` namespace.
+  Columns: `todo_id PK → todos(id)`, `layer_id`, `todo_slug`,
+  `title`, `due_at NOT NULL`, `priority`, `status`, `updated_at`.
+  Two indexes: `idx_calendar_projection_todos_layer` for the list
+  endpoint scan, `idx_calendar_projection_todos_due_at` for future
+  range queries (4d.7+). Forward-only,
+  Postgres-portable.
+  `apps/server/tests/migrations.test.ts` asserts the schema lands
+  on a fresh DB and the migration list ends at
+  `0011_calendar_projection_todos`.
+- Bridge runtime at
+  `apps/server/src/entities/todos/calendar-projection.ts`. Exposes
+  `createTodoCalendarProjection({ db, bus })` returning
+  `{ start, stop, rebuild, handle }`. `start()` subscribes to
+  `entity.todo.{created,updated,deleted,restored}`; on every event
+  the subscriber re-reads the current todo row via direct SQL and
+  decides: non-deleted + non-null `due_at` → upsert (via `ON
+CONFLICT(todo_id) DO UPDATE`); soft-deleted or null `due_at` →
+  DELETE. The collapse to a single read-modify-write path means no
+  diff tracking is needed (the `EntityUpdatedPayload` event does
+  not carry the payload). `rebuild()` truncates the projection
+  table and re-projects every non-deleted dueAt-bearing todo for
+  boot-time recovery. Failure isolation: a failed projection write
+  logs at warn level and drops — the next event for the same todo
+  retries. Mirrors the dispatcher / enrichment-runner discipline.
+- HTTP read endpoint at
+  `apps/server/src/entities/todos/calendar-projection-routes.ts`
+  mounts `GET /l/:slug/calendar/_projections/todos`. URL sits under
+  the `/calendar/` prefix even though the data is materialized
+  from `todos` (the consumer is the calendar UI; ADR 0017
+  records the choice). Returns `{ items: TodoCalendarProjectionRow[] }`
+  sorted by `due_at ASC, priority ASC, todo_slug ASC`. Layer-scoped
+  via `createRequireLayer`; non-members see `404
+errors.layer.notVisible`.
+- Boot wiring in `apps/server/src/index.ts` — the bridge is
+  constructed and started exactly once per process (mirroring the
+  connector dispatcher and the enrichment runner) so multiple test
+  apps do not stack subscribers. `rebuild()` runs immediately
+  after `start()`.
+- Router wiring in `apps/server/src/http/router.ts` mounts the
+  HTTP read endpoint via `mountTodoCalendarProjectionRoutes(app, {
+db })`.
+- Web surface:
+  - `apps/web/src/lib/api.ts` gained
+    `listTodoProjectionsForCalendar(slug)` +
+    `TodoCalendarProjectionItem` / `TodoCalendarProjectionsResponse`
+    types.
+  - `apps/web/src/pages/calendar-page-state.ts` gained
+    `mapTodoProjectionsToCalendarItems(...)` (maps projection rows
+    to `react-big-calendar`'s `{id,title,start,end,allDay,resource}`
+    shape) and `mergeCalendarFeed(events, projections)` (concat +
+    stable-sort by `start ASC, id ASC`). The existing
+    `CalendarGridItem.resource` is now a discriminated union with
+    `kind: 'calendar_event' | 'todo_projection'`.
+  - `apps/web/src/pages/CalendarPage.tsx` fetches calendar events
+    AND todo projections in parallel, prefixes projection titles
+    with the localized `entity.calendar.todoProjectionLabel`
+    - non-open status badge, and uses a dashed-outline
+      `eventPropGetter` to visually distinguish projections. The
+      click handler branches on `resource.kind`: projections
+      navigate to `/l/:slug/todos/:slug` (the source todo);
+      real events navigate to `/l/:slug/calendar/:slug`. The
+      calendar event detail page is NEVER reached for projections.
+- i18n keys (en + nl) under `entity.calendar.*`:
+  `todoProjection`, `todoProjectionLabel`, and
+  `todoProjectionStatus{Open,InProgress,Blocked,Done,Cancelled}`
+  with real Dutch translations.
+
+**The "AI sets a dueAt → projection appears" chain works
+automatically.** The 4d.3 `todos.autoDue` enrichment job patches
+`payload.dueAt` via `store.update`, which emits
+`entity.todo.updated`. The bridge sees that event and re-projects
+without any special-casing. The same is true for any future caller
+that mutates a todo through the §4.0 store.
+
+**No feedback loop.** The subscriber NEVER publishes
+`entity.todo.*` events back to the bus and NEVER calls
+`store.update`. The
+`apps/server/tests/entities/todo-calendar-projection.test.ts`
+fixture asserts the invariant explicitly: two HTTP mutations on the
+same todo produce exactly two `entity.todo.*` events on the bus.
+
+**Tests**
+
+- `apps/server/tests/entities/todo-calendar-projection.test.ts`
+  (new) — 8 scenarios: create with dueAt projects; create without
+  dueAt does NOT project; update title rewrites the projection
+  title; `store.update` with dueAt cleared removes the projection
+  (the HTTP PATCH path merges and cannot clear an optional field —
+  documented branch); soft-delete removes the projection; cold
+  `rebuild()` backfills the table; cross-layer isolation; no
+  feedback loop.
+- `apps/server/tests/entities/todo-calendar-projection-http.test.ts`
+  (new) — 2 scenarios: 200 with sorted items; 404
+  `errors.layer.notVisible` for a non-member.
+- `apps/web/tests/calendar-page-projection.test.ts` (new) — pure
+  unit tests for `mapTodoProjectionsToCalendarItems`,
+  `mergeCalendarFeed`, and the discriminator on the existing
+  `mapEventsToCalendarItems` output.
+- `apps/web/tests/calendar-page.test.ts` updated for the
+  `resource.kind` discriminator.
+- All 741 server + web tests stay green (was 720 before 4d.6).
+
+**Foundation tweaks**
+
+- **ZERO.** The bridge is pure application code over the §4.0
+  entity contract and the §4d.1 todos kind. No `EntityModule`
+  extension, no new bus event type, no new connector method. Sixth
+  zero-foundation-tweak commit in the phase-4 block (4d.1–4d.6 all
+  consume the contract additively).
+
+**ADR**
+
+- `0017-todo-calendar-projection.md` (new) — covers three smaller
+  decisions inside the projection-via-subscriber shape: stored
+  projection (vs. event-only stream or query-time join); separate
+  read endpoint at `/calendar/_projections/todos` (vs. extending
+  the existing event list with a discriminator); `rebuild()` on
+  boot as the recovery contract (vs. event-log replay or
+  eventual-consistency drift).
+
+**Notable for 4d.7 (smoke + close-out — last sub-phase of phase 4)**
+
+- The smoke runner should add a single happy-path pass: create a
+  todo with `dueAt: today`, assert one row appears in
+  `GET /l/:slug/calendar/_projections/todos`, soft-delete the
+  todo, assert the projection list is empty. The fixture covers
+  the bridge's two halves end-to-end without DOM coverage.
+- The bridge writes synchronously inside the event handler, so the
+  smoke pass can assert immediately after the HTTP mutation
+  resolves — no polling needed (the in-memory bus runs subscribers
+  inline).
+- A future "due this week" widget can re-use the same projection
+  table without a second `due_at` denormalization. The
+  `idx_calendar_projection_todos_due_at` index is already in place.

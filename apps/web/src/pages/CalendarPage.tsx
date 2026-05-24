@@ -16,8 +16,11 @@ import {
   createCalendarEvent,
   getCalendarEvent,
   listCalendarEvents,
+  listTodoProjectionsForCalendar,
   syncGoogleCalendar,
+  type TodoCalendarProjectionItem,
 } from '../lib/api';
+import { webTodoPath } from '../lib/todos-routes';
 import type { CalendarEvent as CalendarEventEntity, EntitySummary } from '../lib/api-types';
 import {
   slugifyCalendarEventTitle,
@@ -32,11 +35,14 @@ import {
   calendarPageView,
   emptyCalendarEventFormDraft,
   mapEventsToCalendarItems,
+  mapTodoProjectionsToCalendarItems,
+  mergeCalendarFeed,
   setAllDay as setAllDayOnDraft,
   validateCalendarEventForm,
   type CalendarEventFormDraft,
   type CalendarPageInput,
   type MappableEventLike,
+  type TodoProjectionLike,
 } from './calendar-page-state';
 
 /**
@@ -76,6 +82,7 @@ export function CalendarPage(): JSX.Element {
   const current = useCurrentLayer();
   const [input, setInput] = useState<CalendarPageInput>({ status: 'loading' });
   const [hydrated, setHydrated] = useState<readonly MappableEventLike[]>([]);
+  const [projections, setProjections] = useState<readonly TodoCalendarProjectionItem[]>([]);
   const [view, setView] = useState<View>('week');
   const [date, setDate] = useState<Date>(() => new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -87,8 +94,20 @@ export function CalendarPage(): JSX.Element {
     if (layerSlug === null) return;
     setInput({ status: 'loading' });
     try {
-      const summaries = await listCalendarEvents(layerSlug);
+      // Phase 4d.6 — fetch calendar events AND todo projections in
+      // parallel. The projections endpoint never fails the page load
+      // even if the bridge has yet to write any rows (it just returns
+      // `{ items: [] }`); a fetch error is swallowed and the
+      // projection layer simply does not render — same defensive
+      // posture as the per-event `getCalendarEvent` hydrate below.
+      const [summaries, projectionsResp] = await Promise.all([
+        listCalendarEvents(layerSlug),
+        listTodoProjectionsForCalendar(layerSlug).catch(() => ({
+          items: [] as readonly TodoCalendarProjectionItem[],
+        })),
+      ]);
       setInput({ status: 'ready', events: summaries });
+      setProjections(projectionsResp.items);
       // The list endpoint surfaces title + subtitle but not the typed
       // payload the grid needs (startsAt/endsAt/allDay). Hydrate each
       // event in parallel. For the first iteration we accept the N+1;
@@ -135,7 +154,45 @@ export function CalendarPage(): JSX.Element {
 
   const calendarMessages = useMemo(() => buildCalendarMessages(t), [t]);
 
-  const items = useMemo(() => mapEventsToCalendarItems(hydrated), [hydrated]);
+  const items = useMemo(() => {
+    const events = mapEventsToCalendarItems(hydrated);
+    // Phase 4d.6 — prefix the projection title with the localized
+    // "Todo" label so the calendar grid telegraphs the read-only
+    // nature of the entry. Status badge ("blocked", "in progress") is
+    // appended when the todo is not just `open` so the user can spot
+    // an urgent projection at a glance.
+    const projectionLabel = t('entity.calendar.todoProjectionLabel');
+    const statusKeyFor = (status: string): string => {
+      switch (status) {
+        case 'open':
+          return 'entity.calendar.todoProjectionStatusOpen';
+        case 'in_progress':
+          return 'entity.calendar.todoProjectionStatusInProgress';
+        case 'blocked':
+          return 'entity.calendar.todoProjectionStatusBlocked';
+        case 'done':
+          return 'entity.calendar.todoProjectionStatusDone';
+        case 'cancelled':
+          return 'entity.calendar.todoProjectionStatusCancelled';
+        default:
+          return 'entity.calendar.todoProjectionStatusOpen';
+      }
+    };
+    const projectionLikes: TodoProjectionLike[] = projections.map((p) => {
+      const statusBadge =
+        p.status === 'open' ? '' : ` · ${t(statusKeyFor(p.status), { defaultValue: p.status })}`;
+      return {
+        todoId: p.todoId,
+        todoSlug: p.todoSlug,
+        title: `${projectionLabel} · ${p.title}${statusBadge}`,
+        dueAt: p.dueAt,
+        priority: p.priority,
+        status: p.status,
+      };
+    });
+    const todoItems = mapTodoProjectionsToCalendarItems(projectionLikes);
+    return mergeCalendarFeed(events, todoItems);
+  }, [hydrated, projections, t]);
 
   if (current.status !== 'ready') {
     return (
@@ -238,10 +295,38 @@ export function CalendarPage(): JSX.Element {
                 messages={calendarMessages}
                 culture={originalLocale.startsWith('nl') ? 'nl' : 'en'}
                 onSelectEvent={(e) => {
-                  const slug = (e as { resource?: { slug?: string } }).resource?.slug;
+                  // Phase 4d.6 — branch on `resource.kind`. The
+                  // projection bridge produces read-only events that
+                  // navigate to the source todo detail page; the
+                  // calendar event detail page is NEVER reached for
+                  // projections.
+                  const resource = (e as { resource?: { kind?: string } }).resource;
+                  if (resource === undefined) return;
+                  if (resource.kind === 'todo_projection') {
+                    const todoSlug = (resource as { todoSlug?: string }).todoSlug;
+                    if (todoSlug !== undefined) {
+                      navigate(webTodoPath(layer.slug, todoSlug));
+                    }
+                    return;
+                  }
+                  const slug = (resource as { slug?: string }).slug;
                   if (slug !== undefined) {
                     navigate(webCalendarEventPath(layer.slug, slug));
                   }
+                }}
+                eventPropGetter={(e) => {
+                  // Read-only projections render with a muted,
+                  // outlined style so the user can tell at a glance
+                  // they are sourced from a todo and cannot be
+                  // edited on the calendar surface. The visual
+                  // treatment lives in `index.css` keyed off the
+                  // shared design tokens (no inline hex literals
+                  // per AGENTS.md §UI).
+                  const resource = (e as { resource?: { kind?: string } }).resource;
+                  if (resource?.kind === 'todo_projection') {
+                    return { className: 'rbc-bunny2-todo-projection' };
+                  }
+                  return {};
                 }}
               />
             </div>

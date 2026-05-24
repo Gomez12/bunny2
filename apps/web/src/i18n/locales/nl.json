@@ -483,7 +483,14 @@
       "linkSyncError": "Synchronisatie mislukt",
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de titel.",
-      "originalLocale": "Oorspronkelijke taal"
+      "originalLocale": "Oorspronkelijke taal",
+      "todoProjection": "Taakprojectie",
+      "todoProjectionLabel": "Taak",
+      "todoProjectionStatusOpen": "Open",
+      "todoProjectionStatusInProgress": "Bezig",
+      "todoProjectionStatusBlocked": "Geblokkeerd",
+      "todoProjectionStatusDone": "Klaar",
+      "todoProjectionStatusCancelled": "Geannuleerd"
     },
     "todos": {
       "listTitle": "{{name}} · Taken",

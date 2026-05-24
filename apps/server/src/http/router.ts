@@ -26,7 +26,12 @@ import {
   registerCalendarEventModule,
   buildProductionCalendarEventModule,
 } from '../entities/calendar';
-import { buildProductionTodoModule, mountTodoRoutes, registerTodoModule } from '../entities/todos';
+import {
+  buildProductionTodoModule,
+  mountTodoCalendarProjectionRoutes,
+  mountTodoRoutes,
+  registerTodoModule,
+} from '../entities/todos';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -224,6 +229,18 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     llm: deps.llmClient,
     module: registeredTodoModule,
   });
+
+  // Phase 4d.6 — todo → calendar projection bridge. The READ side is
+  // a separate route under the `/calendar/` URL prefix so the
+  // calendar UI can fetch projections alongside real events without
+  // sniffing for kind discriminators on the entity list. The WRITE
+  // side (the subscriber maintaining the `calendar_projection_todos`
+  // table) is wired from `index.ts` so it lives for the lifetime of
+  // the process — see the connector / enrichment runner precedent.
+  // Tests instantiate `createTodoCalendarProjection(...)` directly
+  // against their fixture bus + db; production wiring runs once per
+  // process.
+  mountTodoCalendarProjectionRoutes(app, { db: deps.db });
 
   return app;
 }

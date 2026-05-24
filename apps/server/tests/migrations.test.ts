@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0010_todos');
+      expect(currentSchemaVersion(db)).toBe('0011_calendar_projection_todos');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -52,6 +52,11 @@ describe('migrations', () => {
       expect(tables).toContain('calendar_events');
       // 0010 — fourth concrete entity kind (phase 4d.1).
       expect(tables).toContain('todos');
+      // 0011 — todo → calendar projection bridge (phase 4d.6).
+      // Derived index, NOT an entity kind. Sits outside the
+      // `entity_*` namespace because it has no version chain, no
+      // translations, no soul.
+      expect(tables).toContain('calendar_projection_todos');
 
       const indexes = db
         .query<{ name: string }, []>(
@@ -97,6 +102,9 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_todos_due_at');
       expect(indexes).toContain('idx_todos_priority');
       expect(indexes).toContain('idx_todos_linked');
+      // 0011 indexes — todo → calendar projection bridge.
+      expect(indexes).toContain('idx_calendar_projection_todos_layer');
+      expect(indexes).toContain('idx_calendar_projection_todos_due_at');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -168,6 +176,7 @@ describe('migrations', () => {
         '0008_contacts',
         '0009_calendar_events',
         '0010_todos',
+        '0011_calendar_projection_todos',
       ]);
     } finally {
       db2.close();

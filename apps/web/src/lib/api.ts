@@ -927,3 +927,39 @@ export async function updateTodo(
 export async function softDeleteTodo(layerSlug: string, todoSlug: string): Promise<void> {
   await request<{ ok: true }>(todoServerDetail(layerSlug, todoSlug), { method: 'DELETE' });
 }
+
+/**
+ * Phase 4d.6 — todo → calendar projection bridge read endpoint.
+ *
+ * Returns the read-only todo projections for the layer, as written by
+ * the server-side subscriber (`apps/server/src/entities/todos/calendar-projection.ts`).
+ * The calendar UI fetches this in parallel with `listCalendarEvents`
+ * and merges client-side via `mergeCalendarFeed(...)` so the user
+ * sees todos appear as non-editable events on their due date.
+ *
+ * Server URL: `/l/:slug/calendar/_projections/todos` (the URL lives
+ * under `/calendar/` even though the data is materialized from
+ * `todos` — see ADR 0017).
+ */
+export interface TodoCalendarProjectionItem {
+  readonly todoId: string;
+  readonly layerId: string;
+  readonly todoSlug: string;
+  readonly title: string;
+  readonly dueAt: string;
+  readonly priority: number;
+  readonly status: 'open' | 'in_progress' | 'blocked' | 'done' | 'cancelled' | string;
+}
+
+export interface TodoCalendarProjectionsResponse {
+  readonly items: readonly TodoCalendarProjectionItem[];
+}
+
+export async function listTodoProjectionsForCalendar(
+  layerSlug: string,
+): Promise<TodoCalendarProjectionsResponse> {
+  const res = await request<TodoCalendarProjectionsResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/calendar/_projections/todos`,
+  );
+  return res;
+}

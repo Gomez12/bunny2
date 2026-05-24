@@ -98,6 +98,28 @@ export function calendarEventDetailView(input: CalendarEventDetailInput): Calend
  * Returns a fresh array; safe to call inside `useMemo`. The mapper does
  * not allocate `Date` objects for soft-deleted rows.
  */
+/**
+ * Phase 4d.6 — the grid item's `resource` is a discriminated union so
+ * the click handler knows whether to navigate to the calendar event
+ * detail page (`kind: 'calendar_event'`) or to the source todo
+ * (`kind: 'todo_projection'`). The bridge produces read-only
+ * projection events that must NEVER navigate to the calendar event
+ * detail page — see ADR 0017.
+ */
+export type CalendarGridResource =
+  | {
+      readonly kind: 'calendar_event';
+      readonly id: string;
+      readonly slug: string;
+    }
+  | {
+      readonly kind: 'todo_projection';
+      readonly todoId: string;
+      readonly todoSlug: string;
+      readonly status: string;
+      readonly priority: number;
+    };
+
 export interface CalendarGridItem {
   readonly id: string;
   readonly slug: string;
@@ -105,8 +127,7 @@ export interface CalendarGridItem {
   readonly start: Date;
   readonly end: Date;
   readonly allDay: boolean;
-  /** Original entity reference (id + slug) so click handlers can navigate. */
-  readonly resource: { readonly id: string; readonly slug: string };
+  readonly resource: CalendarGridResource;
 }
 
 export interface MappableEventLike {
@@ -143,10 +164,113 @@ export function mapEventsToCalendarItems(
       start: new Date(startMs),
       end: new Date(endMs),
       allDay,
-      resource: { id: e.id, slug: e.slug },
+      resource: { kind: 'calendar_event', id: e.id, slug: e.slug },
     });
   }
   return out;
+}
+
+// ---------- todo → calendar projection mapper (phase 4d.6) -----------------
+
+/**
+ * Minimal shape the calendar mapper needs from a todo projection.
+ * Mirrors the server `TodoCalendarProjectionItem` returned by
+ * `GET /l/:slug/calendar/_projections/todos`. Kept here (instead of
+ * importing the api type) so the pure mapper has no runtime client
+ * dependency.
+ */
+export interface TodoProjectionLike {
+  readonly todoId: string;
+  readonly todoSlug: string;
+  readonly title: string;
+  readonly dueAt: string;
+  readonly priority: number;
+  readonly status: string;
+}
+
+/**
+ * Map todo projections to the `react-big-calendar` event shape. Every
+ * projection is treated as an all-day entry — the bridge stores
+ * `dueAt` verbatim, and the v1 web UI's todo editor only writes
+ * `YYYY-MM-DD` (the enrichment runner's auto-due also writes
+ * date-only). A timestamped `dueAt` falls back to the same date-only
+ * interpretation so the projection always appears in the all-day
+ * band.
+ *
+ * The `resource.kind = 'todo_projection'` discriminator lets the
+ * calendar page route clicks to the source todo detail page instead
+ * of the calendar event detail page. See ADR 0017.
+ */
+export function mapTodoProjectionsToCalendarItems(
+  projections: readonly TodoProjectionLike[],
+): readonly CalendarGridItem[] {
+  const out: CalendarGridItem[] = [];
+  for (const p of projections) {
+    const dateOnly = extractDateOnly(p.dueAt);
+    if (dateOnly === null) continue;
+    const [y, m, d] = dateOnly.split('-').map((s) => Number.parseInt(s, 10));
+    if (
+      !Number.isFinite(y) ||
+      !Number.isFinite(m) ||
+      !Number.isFinite(d) ||
+      y === undefined ||
+      m === undefined ||
+      d === undefined
+    )
+      continue;
+    const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+    out.push({
+      id: `todo-projection:${p.todoId}`,
+      slug: p.todoSlug,
+      title: p.title,
+      start,
+      end: start,
+      allDay: true,
+      resource: {
+        kind: 'todo_projection',
+        todoId: p.todoId,
+        todoSlug: p.todoSlug,
+        status: p.status,
+        priority: p.priority,
+      },
+    });
+  }
+  return out;
+}
+
+function extractDateOnly(value: string): string | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  // Timestamped ISO — take the date prefix. `new Date(...)` would
+  // shift into the local timezone; we want the calendar date the
+  // user picked when typing the dueAt.
+  const m = /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}/.exec(value);
+  return m === null ? null : (m[1] ?? null);
+}
+
+/**
+ * Phase 4d.6 — merge real calendar events and todo projections into a
+ * single deterministic feed for the calendar grid.
+ *
+ * Order:
+ *   1. Sort by `start` ascending (so the agenda view reads naturally).
+ *   2. Break ties by `id` ascending (stable in tests).
+ *
+ * The merge is a plain concat-then-sort; no dedupe is needed because
+ * projection ids are namespaced (`todo-projection:<uuid>`) so they
+ * cannot collide with real calendar event uuids.
+ */
+export function mergeCalendarFeed(
+  events: readonly CalendarGridItem[],
+  projections: readonly CalendarGridItem[],
+): readonly CalendarGridItem[] {
+  const all: CalendarGridItem[] = [...events, ...projections];
+  all.sort((a, b) => {
+    const sa = a.start.getTime();
+    const sb = b.start.getTime();
+    if (sa !== sb) return sa - sb;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return all;
 }
 
 function parseTimestampToMs(value: string, allDay: boolean): number | null {

@@ -27,6 +27,19 @@ export { todoAutoPriorityJob, todoAutoDueJob, todoEnrichmentJobs } from './enric
 
 export { todoStatsProvider, type TodoStats } from './stats';
 
+export {
+  createTodoCalendarProjection,
+  listTodoProjectionsForLayer,
+  type TodoCalendarProjectionBridge,
+  type TodoCalendarProjectionDeps,
+  type TodoCalendarProjectionRow,
+} from './calendar-projection';
+
+export {
+  mountTodoCalendarProjectionRoutes,
+  type MountTodoCalendarProjectionRoutesDeps,
+} from './calendar-projection-routes';
+
 /**
  * Phase 4d.1 — wire-up helper for the todos module.
  *

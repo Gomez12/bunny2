@@ -1354,6 +1354,97 @@ later is a non-breaking change.
 
 ---
 
+## 10j. Cross-entity projection — todos → calendar (4d.6)
+
+Phase 4d.6 introduces the first **cross-entity bridge**: a todo with
+a non-null `dueAt` surfaces on the calendar UI as a read-only event.
+The shape is **subscriber-driven projection** with no second source
+of truth (see §4.3 Q3 of the phase-4 plan and ADR 0017).
+
+### Schema
+
+`apps/server/src/storage/migrations/0011_calendar_projection_todos.sql`
+adds a flat table OUTSIDE the `entity_*` namespace:
+
+- `calendar_projection_todos(todo_id PK → todos(id), layer_id, todo_slug, title, due_at NOT NULL, priority, status, updated_at)`
+- `idx_calendar_projection_todos_layer` — list endpoint scan.
+- `idx_calendar_projection_todos_due_at` — future range queries.
+
+The table is a **derived index**, NOT an entity kind. No version
+chain, no translation, no soul. Deleting the source todo (soft or
+otherwise) drops the projection row. The migration is forward-only
+and Postgres-portable.
+
+### Bridge runtime
+
+`apps/server/src/entities/todos/calendar-projection.ts`:
+
+- `createTodoCalendarProjection({ db, bus })` returns
+  `{ start, stop, rebuild, handle }`.
+- `start()` subscribes to `entity.todo.{created,updated,deleted,restored}`.
+- For every event the subscriber re-reads the current todo row via
+  direct SQL and decides:
+  - non-deleted + non-null `due_at` → upsert via `ON CONFLICT(todo_id)
+DO UPDATE`.
+  - soft-deleted OR `due_at` is null → DELETE the projection row.
+- The subscriber NEVER calls `store.update`. It NEVER publishes
+  `entity.todo.*` events back to the bus. The "no feedback loop"
+  invariant is tested via a `seen[]` assertion: exactly one bus
+  event per HTTP mutation.
+- `rebuild()` truncates the table and re-projects every non-deleted
+  dueAt-bearing todo. Production boot calls `start()` then
+  `rebuild()` once.
+- Failure isolation: a failed projection write logs at warn level
+  and drops; the next event for the same todo retries. Mirrors the
+  dispatcher / enrichment-runner discipline.
+
+### HTTP read endpoint
+
+`apps/server/src/entities/todos/calendar-projection-routes.ts`
+mounts `GET /l/:slug/calendar/_projections/todos` (a separate
+endpoint, not an extension of `/l/:slug/calendar_event`, per ADR
+0017). Returns `{ items: TodoCalendarProjectionRow[] }` sorted by
+`due_at ASC, priority ASC, todo_slug ASC`. Layer-scoped via
+`createRequireLayer`.
+
+### Web surface
+
+`apps/web/src/pages/CalendarPage.tsx` fetches calendar events AND
+todo projections in parallel and merges via `mergeCalendarFeed(...)`
+in `calendar-page-state.ts`. Each `react-big-calendar` event carries
+a discriminated `resource` union:
+
+- `{ kind: 'calendar_event', id, slug }` for real events.
+- `{ kind: 'todo_projection', todoId, todoSlug, status, priority }`
+  for bridge rows.
+
+Click handler branches on `resource.kind`: projections navigate to
+`/l/:slug/todos/:slug` (the source todo), real events to
+`/l/:slug/calendar/:slug`. The calendar event detail page is
+**never** reached for projections. The grid uses a dashed-outline
+`eventPropGetter` so projections are visually distinct from real
+events.
+
+### `auto-due → projection` chain
+
+The 4d.3 `todos.autoDue` enrichment job patches `payload.dueAt` via
+`store.update`, which emits `entity.todo.updated`. The bridge sees
+the event, re-reads the row (now with the new `dueAt`), and upserts
+the projection — without any 4d.6-specific glue. The "AI sets a
+dueAt → projection appears on the calendar" feature is the
+out-of-the-box demo the user brief describes.
+
+### Foundation tweaks
+
+**ZERO.** The bridge is application code over the §4.0 entity
+contract and the §4d.1 todos kind. No `EntityModule` extension, no
+new bus event type, no new connector method. The bridge consumes
+existing `entity.todo.*` events and writes to its own flat table.
+This is the SIXTH zero-foundation-tweak commit in the phase-4 block
+(after 4d.1–4d.5).
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit
@@ -1377,5 +1468,8 @@ later is a non-breaking change.
 - `docs/dev/decisions/0014-connector-ingest.md` — second connector
   method (`ingest`), synchronous HTTP dispatch, dedup-by-matchKey,
   ingest event taxonomy, anti-leak invariants for upload bytes.
+- `docs/dev/decisions/0017-todo-calendar-projection.md` — todo →
+  calendar projection bridge: stored derived-index, separate read
+  endpoint, boot-time rebuild semantics, no-feedback-loop invariant.
 - `docs/dev/plans/phase-04-first-entities.md` — the phase plan;
   per-kind sub-phases (4a..4d) and the §13 risk table.

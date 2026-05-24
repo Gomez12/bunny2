@@ -35,6 +35,7 @@ import {
   listEntityModules,
   type EntityStore,
 } from './entities';
+import { createTodoCalendarProjection } from './entities/todos';
 
 const { config, configFile, dataDir } = loadConfig();
 const db = openDatabase(dataDir);
@@ -211,6 +212,21 @@ if (config.enrichment.runnerEnabled) {
   enrichmentRunner.start();
 }
 
+// Phase 4d.6 — todo → calendar projection bridge. Subscribes to
+// `entity.todo.{created,updated,deleted,restored}` and maintains the
+// `calendar_projection_todos` table. Constructed and started exactly
+// once per process (same lifecycle as the connector dispatcher and
+// the enrichment runner) so multiple `createApp` calls in production
+// — there is one — do not stack subscribers. `rebuild()` runs after
+// `start()`: rebuilding scans every non-deleted todo with a non-null
+// `due_at` and re-projects them, recovering from any missed events
+// between the previous shutdown and this boot. Upserts are
+// idempotent so the order vs. concurrent in-flight events does not
+// matter.
+const todoCalendarProjection = createTodoCalendarProjection({ db, bus });
+todoCalendarProjection.start();
+todoCalendarProjection.rebuild();
+
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);
 console.log(`[${appName}] sqlite:      schema=${schemaVersion ?? '(none)'}`);
@@ -228,6 +244,7 @@ void llmPrune;
 void connectorDispatcher;
 void connectorRunner;
 void enrichmentRunner;
+void todoCalendarProjection;
 
 const server = Bun.serve({
   port: config.http.port,

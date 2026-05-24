@@ -160,7 +160,11 @@ describe('mapEventsToCalendarItems', () => {
     expect(items[0]?.end).toBeInstanceOf(Date);
     expect(items[0]?.start.getUTCHours()).toBe(9);
     expect(items[0]?.end.getUTCHours()).toBe(10);
-    expect(items[0]?.resource).toEqual({ id: items[0]!.id, slug: 'kickoff' });
+    expect(items[0]?.resource).toEqual({
+      kind: 'calendar_event',
+      id: items[0]!.id,
+      slug: 'kickoff',
+    });
   });
 
   it('defaults end to start + 1 hour when payload.endsAt is missing', () => {

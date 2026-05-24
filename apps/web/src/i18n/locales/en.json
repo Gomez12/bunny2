@@ -705,7 +705,14 @@
       "linkSyncError": "Sync failed",
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the title.",
-      "originalLocale": "Original locale"
+      "originalLocale": "Original locale",
+      "todoProjection": "Todo projection",
+      "todoProjectionLabel": "Todo",
+      "todoProjectionStatusOpen": "Open",
+      "todoProjectionStatusInProgress": "In progress",
+      "todoProjectionStatusBlocked": "Blocked",
+      "todoProjectionStatusDone": "Done",
+      "todoProjectionStatusCancelled": "Cancelled"
     },
     "todos": {
       "listTitle": "{{name}} · Todos",
