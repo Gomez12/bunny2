@@ -338,3 +338,32 @@ describe('phase 5.7 — smoke-worker (role=worker against DurableSqliteMessageBu
     }
   });
 });
+
+// ---------------------------------------------------------------------
+// Phase 7.7 — proposals-domain scheduled-task handlers register under
+// `--role=worker`. Mirrors the chat-domain assertion already inlined
+// in the spine test above, but as a dedicated describe so a regression
+// fails with a clear name.
+// ---------------------------------------------------------------------
+
+describe('phase 7.7 — proposals-domain scheduled-task handlers (--role=worker)', () => {
+  it('registers proposals.evidence.prune and proposals.replan-stale', () => {
+    __resetScheduledTaskRegistryForTests();
+    try {
+      registerProposalsScheduledTaskHandlers();
+      // Both kinds must resolve to a non-null handler — matching the
+      // rows in `docs/dev/architecture/job-inventory.md` and the
+      // assertions in `tests/docs/job-inventory.test.ts`. The smoke
+      // does not exercise these handlers end-to-end (the per-handler
+      // unit tests do); this is the registration contract.
+      const evidence = getScheduledTaskHandler('proposals.evidence.prune');
+      const replanStale = getScheduledTaskHandler('proposals.replan-stale');
+      expect(evidence).not.toBeNull();
+      expect(replanStale).not.toBeNull();
+      expect(evidence?.kind).toBe('proposals.evidence.prune');
+      expect(replanStale?.kind).toBe('proposals.replan-stale');
+    } finally {
+      __resetScheduledTaskRegistryForTests();
+    }
+  });
+});

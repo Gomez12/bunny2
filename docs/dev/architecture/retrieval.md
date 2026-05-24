@@ -345,6 +345,16 @@ ADR [`0021`](../decisions/0021-embedding-and-lance-auth-tag.md) §4
 recorded the deliberate phase-6 deferral; the corpus existed in
 phase 6 exactly so phase 7.1 needed no backfill step.
 
+Phase 7.5 added one downstream consumer that does **not** change the
+read path: the answerer step now loads activated `skill`
+prompt-fragments via `loadSkillFragments(registry, layerId, intent)`
+and appends each as an additional `system` message between the
+hard grounding prompt and the retrieval JSON. The retrieval result
+itself is unchanged — skills only widen the LLM's interpretive
+context, never the rows the answerer sees. See
+[`self-learning.md`](./self-learning.md) §5 for the activation +
+overlay rules.
+
 ---
 
 ## 6. Authorization invariants (summary)

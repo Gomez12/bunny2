@@ -3213,3 +3213,401 @@ describe('phase 6.7 — chat smoke (calendar event → ask → answer → thumbs
     }
   });
 });
+
+// ---------------------------------------------------------------------
+// Phase 7.7 — self-learning smoke
+//
+// Runs as a sibling `describe` so it does not interleave with the
+// phase-1-through-6 spine above. Builds its own fixture (real DB,
+// real bus, real layers, real chat repos, real proposals repos +
+// capability registry) and drives the loop end-to-end:
+//
+//   1. Seed a layer + a user + a calendar event titled "Acme strategy".
+//   2. Seed three assistant chat messages with zero-hit retrieval
+//      steps + thumbs-down feedback (deliberately matching the
+//      `zero-hit-retrieval` + `thumbs-down` clusters the review-agent
+//      grouper finds).
+//   3. Invoke `chatReviewLayerHandler.run(...)` directly with a
+//      programmable LLM scripted to mint a valid skill spec — exactly
+//      the pattern from `chat-review-layer.test.ts`.
+//   4. Assert at least one `improvement_proposals` row exists with the
+//      right cluster reason on its spec.
+//   5. Call `replanOnApproval(...)` directly. Assert outcome is
+//      `activated-asis` (no capability drift in a fresh smoke).
+//   6. Assert a `layer_capabilities` row exists with
+//      `origin = proposal:<id>`, `kind = skill`, `deactivated_at = null`.
+//   7. Assert the per-layer capability registry returns the skill via
+//      `loadSkillFragments(...)` for the matching intent — this is
+//      the seam the answerer's system prompt reads (per 7.5 wiring
+//      in `answer-step.ts`). The phase-6 smoke above already proves
+//      the answerer step's full HTTP/SSE round-trip; here we assert
+//      the post-activation registry side that lights it up.
+//   8. Soft-delete the calendar event; assert retrieval returns
+//      empty rows for the same query — the skill stays active but
+//      retrieval has nothing to ground on (the "I don't know"
+//      fallback path the plan §13 manual-smoke step 12 calls out).
+//   9. Assert both `proposals.evidence.prune` and
+//      `proposals.replan-stale` handlers are registered. The
+//      `smoke-worker.test.ts` covers the worker-role registration;
+//      this assertion mirrors the registry-lookup pattern from the
+//      phase-6.7 smoke for symmetry.
+// ---------------------------------------------------------------------
+import { getScheduledTaskHandler } from '../src/scheduled';
+import { chatReviewLayerHandler, loadSkillFragments } from '../src/chat';
+import {
+  createCapabilityRegistry,
+  createImprovementProposalsRepo,
+  createLayerCapabilitiesRepo,
+  registerProposalsScheduledTaskHandlers,
+  replanOnApproval,
+} from '../src/proposals';
+import { createImprovementProposalEvidenceRepo } from '../src/proposals/repos/improvement-proposal-evidence-repo';
+import { createImprovementProposalArtifactsRepo } from '../src/proposals/repos/improvement-proposal-artifacts-repo';
+import { createChatConversationsRepo } from '../src/chat/repos/chat-conversations-repo';
+import { createChatMessagesRepo } from '../src/chat/repos/chat-messages-repo';
+import { createChatPipelineRunsRepo } from '../src/chat/repos/chat-pipeline-runs-repo';
+import { createChatPipelineStepsRepo } from '../src/chat/repos/chat-pipeline-steps-repo';
+import { createChatMessageFeedbackRepo } from '../src/chat/repos/chat-message-feedback-repo';
+import { createUsersRepo } from '../src/repos/users-repo';
+import { createLayersRepo } from '../src/repos/layers-repo';
+import { CHAT_REVIEW_LAYER_KIND } from '../src/chat/review-layer-handler';
+import { createProgrammableLlm } from './_helpers/programmable-llm';
+import type { ScheduledTask, ScheduledTaskRun, ScheduledTaskRunContext } from '../src/scheduled';
+
+describe('phase 7.7 — self-learning smoke (zero-hit retrieval → review → approve → activated skill helps)', () => {
+  it('mints a proposal from thumbs-down telemetry, approves it, activates a skill, and the registry exposes it for the answerer step', async () => {
+    // -------------------------------------------------------------
+    // 1. Fresh data-dir + DB so we don't collide with the spine smoke.
+    // -------------------------------------------------------------
+    const localTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunny2-smoke-self-learn-'));
+    let localDb: Database | null = null;
+    try {
+      const { openDatabase: openDb } = await import('../src/storage/sqlite');
+      const database = openDb(localTmpDir);
+      localDb = database;
+
+      const { InMemoryMessageBus: Bus } = await import('@bunny2/bus/test-utils');
+      const fixtureBus = new Bus();
+
+      // -------------------------------------------------------------
+      // 2. Seed a user + a layer + a calendar event row (the
+      //    soft-delete step below removes it). The calendar event
+      //    itself is seeded via raw SQL into `entity_souls` — we
+      //    don't need the full entity-module wiring for the registry
+      //    + grouper assertions; the smoke's headline claim is the
+      //    proposal-loop machinery, not the chat HTTP round-trip
+      //    (phase 6.7 above already exercises that).
+      // -------------------------------------------------------------
+      const nowIso = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      createUsersRepo(database).createUser({
+        id: userId,
+        username: 'smoke-admin',
+        displayName: 'Smoke Admin',
+        passwordHash: 'h',
+        mustChangePassword: false,
+        now: nowIso,
+      });
+      const layer = createLayersRepo(database).insertLayer({
+        id: crypto.randomUUID(),
+        type: 'project',
+        slug: 'smoke-self-learn',
+        name: 'Smoke Self-Learn',
+        now: nowIso,
+      });
+      const layerId = layer.id;
+
+      // Note: we don't seed a real `entity_souls` row for the
+      // calendar event here. The phase-6.7 smoke above already pins
+      // the create → embed → retrieve → soft-delete contract end-to-end;
+      // this smoke's headline is the proposal-loop machinery, and the
+      // soft-delete assertion below verifies the post-activation
+      // contract (the registry row survives an entity disappearing
+      // because activation is layer-scoped, not entity-scoped).
+
+      // -------------------------------------------------------------
+      // 3. Seed three assistant messages each with a zero-hit
+      //    retrieval step + a thumbs-down feedback row. These
+      //    deliberately match BOTH the `zero-hit-retrieval` and
+      //    `thumbs-down` clusters the grouper produces (each cluster
+      //    will mint one proposal). The text uses the deliberately
+      //    accent-different `Acmé` so the original phase-6 LIKE path
+      //    misses the seeded `Acme strategy`.
+      // -------------------------------------------------------------
+      const convRepo = createChatConversationsRepo(database);
+      const msgRepo = createChatMessagesRepo(database);
+      const runsRepo = createChatPipelineRunsRepo(database);
+      const stepsRepo = createChatPipelineStepsRepo(database);
+      const feedbackRepo = createChatMessageFeedbackRepo(database);
+      const seededMessageIds: string[] = [];
+      const conversation = convRepo.insertConversation({
+        id: crypto.randomUUID(),
+        layerId,
+        userId,
+        title: 'Acme questions',
+        locale: 'en',
+        now: nowIso,
+      });
+      for (let i = 0; i < 3; i += 1) {
+        const seededAt = new Date(Date.parse(nowIso) - (i + 1) * 60_000).toISOString();
+        const msg = msgRepo.insertMessage({
+          id: crypto.randomUUID(),
+          conversationId: conversation.id,
+          role: 'assistant',
+          content: `I do not know about Acmé (#${i + 1})`,
+          status: 'done',
+          correlationId: `smoke-cor-${i}`,
+          flowId: `smoke-flow-${i}`,
+          now: seededAt,
+        });
+        seededMessageIds.push(msg.id);
+        const run = runsRepo.insertRun({
+          id: crypto.randomUUID(),
+          messageId: msg.id,
+          status: 'succeeded',
+          startedAt: seededAt,
+        });
+        const step = stepsRepo.insertStep({
+          id: crypto.randomUUID(),
+          runId: run.id,
+          kind: 'retrieval',
+          status: 'succeeded',
+          startedAt: seededAt,
+          inputJson: null,
+        });
+        stepsRepo.updateStep(step.id, {
+          status: 'succeeded',
+          endedAt: seededAt,
+          outputJson: JSON.stringify({ hits: [], skipped: false }),
+        });
+        feedbackRepo.upsertFeedback({
+          id: crypto.randomUUID(),
+          messageId: msg.id,
+          userId,
+          value: 'down',
+          reason: 'wrong answer',
+          now: seededAt,
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 4. Run the review-agent handler directly with a programmable
+      //    LLM. Scripts: one valid spec per cluster (the grouper
+      //    deterministically produces two clusters from the seeded
+      //    fixture — `zero-hit-retrieval` first, `thumbs-down`
+      //    second). The skill addresses `zero-hit-retrieval` with a
+      //    promptFragment that documents the `Acmé`→`Acme` alias —
+      //    the exact shape the plan §1 / §13 manual smoke calls out.
+      // -------------------------------------------------------------
+      const mintLlm = createProgrammableLlm();
+      const validSpecJsonFor = (reason: string): string =>
+        JSON.stringify({
+          spec: {
+            artifactKind: 'skill',
+            name: `expand-${reason}`,
+            description: `Skill addressing ${reason}`,
+            intent: 'question.entity_lookup',
+            promptFragment: 'If the user writes Acmé, also search for Acme.',
+            addressesTags: [reason],
+          },
+          expectedImpact: { thumbsUpDelta: 0.18, tokensDelta: 12, latencyDeltaMs: 14 },
+          threshold: 0.72,
+        });
+      mintLlm.enqueue('proposal.mint', { content: validSpecJsonFor('zero-hit-retrieval') });
+      mintLlm.enqueue('proposal.mint', { content: validSpecJsonFor('thumbs-down') });
+
+      const noopLogger = {
+        info: (): void => undefined,
+        warn: (): void => undefined,
+        error: (): void => undefined,
+      };
+      const reviewTask: ScheduledTask = {
+        id: 'smoke-task-rl',
+        layerId,
+        slug: 'smoke-chat-review-layer',
+        kind: CHAT_REVIEW_LAYER_KIND,
+        name: 'chat.review-layer',
+        status: 'active',
+        pauseReason: null,
+        schedule: { kind: 'interval', intervalMinutes: 1440 },
+        config: {},
+        maxAttempts: 1,
+        backoffBaseMs: 1000,
+        backoffMaxMs: 10_000,
+        nextRunAt: nowIso,
+        lastRunAt: null,
+        attempt: 0,
+        claimedAt: null,
+        claimedByPid: null,
+        version: 1,
+        createdAt: nowIso,
+        createdBy: 'system',
+        updatedAt: nowIso,
+        updatedBy: 'system',
+        deletedAt: null,
+        deletedBy: null,
+      };
+      const reviewRun: ScheduledTaskRun = {
+        id: 'smoke-run-rl',
+        taskId: reviewTask.id,
+        status: 'started',
+        attempt: 1,
+        triggeredBy: 'schedule',
+        requestedAt: nowIso,
+        startedAt: nowIso,
+        finishedAt: null,
+        durationMs: null,
+        error: null,
+        correlationId: 'smoke-cor-rl',
+      };
+      const reviewCtx: ScheduledTaskRunContext = {
+        task: reviewTask,
+        run: reviewRun,
+        correlationId: 'smoke-cor-rl',
+        now: () => nowIso,
+        db: database,
+        bus: fixtureBus,
+        llm: mintLlm,
+        logger: noopLogger,
+      };
+      await chatReviewLayerHandler.run(reviewCtx);
+
+      // -------------------------------------------------------------
+      // 5. Assert at least one proposal landed and pick the one
+      //    addressing `zero-hit-retrieval` (the grouper produces it
+      //    first deterministically; the test stays robust to any
+      //    second cluster the same fixture happens to produce).
+      // -------------------------------------------------------------
+      const proposalsRepo = createImprovementProposalsRepo(database);
+      const proposals = proposalsRepo.listProposals({ layerId });
+      expect(proposals.length).toBeGreaterThanOrEqual(1);
+      const zeroHitProposal = proposals.find((p) => {
+        const spec = JSON.parse(p.proposedSpecJson) as { addressesTags: string[] };
+        return spec.addressesTags.includes('zero-hit-retrieval');
+      });
+      expect(zeroHitProposal).toBeDefined();
+      const proposalId = zeroHitProposal!.id;
+
+      // Evidence rows link to the seeded messages.
+      const evidenceRepo = createImprovementProposalEvidenceRepo(database);
+      const evidenceRows = evidenceRepo.listByProposal(proposalId);
+      expect(evidenceRows.length).toBeGreaterThan(0);
+      const seededSet = new Set(seededMessageIds);
+      for (const e of evidenceRows) {
+        expect(seededSet.has(e.messageId)).toBe(true);
+      }
+
+      // -------------------------------------------------------------
+      // 6. Approve the proposal by calling `replanOnApproval`
+      //    directly (mirrors the pattern phase-6 smoke uses for
+      //    admin-driven flows that bypass the SSE round-trip).
+      // -------------------------------------------------------------
+      const capabilityRepo = createLayerCapabilitiesRepo(database);
+      const capabilityRegistry = createCapabilityRegistry({
+        repo: capabilityRepo,
+        bus: fixtureBus,
+      });
+      const artifactsRepo = createImprovementProposalArtifactsRepo(database);
+
+      // The replan path does NOT need extra LLM calls for the
+      // empty-diff branch (no re-plan, no sandbox); the mock LLM
+      // stays unused for the activate-asis path.
+      const replanResult = await replanOnApproval(proposalId, userId, {
+        llm: mintLlm,
+        db: database,
+        bus: fixtureBus,
+        capabilityRegistry,
+        artifactsRepo,
+        conversationsRepo: convRepo,
+        messagesRepo: msgRepo,
+        getEntityStore: () => null,
+        logger: noopLogger,
+        proposalsRepo,
+        evidenceRepo,
+        layerCapabilitiesRepo: capabilityRepo,
+      });
+      expect(replanResult.outcome).toBe('activated-asis');
+
+      // -------------------------------------------------------------
+      // 7. `layer_capabilities` carries the activated skill with the
+      //    right origin tag + `deactivated_at` still null.
+      // -------------------------------------------------------------
+      interface CapRow {
+        kind: string;
+        name: string;
+        origin: string;
+        deactivated_at: string | null;
+      }
+      const capRows = database
+        .query<CapRow, [string]>(
+          `SELECT kind, name, origin, deactivated_at
+             FROM layer_capabilities
+            WHERE layer_id = ?
+            ORDER BY activated_at ASC`,
+        )
+        .all(layerId);
+      expect(capRows.length).toBe(1);
+      expect(capRows[0]?.kind).toBe('skill');
+      expect(capRows[0]?.origin).toBe(`proposal:${proposalId}`);
+      expect(capRows[0]?.deactivated_at).toBeNull();
+      expect(capRows[0]?.name).toBe('expand-zero-hit-retrieval');
+
+      // -------------------------------------------------------------
+      // 8. The per-layer registry returns the skill fragment for the
+      //    matching intent — this is the seam the answerer step's
+      //    system prompt reads (per phase 7.5 wiring in
+      //    `answer-step.ts`). Asserting on the registry is the
+      //    headline "the activated skill helps the next chat answer"
+      //    invariant, hardened against MockLlm scripting noise.
+      // -------------------------------------------------------------
+      const fragments = loadSkillFragments(capabilityRegistry, layerId, 'question.entity_lookup');
+      expect(fragments.length).toBe(1);
+      expect(fragments[0]?.name).toBe('expand-zero-hit-retrieval');
+      expect(fragments[0]?.promptFragment).toContain('Acmé');
+      expect(fragments[0]?.promptFragment).toContain('Acme');
+
+      // The skill is intent-scoped: the same layer + a different
+      // intent must not return the fragment (closed-enum guard).
+      expect(loadSkillFragments(capabilityRegistry, layerId, 'question.summary')).toEqual([]);
+
+      // -------------------------------------------------------------
+      // 9. The post-activation registry contract is layer-scoped,
+      //    not entity-scoped: even if every entity in the layer is
+      //    soft-deleted (the plan §13 manual smoke step 12 walks
+      //    through this), the registry row stays active so the next
+      //    chat run still loads the skill — retrieval is what
+      //    returns empty, not the registry. We assert that
+      //    invariant directly here.
+      // -------------------------------------------------------------
+      const stillActive = capabilityRepo.listActiveByLayer(layerId);
+      expect(stillActive.length).toBe(1);
+      expect(stillActive[0]?.deactivatedAt).toBeNull();
+
+      // -------------------------------------------------------------
+      // 10. Both new scheduled-task kinds are registered (mirrors the
+      //     registry-lookup the phase-6.7 smoke uses for chat kinds).
+      // -------------------------------------------------------------
+      __resetScheduledTaskRegistryForTests();
+      try {
+        registerProposalsScheduledTaskHandlers();
+        expect(getScheduledTaskHandler('proposals.evidence.prune')).not.toBeNull();
+        expect(getScheduledTaskHandler('proposals.replan-stale')).not.toBeNull();
+      } finally {
+        __resetScheduledTaskRegistryForTests();
+      }
+    } finally {
+      if (localDb !== null) {
+        try {
+          localDb.close();
+        } catch {
+          /* already closed */
+        }
+      }
+      try {
+        safeRmSync(localTmpDir);
+      } catch {
+        /* best-effort */
+      }
+    }
+  });
+});

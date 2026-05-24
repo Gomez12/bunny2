@@ -357,6 +357,58 @@ shipped`, and `Phase 4 — entire phase: shipped`) for the per-DoD
 - **Exit:** at least one human-approved improvement makes it from
   proposal → sandbox → activation, and the chat can now use it.
 
+- **Status (as of 2026-05-24):** all sub-phases 7.0–7.7 are `done`.
+  The plan is archived at
+  [`done/phase-07-self-learning.md`](./done/phase-07-self-learning.md);
+  see its §14 close-out checklist for the per-DoD walkthrough. The
+  per-layer review loop now mines telemetry, mints proposals, sandboxes
+  evidence against an in-memory capability overlay, re-plans on
+  approval, and activates skills / tools / agents into a per-layer
+  `layer_capabilities` registry the answerer (skills today; tools +
+  agents wired to consumers in 7.5) consults on every chat run. The
+  retrieval read swap shipped behind the chat-pipeline boundary
+  (Option B from 7.1): `EntityStore.searchSummaries` stays sync +
+  SQLite-only; the chat orchestrator's `EntityStoreForRetrieval`
+  adapter became `async` and routes through
+  `apps/server/src/chat/embeddings/vector-search.ts` (LanceDB
+  pre-filtered by `layer_id IN (?)`; deterministic fallback to LIKE on
+  `no-embedder` / `mock-embedder` / `corpus-empty` / `error`). The
+  closed-enum handler-kind model (ADR 0023 §2, ADR 0024 §2) plus the
+  per-layer capability registry are the activation gates that keep the
+  in-process sandbox boundary defensible. Three ADRs accepted on
+  2026-05-24:
+  [`0023`](../decisions/0023-improvement-proposal-contract.md)
+  (proposal data model + lifecycle),
+  [`0024`](../decisions/0024-sandbox-runner.md) (sandbox boundary,
+  capability overlay, hard timeout, no code persistence) and
+  [`0025`](../decisions/0025-replan-on-approval.md) (capability
+  snapshot diff + four outcome labels). The developer-side narrative
+  lives in
+  [`architecture/self-learning.md`](../architecture/self-learning.md);
+  the layer-admin guide is
+  [`user/guides/improvement-proposals.md`](../../user/guides/improvement-proposals.md);
+  [`architecture/retrieval.md`](../architecture/retrieval.md) §5 was
+  updated to describe the LanceDB read path and the
+  `loadSkillFragments` consumer the answerer added in 7.5. Two new
+  job kinds are registered (`proposals.evidence.prune`,
+  `proposals.replan-stale`); the existing `chat.review-layer` row's
+  "touches LLM?" flag flipped to **yes** in
+  [`architecture/job-inventory.md`](../architecture/job-inventory.md)
+  now that the body mints proposals via the real LLM. Smoke covers
+  the end-to-end zero-hit-retrieval → review → approve → activated
+  skill loop (`apps/server/tests/smoke.test.ts` "phase 7.7 —
+  self-learning smoke"); the worker-role smoke pins that the two new
+  `proposals.*` scheduled-task handlers register under `--role=worker`
+  (`apps/server/tests/smoke-worker.test.ts`). The
+  `chat-lancedb-read-swap.md` follow-up closed at 7.1; three carry-over
+  follow-ups remain in `docs/dev/follow-ups/`:
+  `chat-tool-calling-answerer.md` (the registered tool kinds are
+  ready; the tool-calling answerer that consumes them ships later),
+  `chat-conversation-auto-summary.md` (long-thread title rewrite;
+  reserved kind), and `chat-page-message-deep-link.md` (the chat page
+  scrolling to `?message=:id`; the proposal detail page already
+  emits the link).
+
 ### Phase 8 — Self-learning, threshold-automated
 
 - Above-threshold proposals activate without per-item approval, with

@@ -1,6 +1,7 @@
 # ADR 0023 — Improvement proposal contract
 
-- Status: proposed
+- Status: accepted
+- Accepted on: 2026-05-24
 - Date: 2026-05-24
 - Phase: 7 (sub-phases 7.0 through 7.7)
 - Related: `docs/dev/plans/phase-07-self-learning.md` §1, §4.2,

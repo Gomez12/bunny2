@@ -1,6 +1,7 @@
 # ADR 0024 — Sandbox runner
 
-- Status: proposed
+- Status: accepted
+- Accepted on: 2026-05-24
 - Date: 2026-05-24
 - Phase: 7 (sub-phases 7.0, 7.4)
 - Related: `docs/dev/plans/phase-07-self-learning.md` §1, §4.4,

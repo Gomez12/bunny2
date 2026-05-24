@@ -387,6 +387,13 @@ See `docs/dev/plans/overall.md` §8 for the full phased roadmap.
   runtime (registry, tick, retry, boot recovery).
 - `docs/dev/architecture/job-inventory.md` — phase 5 catalogue of
   registered handler kinds (one row per kind).
+- `docs/dev/architecture/chat-pipeline.md` — phase 6 chat orchestrator
+  (intent → entities → retrieval → answerer + SSE).
+- `docs/dev/architecture/retrieval.md` — phase 6/7 retrieval
+  (LIKE fallback + LanceDB vector path; auth contract).
+- `docs/dev/architecture/self-learning.md` — phase 7 review loop
+  (cluster grouper → proposal minter → sandbox → re-plan →
+  activation; capability registry + overlay).
 - `docs/dev/architecture/packaging.md` — build pipeline + per-OS
   data-dir paths.
 - `docs/dev/testing/phase-01-electron-manual.md` — manual per-OS
