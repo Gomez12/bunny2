@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0016_chat_pipeline_steps_attribution');
+      expect(currentSchemaVersion(db)).toBe('0017_proposals_phase8');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -141,6 +141,10 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_improvement_proposal_evidence_proposal');
       expect(indexes).toContain('idx_improvement_proposal_artifacts_proposal');
       expect(indexes).toContain('idx_layer_capabilities_layer');
+      // 0017 — phase 8.1 threshold-automation foundation. New 1:1
+      // settings table; audit columns added to `improvement_proposals`
+      // (verified per-column in `improvement-proposals-repo-phase8`).
+      expect(tables).toContain('layer_proposal_settings');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -260,6 +264,7 @@ describe('migrations', () => {
         '0014_chat',
         '0015_proposals',
         '0016_chat_pipeline_steps_attribution',
+        '0017_proposals_phase8',
       ]);
     } finally {
       db2.close();

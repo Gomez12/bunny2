@@ -256,3 +256,89 @@ export const ProposalArtifactSchema = z
   .strict();
 export type ProposalArtifact = z.infer<typeof ProposalArtifactSchema>;
 export const proposalArtifactSchema = ProposalArtifactSchema;
+
+// ---------- phase 8.1 — layer proposal settings -----------------------
+
+/**
+ * Per-layer auto-activation knobs. Mirrors the SQL CHECK constraints
+ * on `layer_proposal_settings`
+ * (`apps/server/src/storage/migrations/0017_proposals_phase8.sql`):
+ * `thresholdCutoff` in [0, 1], `cooldownHours` in [0, 720],
+ * `maxTokensDelta` ≥ 0 when not null. Plan §4.1 + ADR 0026 §1.
+ */
+export const LayerProposalSettingsSchema = z.object({
+  layerId: z.string().min(1),
+  autoActivationEnabled: z.boolean(),
+  thresholdCutoff: z.number().min(0).max(1),
+  cooldownHours: z.number().int().min(0).max(720),
+  requireThumbsUpDeltaPositive: z.boolean(),
+  maxTokensDelta: z.number().int().min(0).nullable(),
+  updatedAt: z.string().min(1),
+  updatedBy: z.string().min(1),
+});
+export type LayerProposalSettings = z.infer<typeof LayerProposalSettingsSchema>;
+
+/**
+ * Input shape for `PUT /l/:slug/settings/proposals` (lands in 8.4).
+ * The server fills `layerId` from the route, and `updatedAt` /
+ * `updatedBy` from `ctx.now()` / the session user.
+ */
+export const LayerProposalSettingsInputSchema = LayerProposalSettingsSchema.pick({
+  autoActivationEnabled: true,
+  thresholdCutoff: true,
+  cooldownHours: true,
+  requireThumbsUpDeltaPositive: true,
+  maxTokensDelta: true,
+});
+export type LayerProposalSettingsInput = z.infer<typeof LayerProposalSettingsInputSchema>;
+
+// ---------- phase 8.1 — auto-activation decision JSON -----------------
+
+/**
+ * One gate's record in the auto-activation decision JSON
+ * (ADR 0026 §1). The full record list is written verbatim to
+ * `improvement_proposals.auto_activation_decision_json` so both
+ * the UI and telemetry can render the evaluation in order.
+ */
+export const AutoActivationGateRecordSchema = z.object({
+  name: z.string().min(1),
+  passed: z.boolean(),
+  detail: z.record(z.unknown()).optional(),
+});
+export type AutoActivationGateRecord = z.infer<typeof AutoActivationGateRecordSchema>;
+
+/**
+ * Closed enum of rejection reasons the gate may return
+ * (ADR 0026 §1). Telemetry dimension `rejectionReason` uses this
+ * enum verbatim, keeping cardinality bounded.
+ */
+export const AutoActivationRejectionSchema = z.enum([
+  'auto-activation-disabled',
+  'cooldown-not-elapsed',
+  'threshold-below-cutoff',
+  'sandbox-outcome-not-ok',
+  'thumbs-up-delta-non-positive',
+  'tokens-delta-over-cap',
+  'no-sandbox-evidence',
+]);
+export type AutoActivationRejection = z.infer<typeof AutoActivationRejectionSchema>;
+
+/**
+ * The decision JSON written to
+ * `improvement_proposals.auto_activation_decision_json` before
+ * `replanOnApproval` runs (ADR 0026 §4). The gate function (lands
+ * in 8.2) returns this exact shape; the auto-activate job (lands
+ * in 8.3) serializes it.
+ */
+export const AutoActivationDecisionSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('eligible'),
+    gates: z.array(AutoActivationGateRecordSchema),
+  }),
+  z.object({
+    outcome: z.literal('rejected'),
+    reason: AutoActivationRejectionSchema,
+    gates: z.array(AutoActivationGateRecordSchema),
+  }),
+]);
+export type AutoActivationDecision = z.infer<typeof AutoActivationDecisionSchema>;

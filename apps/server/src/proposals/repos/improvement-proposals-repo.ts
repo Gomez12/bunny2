@@ -33,6 +33,23 @@ export interface ImprovementProposalRow {
   readonly activatedAt: string | null;
   readonly deletedAt: string | null;
   readonly deletedBy: string | null;
+  /**
+   * Phase 8.1 — auto-activation audit columns. Set by the
+   * auto-activate job (8.3); always NULL on rows created before
+   * 8.3 ships and on rows the auto-path skipped. See migration
+   * `0017_proposals_phase8.sql` and ADR 0026.
+   */
+  readonly autoActivatedBy: string | null;
+  readonly autoActivatedAt: string | null;
+  readonly autoActivationDecisionJson: string | null;
+  /**
+   * Phase 8.1 — manual rollback columns. Set by the rollback
+   * route (8.5) in the same transaction the capability is
+   * soft-deactivated. See ADR 0027.
+   */
+  readonly rolledBackAt: string | null;
+  readonly rolledBackBy: string | null;
+  readonly rolledBackReason: string | null;
 }
 
 interface SqlRow {
@@ -55,6 +72,12 @@ interface SqlRow {
   activated_at: string | null;
   deleted_at: string | null;
   deleted_by: string | null;
+  auto_activated_by: string | null;
+  auto_activated_at: string | null;
+  auto_activation_decision_json: string | null;
+  rolled_back_at: string | null;
+  rolled_back_by: string | null;
+  rolled_back_reason: string | null;
 }
 
 export interface InsertImprovementProposalInput {
@@ -105,6 +128,31 @@ export interface ImprovementProposalsRepo {
   updateStatus(id: string, patch: UpdateProposalStatusPatch): ImprovementProposalRow;
   softDeleteProposal(id: string, deletedBy: string, now: string): void;
   restoreProposal(id: string): void;
+  /**
+   * Phase 8.1 — writes `auto_activation_decision_json` only. Called
+   * by the auto-activate job (8.3) *before* `replanOnApproval`, so
+   * a mid-flight failure still leaves a forensic trail
+   * (ADR 0026 §4). No status guard — callers own the status.
+   */
+  recordAutoActivationDecision(id: string, decisionJson: string): void;
+  /**
+   * Phase 8.1 — writes `auto_activated_by = 'system'` and
+   * `auto_activated_at`. Status is left as the caller set it via
+   * the normal activate path; this method only stamps the
+   * audit columns (ADR 0026 §4).
+   */
+  recordAutoActivation(id: string, now: string): void;
+  /**
+   * Phase 8.1 — writes the three rollback columns
+   * (`rolled_back_at`, `rolled_back_by`, `rolled_back_reason`).
+   * Capability deactivation is handled by the rollback route via
+   * `capabilityRegistry.deactivate(...)`; this repo only owns the
+   * audit row (ADR 0027 §2).
+   */
+  recordRollback(
+    id: string,
+    opts: { readonly rolledBackBy: string; readonly reason: string; readonly now: string },
+  ): void;
 }
 
 const COLS =
@@ -112,7 +160,9 @@ const COLS =
   'proposed_spec_json, expected_impact_json, threshold, ' +
   'capability_snapshot_json, minted_by_run_id, minted_at, ' +
   'approved_by, approved_at, rejected_by, rejected_at, rejected_reason, ' +
-  'activated_at, deleted_at, deleted_by';
+  'activated_at, deleted_at, deleted_by, ' +
+  'auto_activated_by, auto_activated_at, auto_activation_decision_json, ' +
+  'rolled_back_at, rolled_back_by, rolled_back_reason';
 
 function rowToProposal(row: SqlRow): ImprovementProposalRow {
   return {
@@ -135,6 +185,12 @@ function rowToProposal(row: SqlRow): ImprovementProposalRow {
     activatedAt: row.activated_at,
     deletedAt: row.deleted_at,
     deletedBy: row.deleted_by,
+    autoActivatedBy: row.auto_activated_by,
+    autoActivatedAt: row.auto_activated_at,
+    autoActivationDecisionJson: row.auto_activation_decision_json,
+    rolledBackAt: row.rolled_back_at,
+    rolledBackBy: row.rolled_back_by,
+    rolledBackReason: row.rolled_back_reason,
   };
 }
 
@@ -175,6 +231,29 @@ export function createImprovementProposalsRepo(db: Database): ImprovementProposa
   const restore = db.query<unknown, [string]>(
     `UPDATE improvement_proposals
         SET deleted_at = NULL, deleted_by = NULL
+      WHERE id = ?`,
+  );
+
+  // Phase 8.1 — auto-activation + rollback audit writes. Each
+  // statement updates only the columns it owns; the caller (the
+  // auto-activate job in 8.3 / the rollback route in 8.5) sequences
+  // the writes around the existing `updateStatus` and the
+  // capability-registry side-effects.
+  const writeAutoDecision = db.query<unknown, [string, string]>(
+    `UPDATE improvement_proposals
+        SET auto_activation_decision_json = ?
+      WHERE id = ?`,
+  );
+
+  const writeAutoActivation = db.query<unknown, [string, string, string]>(
+    `UPDATE improvement_proposals
+        SET auto_activated_by = ?, auto_activated_at = ?
+      WHERE id = ?`,
+  );
+
+  const writeRollback = db.query<unknown, [string, string, string, string]>(
+    `UPDATE improvement_proposals
+        SET rolled_back_at = ?, rolled_back_by = ?, rolled_back_reason = ?
       WHERE id = ?`,
   );
 
@@ -303,6 +382,22 @@ export function createImprovementProposalsRepo(db: Database): ImprovementProposa
 
     restoreProposal(id) {
       restore.run(id);
+    },
+
+    recordAutoActivationDecision(id, decisionJson) {
+      writeAutoDecision.run(decisionJson, id);
+    },
+
+    recordAutoActivation(id, now) {
+      // ADR 0026 §3 — `'system'` is a fixed literal here, never a
+      // `users.id`. The user FK columns (`approved_by`,
+      // `rolled_back_by`) stay clean because no `system` user row
+      // is ever inserted.
+      writeAutoActivation.run('system', now, id);
+    },
+
+    recordRollback(id, opts) {
+      writeRollback.run(opts.now, opts.rolledBackBy, opts.reason, id);
     },
   };
 }
