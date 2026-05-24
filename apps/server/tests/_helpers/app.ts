@@ -160,8 +160,18 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
  * the app, so the `requireAdmin` middleware's factory-time read of
  * `admin_group_id` observes the seeded value. Use this for any test
  * that drives `/admin/*` against the seeded admin.
+ *
+ * Phase 7.6 — accepts an optional `withCapabilityRegistry: true` so the
+ * proposals + capabilities routes get wired. Default `false` to keep
+ * legacy callers byte-identical.
  */
-export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<TestApp> {
+export async function makeTestAppSeeded(
+  prefixOrOpts:
+    | string
+    | { readonly prefix?: string; readonly withCapabilityRegistry?: boolean } = {},
+): Promise<TestApp> {
+  const opts = typeof prefixOrOpts === 'string' ? { prefix: prefixOrOpts } : prefixOrOpts;
+  const prefix = opts.prefix ?? 'bunny2-admin-test-';
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const db = openDatabase(dir);
   const eventLog = createSqliteEventLog(db);
@@ -208,6 +218,19 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
   });
   const resolver = createGroupResolver({ db, bus });
   const layerResolver = createLayerResolver({ db, transitiveGroups: resolver });
+  // Phase 7.6 — opt-in capability registry so proposals + capabilities
+  // routes mount. Tests that don't need them keep the byte-identical
+  // 6.x wiring path (registry omitted → routes don't register).
+  let capabilityRegistry: import('../../src/proposals').CapabilityRegistry | undefined;
+  if (opts.withCapabilityRegistry === true) {
+    const { createCapabilityRegistry } = await import('../../src/proposals');
+    const { createLayerCapabilitiesRepo } =
+      await import('../../src/proposals/repos/layer-capabilities-repo');
+    capabilityRegistry = createCapabilityRegistry({
+      repo: createLayerCapabilitiesRepo(db),
+      bus,
+    });
+  }
   const app = createApp({
     bus,
     llmClient,
@@ -217,6 +240,7 @@ export async function makeTestAppSeeded(prefix = 'bunny2-admin-test-'): Promise<
     resolver,
     layerResolver,
     locales: LocalesConfigSchema.parse({}),
+    ...(capabilityRegistry !== undefined ? { capabilityRegistry } : {}),
   });
 
   return {

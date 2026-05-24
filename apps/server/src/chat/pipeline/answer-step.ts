@@ -144,13 +144,26 @@ export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> 
         { role: 'user', content: ctx.userContent },
       ];
 
-      // TODO(phase-7.6): write `chat_pipeline_steps.attribution_json`
-      // listing every `skillFragments[].capabilityId` that contributed
-      // to this answer (the column lands in 7.6 alongside the Kanban
-      // chip that consumes it). For 7.5 the value is computed locally
-      // and dropped on the floor; the column doesn't exist yet, so any
-      // write would be a no-op.
-      void skillFragments;
+      // Phase 7.6 — compute the capability-attribution JSON written to
+      // `chat_pipeline_steps.attribution_json`. The Kanban board reads
+      // it to render `[skill:<name>]` / `[tool:<name>]` / `[agent:<name>]`
+      // chips on the card. Only `skills` is populated in 7.6; tools +
+      // agents stay empty arrays (the answerer is hard-coded; the
+      // tool-calling answerer follow-up will start writing them). When
+      // no capability contributed (the common case for phase-6
+      // pipelines), `attributionJson` stays `null` and the column is
+      // not written — preserving the byte-identical phase-6 path.
+      const attributionJson =
+        skillFragments.length > 0
+          ? JSON.stringify({
+              skills: skillFragments.map((s) => ({
+                capabilityId: s.capabilityId,
+                name: s.name,
+              })),
+              tools: [],
+              agents: [],
+            })
+          : null;
 
       const metadata = {
         correlationId: ctx.correlationId,
@@ -173,10 +186,14 @@ export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> 
         const streamingPossible =
           deps.chunkSink !== undefined && typeof deps.llm.chatStream === 'function';
 
-        if (streamingPossible) {
-          return await runStreaming(messages, metadata, linkedSignal, deps, timeoutController);
-        }
-        return await runNonStreaming(messages, metadata, linkedSignal, deps, timeoutController);
+        const inner = streamingPossible
+          ? await runStreaming(messages, metadata, linkedSignal, deps, timeoutController)
+          : await runNonStreaming(messages, metadata, linkedSignal, deps, timeoutController);
+        // Tack on the attribution JSON computed above so the
+        // orchestrator can persist it into `chat_pipeline_steps`.
+        // `null` here keeps the column NULL (phase-6 default); a
+        // populated string lights up the Kanban chips.
+        return { ...inner, attributionJson };
       } finally {
         clearTimeout(timer);
       }

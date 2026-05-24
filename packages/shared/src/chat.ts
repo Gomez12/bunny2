@@ -188,10 +188,33 @@ export type ChatConversationSummary = z.infer<typeof ChatConversationSummarySche
 // on the message `status` and (when running) the step kind currently
 // `running` (or last `running`).
 
+export const BoardCapabilityChipSchema = z
+  .object({
+    capabilityId: z.string(),
+    name: z.string(),
+  })
+  .strict();
+export type BoardCapabilityChip = z.infer<typeof BoardCapabilityChipSchema>;
+
+export const ChatBoardStepAttributionSchema = z
+  .object({
+    skills: z.array(BoardCapabilityChipSchema),
+    tools: z.array(BoardCapabilityChipSchema),
+    agents: z.array(BoardCapabilityChipSchema),
+  })
+  .strict();
+export type ChatBoardStepAttribution = z.infer<typeof ChatBoardStepAttributionSchema>;
+
 export const ChatBoardStepSnapshotSchema = z
   .object({
     kind: PipelineStepKindSchema,
     status: PipelineStepStatusSchema,
+    /**
+     * Phase 7.6 — capability-attribution chips. Only the `answer`
+     * step currently writes this (skill prompt-fragments). `null`
+     * when no capability contributed (the common phase-6 case).
+     */
+    attribution: ChatBoardStepAttributionSchema.nullable().optional(),
   })
   .strict();
 export type ChatBoardStepSnapshot = z.infer<typeof ChatBoardStepSnapshotSchema>;

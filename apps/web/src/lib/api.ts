@@ -1226,3 +1226,191 @@ export async function postLayerChatFeedback(
   );
   return res.feedback;
 }
+
+// ---------- Phase 7.6 — proposals + capabilities --------------------------
+//
+// Per-layer improvement proposals (`/l/:slug/proposals/*`) and the
+// per-layer activated-capability registry (`/l/:slug/capabilities`).
+// All routes sit behind the standard auth + layer-visibility chain;
+// the mutation routes additionally require admin. The web layer
+// surfaces 403 / 404 via the shared `errors.*` keys.
+
+export type ProposalStatus =
+  | 'new'
+  | 'approved'
+  | 'rejected'
+  | 'superseded'
+  | 'activated'
+  | 'deactivated';
+
+export type ProposalArtifactKind = 'tool' | 'skill' | 'agent';
+
+export interface ProposalSummary {
+  readonly id: string;
+  readonly layerId: string;
+  readonly status: ProposalStatus;
+  readonly artifactKind: ProposalArtifactKind;
+  readonly problemSummary: string;
+  readonly threshold: number;
+  readonly mintedAt: string;
+  readonly thumbsUpDelta: number;
+}
+
+export interface ProposalEvidenceItem {
+  readonly id: string;
+  readonly messageId: string;
+  readonly conversationId: string | null;
+  readonly conversationTitle: string | null;
+  readonly clusterReason: string;
+  readonly detailJson: string | null;
+  readonly messageContent: string | null;
+  readonly messageRole: string | null;
+}
+
+export interface ProposalArtifactItem {
+  readonly id: string;
+  readonly variant: 'current' | 'proposed' | 'replanned';
+  readonly transcript: unknown;
+  readonly metrics: unknown;
+  readonly ranAt: string;
+}
+
+export interface ProposalDetailResponse {
+  readonly proposal: {
+    readonly id: string;
+    readonly layerId: string;
+    readonly status: ProposalStatus;
+    readonly artifactKind: ProposalArtifactKind;
+    readonly problemSummary: string;
+    readonly proposedSpec: unknown;
+    readonly expectedImpact: {
+      readonly thumbsUpDelta?: number;
+      readonly tokensDelta?: number;
+      readonly latencyDeltaMs?: number;
+    };
+    readonly threshold: number;
+    readonly capabilitySnapshot: unknown;
+    readonly mintedByRunId: string;
+    readonly mintedAt: string;
+    readonly approvedBy: string | null;
+    readonly approvedAt: string | null;
+    readonly rejectedBy: string | null;
+    readonly rejectedAt: string | null;
+    readonly rejectedReason: string | null;
+    readonly activatedAt: string | null;
+  };
+  readonly evidence: readonly ProposalEvidenceItem[];
+  readonly artifacts: readonly ProposalArtifactItem[];
+}
+
+export interface ProposalListResponse {
+  readonly items: readonly ProposalSummary[];
+  readonly total: number;
+}
+
+export interface ProposalListParams {
+  readonly status?: ProposalStatus;
+  readonly sort?: 'newest' | 'impact' | 'threshold';
+  readonly limit?: number;
+  readonly offset?: number;
+}
+
+export async function fetchLayerProposals(
+  layerSlug: string,
+  params: ProposalListParams = {},
+): Promise<ProposalListResponse> {
+  const q = new URLSearchParams();
+  if (params.status !== undefined) q.set('status', params.status);
+  if (params.sort !== undefined) q.set('sort', params.sort);
+  if (params.limit !== undefined) q.set('limit', String(params.limit));
+  if (params.offset !== undefined) q.set('offset', String(params.offset));
+  const suffix = q.toString();
+  return request<ProposalListResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/proposals${suffix.length > 0 ? `?${suffix}` : ''}`,
+  );
+}
+
+export async function fetchLayerProposalDetail(
+  layerSlug: string,
+  proposalId: string,
+): Promise<ProposalDetailResponse> {
+  return request<ProposalDetailResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/proposals/${encodeURIComponent(proposalId)}`,
+  );
+}
+
+export interface ApproveOutcomeResponse {
+  readonly outcome:
+    | 'activated-asis'
+    | 'activated-replanned'
+    | 'superseded'
+    | 'superseded-after-replan';
+}
+
+export async function approveLayerProposal(
+  layerSlug: string,
+  proposalId: string,
+): Promise<ApproveOutcomeResponse> {
+  return request<ApproveOutcomeResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/proposals/${encodeURIComponent(proposalId)}/approve`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+export async function rejectLayerProposal(
+  layerSlug: string,
+  proposalId: string,
+  reason: string,
+): Promise<{ status: 'rejected'; rejectedAt: string }> {
+  return request<{ status: 'rejected'; rejectedAt: string }>(
+    `/l/${encodeURIComponent(layerSlug)}/proposals/${encodeURIComponent(proposalId)}/reject`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
+export interface ReplaySandboxResponse {
+  readonly outcome: string;
+  readonly metrics: unknown;
+  readonly variantArtifacts: { currentArtifactId: string; proposedArtifactId: string };
+}
+
+export async function replayProposalSandbox(
+  layerSlug: string,
+  proposalId: string,
+): Promise<ReplaySandboxResponse> {
+  return request<ReplaySandboxResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/proposals/${encodeURIComponent(proposalId)}/replay-sandbox`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+export interface LayerCapabilityItem {
+  readonly id: string;
+  readonly layerId: string;
+  readonly kind: ProposalArtifactKind;
+  readonly name: string;
+  readonly origin: string;
+  readonly activatedAt: string;
+  readonly deactivatedAt: string | null;
+}
+
+export interface LayerCapabilityListResponse {
+  readonly items: readonly LayerCapabilityItem[];
+  readonly total: number;
+}
+
+export async function fetchLayerCapabilities(
+  layerSlug: string,
+): Promise<LayerCapabilityListResponse> {
+  return request<LayerCapabilityListResponse>(`/l/${encodeURIComponent(layerSlug)}/capabilities`);
+}
+
+export async function deactivateLayerCapability(
+  layerSlug: string,
+  capabilityId: string,
+): Promise<{ status: 'deactivated'; capabilityId: string }> {
+  return request<{ status: 'deactivated'; capabilityId: string }>(
+    `/l/${encodeURIComponent(layerSlug)}/capabilities/${encodeURIComponent(capabilityId)}/deactivate`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+}

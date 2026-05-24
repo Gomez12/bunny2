@@ -23,7 +23,9 @@
     "adminUsers": "Admin · Users",
     "adminGroups": "Admin · Groups",
     "adminScheduledTasks": "Admin · Scheduled tasks",
-    "adminBusDlq": "Admin · DLQ"
+    "adminBusDlq": "Admin · DLQ",
+    "proposals": "Proposals",
+    "capabilities": "Capabilities"
   },
   "auth": {
     "login": {
@@ -194,6 +196,11 @@
         "answering": "Answering",
         "done": "Done",
         "failed": "Failed"
+      },
+      "cardCapabilityChip": {
+        "tool": "tool",
+        "skill": "skill",
+        "agent": "agent"
       }
     }
   },
@@ -509,6 +516,13 @@
           "loading": "Loading recent chats…",
           "errorLoadFailed": "Could not load recent chats.",
           "linkOpen": "Open chat"
+        },
+        "proposals": {
+          "title": "New proposals",
+          "emptyDescription": "No new improvement proposals yet for this layer.",
+          "loading": "Loading proposals…",
+          "errorLoadFailed": "Could not load proposals.",
+          "linkOpen": "Review proposals"
         }
       }
     },
@@ -523,7 +537,9 @@
         "todos": "Todos",
         "scheduledTasks": "Scheduled tasks",
         "adminScheduledTasks": "Admin · Scheduled tasks",
-        "adminBusDlq": "Admin · Dead-letter queue"
+        "adminBusDlq": "Admin · Dead-letter queue",
+        "proposals": "Improvement proposals",
+        "capabilities": "Capabilities"
       }
     }
   },
@@ -533,6 +549,18 @@
       "upstream": "The LLM provider returned an error. Please try again.",
       "badRequest": "The message could not be sent. Please check the input and try again.",
       "empty": "Please enter a message before sending."
+    },
+    "proposals": {
+      "badRequest": "Request was invalid.",
+      "notFound": "Proposal not found.",
+      "sandboxFailed": "Sandbox replay failed.",
+      "alreadyTerminal": "This proposal is no longer in a state that can be approved or rejected.",
+      "replanFailed": "Re-plan failed.",
+      "invalidSpec": "Proposal spec is invalid."
+    },
+    "capabilities": {
+      "badRequest": "Request was invalid.",
+      "notFound": "Capability not found."
     },
     "auth": {
       "invalidCredentials": "Invalid username or password.",
@@ -1099,6 +1127,94 @@
     "dashboard": {
       "recentRunsTitle": "Recent runs",
       "empty": "No scheduled runs yet in this layer."
+    }
+  },
+  "proposals": {
+    "list": {
+      "title": "Improvement proposals",
+      "emptyTitle": "No proposals yet",
+      "emptyDescription": "The review agent will mint proposals as it finds patterns in this layer.",
+      "errorLoadFailed": "Could not load proposals.",
+      "statusFilter": "Filter by status",
+      "sortBy": "Sort by",
+      "kindHeader": "Kind",
+      "problemHeader": "Problem",
+      "impactHeader": "Impact",
+      "thresholdHeader": "Threshold",
+      "statusHeader": "Status",
+      "sortNewest": "Newest",
+      "sortImpact": "Highest impact",
+      "sortThreshold": "Highest threshold",
+      "filterAll": "All",
+      "loading": "Loading proposals…",
+      "openDetail": "Open proposal"
+    },
+    "status": {
+      "new": "new",
+      "approved": "approved",
+      "rejected": "rejected",
+      "superseded": "superseded",
+      "activated": "activated",
+      "deactivated": "deactivated"
+    },
+    "kind": {
+      "tool": "tool",
+      "skill": "skill",
+      "agent": "agent"
+    },
+    "detail": {
+      "backToList": "Back to proposals",
+      "problemSectionTitle": "Problem",
+      "proposedFixSectionTitle": "Proposed fix",
+      "expectedImpactSectionTitle": "Expected impact",
+      "sandboxSectionTitle": "Sandbox evidence",
+      "supportingMessagesTitle": "Supporting messages",
+      "supportingMessageOpen": "Open in chat",
+      "approveCta": "Approve",
+      "rejectCta": "Reject",
+      "replaySandboxCta": "Replay sandbox",
+      "rejectReasonLabel": "Reason for rejection",
+      "rejectReasonPlaceholder": "Why is this proposal not useful?",
+      "rejectConfirm": "Confirm rejection",
+      "thresholdLabel": "Threshold",
+      "activationOutcomeAsis": "Activated as-is.",
+      "activationOutcomeReplanned": "Activated after re-plan.",
+      "supersededOutcome": "Superseded — a newer capability already covers this gap.",
+      "supersededAfterReplanOutcome": "Superseded after re-plan.",
+      "adminOnlyTooltip": "Only layer admins can take this action.",
+      "loading": "Loading proposal…",
+      "errorLoadFailed": "Could not load this proposal.",
+      "sandboxCurrentLabel": "Current pipeline",
+      "sandboxProposedLabel": "With proposed capability",
+      "thumbsUpDeltaLabel": "Thumbs-up delta",
+      "tokensDeltaLabel": "Tokens delta",
+      "latencyDeltaLabel": "Latency delta"
+    },
+    "errors": {
+      "network": "Network error while loading proposals.",
+      "validation": "The request was rejected as invalid.",
+      "upstream": "The upstream service rejected the request.",
+      "replanFailed": "Re-plan failed.",
+      "sandboxFailed": "Sandbox replay failed.",
+      "timeout": "Sandbox replay timed out.",
+      "unknownHandlerKind": "Unknown handler kind in the proposal spec.",
+      "alreadyTerminal": "This proposal is no longer in a state that can be approved or rejected."
+    }
+  },
+  "capabilities": {
+    "list": {
+      "title": "Activated capabilities",
+      "emptyTitle": "No active capabilities",
+      "emptyDescription": "Approve a proposal to activate a new tool, skill, or agent for this layer.",
+      "errorLoadFailed": "Could not load capabilities.",
+      "nameHeader": "Name",
+      "kindHeader": "Kind",
+      "originHeader": "Origin",
+      "activatedAtHeader": "Activated",
+      "deactivateCta": "Deactivate",
+      "deactivateConfirm": "Deactivate this capability?",
+      "originBuiltin": "built-in",
+      "originProposal": "from proposal"
     }
   }
 }

@@ -47,7 +47,11 @@ import {
   createVectorSearch,
   type Embedder,
 } from './chat';
-import { attachAgentSubscriber, createCapabilityRegistry } from './proposals';
+import {
+  attachAgentSubscriber,
+  createCapabilityRegistry,
+  registerProposalsScheduledTaskHandlers,
+} from './proposals';
 import { createLayerCapabilitiesRepo } from './proposals/repos/layer-capabilities-repo';
 
 // Phase 5.2 — process role split. `parseRole` accepts the CLI flag
@@ -423,6 +427,38 @@ registerBuiltInScheduledTaskHandlers({
 // uses them); the subscriber wiring stays here so the entity-module
 // registry has its full set before subscribers attach.
 registerChatScheduledTaskHandlers({ embedder, writer: lanceWriter });
+
+// Phase 7.6 — proposals-domain scheduled-task handlers
+// (`proposals.evidence.prune` + `proposals.replan-stale`). Both seed
+// rows live in the `everyone` layer via `seedSystemScheduledTasksIfNeeded`
+// below; this call only wires the runtime handlers. The replan-stale
+// handler needs LLM + bus + registry + per-kind entity-store resolver
+// so its sandbox replays can run against the live retrieval path.
+registerProposalsScheduledTaskHandlers({
+  replanStale: {
+    llm: llmClient,
+    bus,
+    capabilityRegistry,
+    getEntityStore: (kind) => {
+      const module = listEntityModules().find((m) => m.kind === kind);
+      if (module === undefined) return null;
+      const store = resolveStoreForModule(module);
+      return {
+        async searchSummaries(layerIds, query, opts) {
+          const rows = store.searchSummaries(layerIds, query, opts);
+          return rows.map((r) => ({
+            id: r.id,
+            kind: r.kind,
+            layerId: r.layerId,
+            slug: r.slug,
+            title: r.title,
+            searchableText: r.searchableText,
+          }));
+        },
+      };
+    },
+  },
+});
 
 // Phase 7.5 — boot re-attach of every active `agent` capability. The
 // per-process subscriber wrapper is in-memory only, so a restart

@@ -10,5 +10,6 @@ import './CalendarWidget';
 import './TodosWidget';
 import './RecentRunsWidget';
 import './RecentChatsWidget';
+import './ProposalsWidget';
 
 export { listDashboardWidgets, type DashboardWidget, type WidgetProps } from './widget-registry';

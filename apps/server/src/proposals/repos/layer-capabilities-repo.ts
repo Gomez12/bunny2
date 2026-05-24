@@ -63,6 +63,14 @@ export interface LayerCapabilitiesRepo {
    */
   listAllActiveByKind(kind: ArtifactKind): LayerCapabilityRow[];
   getByName(layerId: string, kind: ArtifactKind, name: string): LayerCapabilityRow | null;
+  /**
+   * Phase 7.6 — single-row fetch by id (used by the
+   * `POST /l/:slug/capabilities/:id/deactivate` route to look up
+   * `(kind, name)` for `capabilityRegistry.deactivate(...)`). The
+   * route enforces `row.layerId === layer.id` for the cross-layer
+   * 404 contract.
+   */
+  getById(id: string): LayerCapabilityRow | null;
   deactivate(id: string, now: string): void;
 }
 
@@ -155,6 +163,11 @@ export function createLayerCapabilitiesRepo(db: Database): LayerCapabilitiesRepo
 
     getByName(layerId, kind, name) {
       const row = findByName.get(layerId, kind, name);
+      return row === null ? null : rowToCapability(row);
+    },
+
+    getById(id) {
+      const row = findById.get(id);
       return row === null ? null : rowToCapability(row);
     },
 

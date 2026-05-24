@@ -74,9 +74,57 @@ export {
   PROPOSAL_ACTIVATED_EVENT_TYPE,
   PROPOSAL_SUPERSEDED_EVENT_TYPE,
   PROPOSAL_DEACTIVATED_EVENT_TYPE,
+  PROPOSAL_REJECTED_EVENT_TYPE,
   type ProposalActivatedPayload,
   type ProposalDeactivatedPayload,
   type ProposalEventType,
   type ProposalMintedPayload,
+  type ProposalRejectedPayload,
   type ProposalSupersededPayload,
 } from './events';
+
+// Phase 7.6 — scheduled-task handlers + boot-time registration.
+export {
+  PROPOSALS_EVIDENCE_PRUNE_KIND,
+  proposalsEvidencePruneHandler,
+  pruneProposalEvidence,
+  type ProposalsEvidencePruneConfig,
+  type ProposalsEvidencePruneResult,
+} from './evidence-prune-handler';
+
+export {
+  PROPOSALS_REPLAN_STALE_KIND,
+  proposalsReplanStaleHandler,
+  buildProposalsReplanStaleHandler,
+  replanStaleProposals,
+  type ProposalsReplanStaleConfig,
+  type ProposalsReplanStaleDeps,
+  type ProposalsReplanStaleResult,
+} from './replan-stale-handler';
+
+export {
+  registerProposalsScheduledTaskHandlers,
+  type RegisterProposalsScheduledTaskHandlersDeps,
+} from './scheduled';
+
+// Phase 7.6 — repo factories surfaced for the HTTP routes.
+export {
+  createImprovementProposalsRepo,
+  type ImprovementProposalsRepo,
+  type ImprovementProposalRow,
+} from './repos/improvement-proposals-repo';
+export {
+  createImprovementProposalEvidenceRepo,
+  type ImprovementProposalEvidenceRepo,
+  type ProposalEvidenceRow,
+} from './repos/improvement-proposal-evidence-repo';
+export {
+  createImprovementProposalArtifactsRepo,
+  type ImprovementProposalArtifactsRepo,
+  type ProposalArtifactRow,
+} from './repos/improvement-proposal-artifacts-repo';
+export {
+  createLayerCapabilitiesRepo,
+  type LayerCapabilitiesRepo,
+  type LayerCapabilityRow,
+} from './repos/layer-capabilities-repo';

@@ -23,7 +23,9 @@
     "adminUsers": "Beheer · Gebruikers",
     "adminGroups": "Beheer · Groepen",
     "adminScheduledTasks": "Beheer · Geplande taken",
-    "adminBusDlq": "Beheer · DLQ"
+    "adminBusDlq": "Beheer · DLQ",
+    "proposals": "Voorstellen",
+    "capabilities": "Capabilities"
   },
   "layer": {
     "switcher": {
@@ -116,6 +118,13 @@
           "loading": "Recente gesprekken laden…",
           "errorLoadFailed": "Kon recente gesprekken niet laden.",
           "linkOpen": "Chat openen"
+        },
+        "proposals": {
+          "title": "Nieuwe voorstellen",
+          "emptyDescription": "Nog geen verbetervoorstellen voor deze laag.",
+          "loading": "Voorstellen laden…",
+          "errorLoadFailed": "Kon voorstellen niet laden.",
+          "linkOpen": "Voorstellen bekijken"
         }
       }
     },
@@ -123,7 +132,9 @@
       "subpages": {
         "scheduledTasks": "Geplande taken",
         "adminScheduledTasks": "Beheer · Geplande taken",
-        "adminBusDlq": "Beheer · Dead-letter-wachtrij"
+        "adminBusDlq": "Beheer · Dead-letter-wachtrij",
+        "proposals": "Verbetervoorstellen",
+        "capabilities": "Capabilities"
       }
     }
   },
@@ -329,6 +340,11 @@
         "answering": "Antwoorden",
         "done": "Klaar",
         "failed": "Mislukt"
+      },
+      "cardCapabilityChip": {
+        "tool": "tool",
+        "skill": "skill",
+        "agent": "agent"
       }
     }
   },
@@ -336,6 +352,18 @@
     "network": "Kan de server niet bereiken. Probeer het opnieuw.",
     "chat": {
       "upstream": "De LLM-provider gaf een fout. Probeer het opnieuw."
+    },
+    "proposals": {
+      "badRequest": "Verzoek was ongeldig.",
+      "notFound": "Voorstel niet gevonden.",
+      "sandboxFailed": "Sandbox-herhaling mislukt.",
+      "alreadyTerminal": "Dit voorstel kan niet meer worden goedgekeurd of afgewezen.",
+      "replanFailed": "Herplanning is mislukt.",
+      "invalidSpec": "Voorstelspec is ongeldig."
+    },
+    "capabilities": {
+      "badRequest": "Verzoek was ongeldig.",
+      "notFound": "Capability niet gevonden."
     },
     "auth": {
       "invalidCredentials": "Ongeldige gebruikersnaam of wachtwoord.",
@@ -881,6 +909,94 @@
     "dashboard": {
       "recentRunsTitle": "Recente runs",
       "empty": "Nog geen geplande runs in deze laag."
+    }
+  },
+  "proposals": {
+    "list": {
+      "title": "Verbetervoorstellen",
+      "emptyTitle": "Nog geen voorstellen",
+      "emptyDescription": "De review-agent maakt voorstellen aan zodra hij patronen vindt in deze laag.",
+      "errorLoadFailed": "Kon voorstellen niet laden.",
+      "statusFilter": "Filter op status",
+      "sortBy": "Sorteren op",
+      "kindHeader": "Soort",
+      "problemHeader": "Probleem",
+      "impactHeader": "Impact",
+      "thresholdHeader": "Drempel",
+      "statusHeader": "Status",
+      "sortNewest": "Nieuwste",
+      "sortImpact": "Hoogste impact",
+      "sortThreshold": "Hoogste drempel",
+      "filterAll": "Alles",
+      "loading": "Voorstellen laden…",
+      "openDetail": "Voorstel openen"
+    },
+    "status": {
+      "new": "nieuw",
+      "approved": "goedgekeurd",
+      "rejected": "afgewezen",
+      "superseded": "vervangen",
+      "activated": "geactiveerd",
+      "deactivated": "gedeactiveerd"
+    },
+    "kind": {
+      "tool": "tool",
+      "skill": "skill",
+      "agent": "agent"
+    },
+    "detail": {
+      "backToList": "Terug naar voorstellen",
+      "problemSectionTitle": "Probleem",
+      "proposedFixSectionTitle": "Voorgestelde oplossing",
+      "expectedImpactSectionTitle": "Verwachte impact",
+      "sandboxSectionTitle": "Sandbox-bewijs",
+      "supportingMessagesTitle": "Onderbouwende berichten",
+      "supportingMessageOpen": "Openen in chat",
+      "approveCta": "Goedkeuren",
+      "rejectCta": "Afwijzen",
+      "replaySandboxCta": "Sandbox opnieuw draaien",
+      "rejectReasonLabel": "Reden van afwijzing",
+      "rejectReasonPlaceholder": "Waarom is dit voorstel niet bruikbaar?",
+      "rejectConfirm": "Afwijzing bevestigen",
+      "thresholdLabel": "Drempel",
+      "activationOutcomeAsis": "Direct geactiveerd.",
+      "activationOutcomeReplanned": "Geactiveerd na herplanning.",
+      "supersededOutcome": "Vervangen — een nieuwere capability dekt deze gap al.",
+      "supersededAfterReplanOutcome": "Vervangen na herplanning.",
+      "adminOnlyTooltip": "Alleen beheerders van deze laag kunnen deze actie uitvoeren.",
+      "loading": "Voorstel laden…",
+      "errorLoadFailed": "Kon dit voorstel niet laden.",
+      "sandboxCurrentLabel": "Huidige pipeline",
+      "sandboxProposedLabel": "Met voorgestelde capability",
+      "thumbsUpDeltaLabel": "Verschil in duim-omhoog",
+      "tokensDeltaLabel": "Verschil in tokens",
+      "latencyDeltaLabel": "Verschil in latency"
+    },
+    "errors": {
+      "network": "Netwerkfout bij het laden van voorstellen.",
+      "validation": "Het verzoek is afgewezen omdat het ongeldig was.",
+      "upstream": "De onderliggende dienst weigerde het verzoek.",
+      "replanFailed": "Herplanning is mislukt.",
+      "sandboxFailed": "Sandbox-herhaling mislukt.",
+      "timeout": "Sandbox-herhaling overschreed de tijdslimiet.",
+      "unknownHandlerKind": "Onbekend handler-soort in de voorstelspec.",
+      "alreadyTerminal": "Dit voorstel kan niet meer worden goedgekeurd of afgewezen."
+    }
+  },
+  "capabilities": {
+    "list": {
+      "title": "Geactiveerde capabilities",
+      "emptyTitle": "Geen actieve capabilities",
+      "emptyDescription": "Keur een voorstel goed om een nieuwe tool, skill of agent voor deze laag te activeren.",
+      "errorLoadFailed": "Kon capabilities niet laden.",
+      "nameHeader": "Naam",
+      "kindHeader": "Soort",
+      "originHeader": "Herkomst",
+      "activatedAtHeader": "Geactiveerd",
+      "deactivateCta": "Deactiveren",
+      "deactivateConfirm": "Deze capability deactiveren?",
+      "originBuiltin": "ingebouwd",
+      "originProposal": "uit voorstel"
     }
   }
 }

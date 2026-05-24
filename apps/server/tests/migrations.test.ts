@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0015_proposals');
+      expect(currentSchemaVersion(db)).toBe('0016_chat_pipeline_steps_attribution');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -259,6 +259,7 @@ describe('migrations', () => {
         '0013_durable_bus',
         '0014_chat',
         '0015_proposals',
+        '0016_chat_pipeline_steps_attribution',
       ]);
     } finally {
       db2.close();

@@ -538,6 +538,13 @@ async function runStepWithPersistence<TIn, TOut>(
         endedAt: endIso,
         outputJson: result.outputJson,
         llmCallId: result.llmCallId ?? capturedLlmCallId,
+        // Phase 7.6 — only the answer step currently emits
+        // attribution; for every other step the field is
+        // `undefined` and the patch is a no-op (the column stays
+        // NULL).
+        ...(result.attributionJson !== undefined
+          ? { attributionJson: result.attributionJson }
+          : {}),
       });
 
       await deps.bus.publish<ChatStepSucceededPayload>({

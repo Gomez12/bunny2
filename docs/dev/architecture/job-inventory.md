@@ -42,6 +42,8 @@ Reference: [`scheduled-tasks.md`](./scheduled-tasks.md),
 | `chat.embeddings.backfill` | `everyone`  | every 24 h      | `apps/server/src/chat/embeddings/backfill-handler.ts`    | no           |
 | `chat.review-layer`        | `everyone`  | every 24 h      | `apps/server/src/chat/review-layer-handler.ts`           | no           |
 | `chat.runs.prune`          | `everyone`  | every 24 h      | `apps/server/src/chat/runs-prune-handler.ts`             | no           |
+| `proposals.evidence.prune` | `everyone`  | every 24 h      | `apps/server/src/proposals/evidence-prune-handler.ts`    | no           |
+| `proposals.replan-stale`   | `everyone`  | every 24 h      | `apps/server/src/proposals/replan-stale-handler.ts`      | yes          |
 
 <!-- job-inventory:end -->
 

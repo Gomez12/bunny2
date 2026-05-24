@@ -73,6 +73,7 @@ import {
   createMockEmbedder,
   createInMemoryLanceWriter,
 } from '../src/chat';
+import { registerProposalsScheduledTaskHandlers } from '../src/proposals';
 
 interface OutboxRow {
   status: string;
@@ -176,10 +177,16 @@ describe('phase 5.7 — smoke-worker (role=worker against DurableSqliteMessageBu
         embedder: createMockEmbedder(),
         writer: createInMemoryLanceWriter(),
       });
+      // Phase 7.6 — proposals-domain handlers also register so the
+      // system-task seed (which now includes `proposals.evidence.prune`
+      // + `proposals.replan-stale`) finds their handlers.
+      registerProposalsScheduledTaskHandlers();
       for (const kind of [
         'chat.embeddings.backfill',
         'chat.review-layer',
         'chat.runs.prune',
+        'proposals.evidence.prune',
+        'proposals.replan-stale',
       ] as const) {
         expect(getScheduledTaskHandler(kind)).not.toBeNull();
       }

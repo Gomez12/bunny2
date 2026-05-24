@@ -602,6 +602,7 @@ interface BoardStepRow {
   status: PipelineStepStatus;
   attempt: number;
   started_at: string;
+  attribution_json: string | null;
 }
 
 /**
@@ -665,7 +666,7 @@ function listBoardItemsFor(
   if (runIds.length > 0) {
     const placeholders = runIds.map(() => '?').join(', ');
     const stepRowsSql = `
-      SELECT run_id, kind, status, attempt, started_at
+      SELECT run_id, kind, status, attempt, started_at, attribution_json
         FROM chat_pipeline_steps
        WHERE run_id IN (${placeholders})
        ORDER BY started_at ASC
@@ -677,7 +678,18 @@ function listBoardItemsFor(
         arr = [];
         stepsByRun.set(row.run_id, arr);
       }
-      arr.push({ kind: row.kind, status: row.status });
+      // Phase 7.6 — surface capability attribution on the answer step.
+      // The column is nullable; defensively swallow JSON parse errors
+      // so a malformed write never breaks the Kanban payload.
+      let attribution: ChatBoardStepSnapshot['attribution'] = null;
+      if (row.attribution_json !== null) {
+        try {
+          attribution = JSON.parse(row.attribution_json);
+        } catch {
+          attribution = null;
+        }
+      }
+      arr.push({ kind: row.kind, status: row.status, attribution });
     }
   }
 

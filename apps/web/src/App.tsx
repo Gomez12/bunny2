@@ -36,6 +36,9 @@ import { ContactsImportPage } from './pages/ContactsImportPage';
 import { ContactsListPage } from './pages/ContactsListPage';
 import { TodoDetailPage } from './pages/TodoDetailPage';
 import { TodosPage } from './pages/TodosPage';
+import { LayerProposalsListPage } from './pages/LayerProposalsListPage';
+import { LayerProposalDetailPage } from './pages/LayerProposalDetailPage';
+import { LayerCapabilitiesPage } from './pages/LayerCapabilitiesPage';
 import { bootstrapSession, useSession } from './lib/session';
 
 /**
@@ -169,6 +172,7 @@ function AppShell(): JSX.Element {
                     {t('nav.chat')}
                   </Button>
                 </li>
+                <LayerScopedNavLinks navigate={nav} active={active} t={t} />
                 <li>
                   <Button
                     type="button"
@@ -273,6 +277,9 @@ function AppShell(): JSX.Element {
           <Route path="/l/:layerSlug/scheduled-tasks" element={<ScheduledTasksListPage />} />
           <Route path="/l/:layerSlug/chat" element={<LayerChatPage />} />
           <Route path="/l/:layerSlug/chat/board" element={<LayerChatBoardPage />} />
+          <Route path="/l/:layerSlug/proposals" element={<LayerProposalsListPage />} />
+          <Route path="/l/:layerSlug/proposals/:id" element={<LayerProposalDetailPage />} />
+          <Route path="/l/:layerSlug/capabilities" element={<LayerCapabilitiesPage />} />
           <Route path="/l/:layerSlug" element={<LayerSlugIndexRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -311,6 +318,54 @@ function NotFound(): JSX.Element {
   );
 }
 
+/**
+ * Phase 7.6 — show layer-scoped nav links (Proposals + Capabilities)
+ * only when the user is currently on a `/l/:slug/*` page. Avoids
+ * dangling links when the user is in a non-layer-scoped route.
+ */
+function LayerScopedNavLinks({
+  navigate,
+  active,
+  t,
+}: {
+  readonly navigate: (to: string) => void;
+  readonly active: (prefix: string) => boolean;
+  readonly t: (k: string) => string;
+}): JSX.Element | null {
+  const location = useLocation();
+  if (!location.pathname.startsWith('/l/')) return null;
+  const slug = location.pathname.split('/')[2] ?? '';
+  if (slug === '') return null;
+  const proposalsPath = `/l/${slug}/proposals`;
+  const capabilitiesPath = `/l/${slug}/capabilities`;
+  return (
+    <>
+      <li>
+        <Button
+          type="button"
+          variant={active(proposalsPath) ? 'default' : 'ghost'}
+          size="sm"
+          aria-current={active(proposalsPath) ? 'page' : undefined}
+          onClick={() => navigate(proposalsPath)}
+        >
+          {t('nav.proposals')}
+        </Button>
+      </li>
+      <li>
+        <Button
+          type="button"
+          variant={active(capabilitiesPath) ? 'default' : 'ghost'}
+          size="sm"
+          aria-current={active(capabilitiesPath) ? 'page' : undefined}
+          onClick={() => navigate(capabilitiesPath)}
+        >
+          {t('nav.capabilities')}
+        </Button>
+      </li>
+    </>
+  );
+}
+
 function pageTitleFor(pathname: string, t: (k: string) => string): string | null {
   if (pathname.startsWith('/l/')) {
     const parts = pathname.split('/');
@@ -323,6 +378,8 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
     if (sub === 'todos') return t('layer.shell.subpages.todos');
     if (sub === 'scheduled-tasks') return t('layer.shell.subpages.scheduledTasks');
     if (sub === 'chat') return t('nav.chat');
+    if (sub === 'proposals') return t('layer.shell.subpages.proposals');
+    if (sub === 'capabilities') return t('layer.shell.subpages.capabilities');
     return null;
   }
   if (pathname.startsWith('/layers')) return t('admin.layers.list.title');

@@ -339,6 +339,14 @@ export interface PipelineStepResult<TOut> {
   readonly outputJson: string;
   readonly llmCallId: string | null;
   readonly status: Extract<PipelineStepStatus, 'succeeded' | 'skipped'>;
+  /**
+   * Phase 7.6 — optional capability-attribution JSON written to
+   * `chat_pipeline_steps.attribution_json`. Currently only the
+   * answer step emits it (skill prompt-fragments); the Kanban
+   * board reads it to render `[skill:<name>]` chips. Omitted →
+   * column stays NULL (phase-6 byte-identical default).
+   */
+  readonly attributionJson?: string | null;
 }
 
 export interface PipelineStep<TIn, TOut> {

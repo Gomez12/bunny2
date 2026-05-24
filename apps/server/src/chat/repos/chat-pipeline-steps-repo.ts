@@ -27,6 +27,14 @@ export interface ChatPipelineStep {
   readonly outputJson: string | null;
   readonly llmCallId: string | null;
   readonly errorCode: string | null;
+  /**
+   * Phase 7.6 — capability-attribution JSON. Written by the answerer
+   * when activated skills / tools / agents contributed to the answer.
+   * Opaque to this repo; the Kanban board (web) parses it. NULL when
+   * no capability participated; keeps the phase-6 byte-identical
+   * path alive for tests that don't wire a registry.
+   */
+  readonly attributionJson: string | null;
 }
 
 interface ChatPipelineStepRow {
@@ -41,6 +49,7 @@ interface ChatPipelineStepRow {
   output_json: string | null;
   llm_call_id: string | null;
   error_code: string | null;
+  attribution_json: string | null;
 }
 
 export interface InsertChatPipelineStepInput {
@@ -51,6 +60,7 @@ export interface InsertChatPipelineStepInput {
   readonly attempt?: number;
   readonly startedAt: string;
   readonly inputJson?: string | null;
+  readonly attributionJson?: string | null;
 }
 
 export interface UpdateChatPipelineStepPatch {
@@ -60,6 +70,7 @@ export interface UpdateChatPipelineStepPatch {
   readonly inputJson?: string | null;
   readonly llmCallId?: string | null;
   readonly errorCode?: string | null;
+  readonly attributionJson?: string | null;
 }
 
 export interface ChatPipelineStepsRepo {
@@ -72,7 +83,7 @@ export interface ChatPipelineStepsRepo {
 
 const COLS =
   'id, run_id, kind, status, attempt, started_at, ended_at, ' +
-  'input_json, output_json, llm_call_id, error_code';
+  'input_json, output_json, llm_call_id, error_code, attribution_json';
 
 function rowToStep(row: ChatPipelineStepRow): ChatPipelineStep {
   return {
@@ -87,17 +98,27 @@ function rowToStep(row: ChatPipelineStepRow): ChatPipelineStep {
     outputJson: row.output_json,
     llmCallId: row.llm_call_id,
     errorCode: row.error_code,
+    attributionJson: row.attribution_json,
   };
 }
 
 export function createChatPipelineStepsRepo(db: Database): ChatPipelineStepsRepo {
   const insert = db.query<
     unknown,
-    [string, string, PipelineStepKind, PipelineStepStatus, number, string, string | null]
+    [
+      string,
+      string,
+      PipelineStepKind,
+      PipelineStepStatus,
+      number,
+      string,
+      string | null,
+      string | null,
+    ]
   >(
     `INSERT INTO chat_pipeline_steps
-       (id, run_id, kind, status, attempt, started_at, input_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (id, run_id, kind, status, attempt, started_at, input_json, attribution_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const findById = db.query<ChatPipelineStepRow, [string]>(
@@ -120,6 +141,7 @@ export function createChatPipelineStepsRepo(db: Database): ChatPipelineStepsRepo
         input.attempt ?? 1,
         input.startedAt,
         input.inputJson ?? null,
+        input.attributionJson ?? null,
       );
       const row = findById.get(input.id);
       if (row === null) {
@@ -165,6 +187,10 @@ export function createChatPipelineStepsRepo(db: Database): ChatPipelineStepsRepo
       if (patch.errorCode !== undefined) {
         sets.push('error_code = ?');
         params.push(patch.errorCode);
+      }
+      if (patch.attributionJson !== undefined) {
+        sets.push('attribution_json = ?');
+        params.push(patch.attributionJson);
       }
       if (sets.length === 0) {
         const existing = findById.get(id);

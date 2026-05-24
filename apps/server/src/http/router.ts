@@ -37,6 +37,8 @@ import { registerScheduledTasksRoutes } from './routes/scheduled-tasks';
 import { registerAdminScheduledTasksRoutes } from './routes/admin-scheduled-tasks';
 import { registerAdminBusRoutes } from './routes/admin-bus';
 import { registerLayerChatRoutes } from './routes/layer-chat';
+import { registerLayerProposalsRoutes } from './routes/layer-proposals';
+import { registerLayerCapabilitiesRoutes } from './routes/layer-capabilities';
 import { createSqliteLlmCallLog } from '../llm/call-log';
 import {
   createEntityStore as createGenericEntityStore,
@@ -372,6 +374,26 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
       ? { capabilityRegistry: deps.capabilityRegistry }
       : {}),
   });
+
+  // Phase 7.6 — per-layer proposals + capabilities routes. Wired only
+  // when the capability registry is present in deps; test fixtures
+  // that don't exercise the proposals surface (most of the existing
+  // 6.x tests) omit the registry and these routes silently no-op.
+  if (deps.capabilityRegistry !== undefined) {
+    registerLayerProposalsRoutes(app, {
+      bus: deps.bus,
+      db: deps.db,
+      llm: deps.llmClient,
+      resolver: deps.resolver,
+      capabilityRegistry: deps.capabilityRegistry,
+      getEntityStore: getEntityStoreForChat,
+    });
+    registerLayerCapabilitiesRoutes(app, {
+      db: deps.db,
+      resolver: deps.resolver,
+      capabilityRegistry: deps.capabilityRegistry,
+    });
+  }
 
   // Phase 4d.6 — todo → calendar projection bridge. The READ side is
   // a separate route under the `/calendar/` URL prefix so the

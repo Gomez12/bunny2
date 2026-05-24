@@ -215,7 +215,43 @@ function BoardCard(props: BoardCardProps): JSX.Element {
           {new Date(card.createdAt).toLocaleString()}
         </time>
       </div>
+      <CapabilityChips card={card} />
     </article>
+  );
+}
+
+/**
+ * Phase 7.6 — render `[skill:…]` / `[tool:…]` / `[agent:…]` chips for
+ * any activated capability that contributed to this answer. Sourced
+ * from the `answer` step's `attribution` field (nullable; chips don't
+ * render when none).
+ */
+function CapabilityChips({ card }: { readonly card: LayerChatBoardItem }): JSX.Element | null {
+  const { t } = useTranslation();
+  const answerStep = card.steps.find((s) => s.kind === 'answer');
+  const attribution = answerStep?.attribution ?? null;
+  if (attribution === null || attribution === undefined) return null;
+  const chips: { kind: 'skill' | 'tool' | 'agent'; name: string; capabilityId: string }[] = [];
+  for (const s of attribution.skills) chips.push({ kind: 'skill', ...s });
+  for (const s of attribution.tools) chips.push({ kind: 'tool', ...s });
+  for (const s of attribution.agents) chips.push({ kind: 'agent', ...s });
+  if (chips.length === 0) return null;
+  return (
+    <ul className="flex flex-wrap gap-1 pt-1">
+      {chips.map((chip) => {
+        const label = `${t(`chat.board.cardCapabilityChip.${chip.kind}`)}: ${chip.name}`;
+        return (
+          <li
+            key={chip.capabilityId}
+            className="inline-flex items-center rounded-full border px-2 text-xs"
+            title={label}
+            aria-label={label}
+          >
+            [{t(`chat.board.cardCapabilityChip.${chip.kind}`)}:{chip.name}]
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

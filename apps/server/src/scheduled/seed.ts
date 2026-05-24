@@ -14,6 +14,7 @@ import {
   SCHEDULED_RUNS_PRUNE_KIND,
   BUS_OUTBOX_PRUNE_KIND,
 } from './built-in';
+import { PROPOSALS_EVIDENCE_PRUNE_KIND, PROPOSALS_REPLAN_STALE_KIND } from '../proposals';
 import type { ScheduledTaskCreatedPayload } from './events';
 
 /**
@@ -66,6 +67,19 @@ const SYSTEM_TASKS: readonly SystemTaskSpec[] = [
     name: 'Scheduled-task run-history prune',
   },
   { kind: BUS_OUTBOX_PRUNE_KIND, slug: 'bus-outbox-prune', name: 'Bus outbox prune' },
+  // Phase 7.6 — proposal-domain retention + stale-refresh jobs. Same
+  // `everyone`-layer seeding pattern (admin-only edit via
+  // `canEditLayer`); the handlers themselves iterate every layer.
+  {
+    kind: PROPOSALS_EVIDENCE_PRUNE_KIND,
+    slug: 'proposals-evidence-prune',
+    name: 'Proposal evidence retention prune',
+  },
+  {
+    kind: PROPOSALS_REPLAN_STALE_KIND,
+    slug: 'proposals-replan-stale',
+    name: 'Proposal stale-evidence refresh',
+  },
 ];
 
 export interface SeedSystemScheduledTasksDeps {

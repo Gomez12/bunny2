@@ -31,6 +31,7 @@ import {
   createMockEmbedder,
   createInMemoryLanceWriter,
 } from '../../src/chat';
+import { registerProposalsScheduledTaskHandlers } from '../../src/proposals';
 
 function repoRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -104,6 +105,11 @@ describe('phase 5.7 — job-inventory cross-check', () => {
       embedder: createMockEmbedder(),
       writer: createInMemoryLanceWriter(),
     });
+    // Phase 7.6 — proposals-domain handlers. Registered without
+    // `replanStale` deps so the placeholder shape lands in the
+    // registry; the docs-check only consults the `kind` field, and
+    // no test in this file invokes `.run(...)`.
+    registerProposalsScheduledTaskHandlers();
   });
 
   afterAll(() => {

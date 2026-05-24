@@ -31,6 +31,7 @@ export const PROPOSAL_EVENT_TYPES = [
   'proposal.activated',
   'proposal.superseded',
   'proposal.deactivated',
+  'proposal.rejected',
 ] as const;
 
 export type ProposalEventType = (typeof PROPOSAL_EVENT_TYPES)[number];
@@ -102,3 +103,18 @@ export interface ProposalDeactivatedPayload {
 }
 
 export const PROPOSAL_DEACTIVATED_EVENT_TYPE: ProposalEventType = 'proposal.deactivated';
+
+/**
+ * Fired when an admin rejects a proposal (phase 7.6 HTTP route).
+ * Carries IDs + the actor only; the reason text stays in the
+ * `improvement_proposals.rejected_reason` column, behind the
+ * authenticated detail route. Subscribers (audit log, future
+ * dashboard summaries) react without joining the proposals table.
+ */
+export interface ProposalRejectedPayload {
+  readonly proposalId: string;
+  readonly layerId: string;
+  readonly rejectedBy: string;
+}
+
+export const PROPOSAL_REJECTED_EVENT_TYPE: ProposalEventType = 'proposal.rejected';

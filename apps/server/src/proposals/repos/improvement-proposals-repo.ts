@@ -71,13 +71,17 @@ export interface InsertImprovementProposalInput {
   readonly mintedAt: string;
 }
 
-export type ProposalSortBy = 'mintedAt' | 'threshold';
+export type ProposalSortBy = 'mintedAt' | 'threshold' | 'impact';
 
 export interface ListImprovementProposalsFilter {
   readonly layerId: string;
   readonly status?: ProposalStatus;
   readonly sortBy?: ProposalSortBy;
   readonly includeDeleted?: boolean;
+  /** Phase 7.6 — page size for the HTTP list route. */
+  readonly limit?: number;
+  /** Phase 7.6 — page offset for the HTTP list route. */
+  readonly offset?: number;
 }
 
 export interface UpdateProposalStatusPatch {
@@ -94,6 +98,10 @@ export interface ImprovementProposalsRepo {
   insertProposal(input: InsertImprovementProposalInput): ImprovementProposalRow;
   getProposalById(id: string): ImprovementProposalRow | null;
   listProposals(filter: ListImprovementProposalsFilter): ImprovementProposalRow[];
+  /** Phase 7.6 — total row count for pagination envelopes. */
+  countProposals(
+    filter: Pick<ListImprovementProposalsFilter, 'layerId' | 'status' | 'includeDeleted'>,
+  ): number;
   updateStatus(id: string, patch: UpdateProposalStatusPatch): ImprovementProposalRow;
   softDeleteProposal(id: string, deletedBy: string, now: string): void;
   restoreProposal(id: string): void;
@@ -209,13 +217,47 @@ export function createImprovementProposalsRepo(db: Database): ImprovementProposa
         where.push('status = ?');
         params.push(filter.status);
       }
-      const orderBy =
-        filter.sortBy === 'threshold' ? 'threshold DESC, minted_at DESC' : 'minted_at DESC';
-      const sql =
+      let orderBy = 'minted_at DESC';
+      if (filter.sortBy === 'threshold') orderBy = 'threshold DESC, minted_at DESC';
+      // Phase 7.6 — `impact` sorts by the JSON `thumbsUpDelta` field.
+      // SQLite's `json_extract` is fine here; the column carries a
+      // small object and we only use it for ordering, never indexing.
+      if (filter.sortBy === 'impact')
+        orderBy =
+          "CAST(COALESCE(json_extract(expected_impact_json, '$.thumbsUpDelta'), 0) AS REAL) DESC, minted_at DESC";
+      let sql =
         `SELECT ${COLS} FROM improvement_proposals ` +
         `WHERE ${where.join(' AND ')} ORDER BY ${orderBy}`;
+      if (typeof filter.limit === 'number' && filter.limit > 0) {
+        sql += ` LIMIT ?`;
+        params.push(filter.limit);
+        if (typeof filter.offset === 'number' && filter.offset > 0) {
+          sql += ` OFFSET ?`;
+          params.push(filter.offset);
+        }
+      }
       const rows = db.query<SqlRow, typeof params>(sql).all(...params);
       return rows.map(rowToProposal);
+    },
+
+    /**
+     * Phase 7.6 — total count for the list-route pagination
+     * envelope. Mirrors `listProposals`'s filter shape (minus
+     * sort/limit/offset).
+     */
+    countProposals(filter) {
+      const where: string[] = ['layer_id = ?'];
+      const params: (string | number)[] = [filter.layerId];
+      if (filter.includeDeleted !== true) {
+        where.push('deleted_at IS NULL');
+      }
+      if (filter.status !== undefined) {
+        where.push('status = ?');
+        params.push(filter.status);
+      }
+      const sql = `SELECT COUNT(*) AS n FROM improvement_proposals WHERE ${where.join(' AND ')}`;
+      const row = db.query<{ n: number }, typeof params>(sql).get(...params);
+      return row?.n ?? 0;
     },
 
     updateStatus(id, patch) {

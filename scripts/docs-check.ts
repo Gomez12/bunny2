@@ -30,6 +30,7 @@ import {
   createMockEmbedder,
   createInMemoryLanceWriter,
 } from '../apps/server/src/chat';
+import { registerProposalsScheduledTaskHandlers } from '../apps/server/src/proposals';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const plansDir = join(repoRoot, 'docs/dev/plans');
@@ -132,6 +133,8 @@ async function checkJobInventory(): Promise<void> {
     embedder: createMockEmbedder(),
     writer: createInMemoryLanceWriter(),
   });
+  // Phase 7.6 — proposals-domain handlers also feed the inventory.
+  registerProposalsScheduledTaskHandlers();
   const registered = new Set(listRegisteredScheduledTaskHandlers().map((h) => h.kind));
   const body = await readFile(inventoryPath, 'utf8');
   const documented = parseInventoryKinds(body);
