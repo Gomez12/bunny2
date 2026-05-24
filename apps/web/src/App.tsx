@@ -24,6 +24,7 @@ import { LayerSettingsPage } from './pages/LayerSettingsPage';
 import { LayerDashboardPage } from './pages/LayerDashboardPage';
 import { CompaniesListPage } from './pages/CompaniesListPage';
 import { CompanyDetailPage } from './pages/CompanyDetailPage';
+import { ContactsImportPage } from './pages/ContactsImportPage';
 import { bootstrapSession, useSession } from './lib/session';
 
 /**
@@ -218,6 +219,7 @@ function AppShell(): JSX.Element {
           <Route path="/l/:layerSlug/companies" element={<CompaniesListPage />} />
           <Route path="/l/:layerSlug/companies/new" element={<CompaniesListPage />} />
           <Route path="/l/:layerSlug/companies/:companySlug" element={<CompanyDetailPage />} />
+          <Route path="/l/:layerSlug/contacts/import" element={<ContactsImportPage />} />
           <Route path="/l/:layerSlug" element={<LayerSlugIndexRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

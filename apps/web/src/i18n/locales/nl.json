@@ -173,16 +173,26 @@
         "slugTaken": "Er bestaat al een contact met deze slug in deze laag.",
         "emailDuplicate": "Elk e-mailadres kan maar één keer worden toegevoegd.",
         "companyNotFound": "Het gekoppelde bedrijf bestaat niet in deze laag."
-      }
+      },
+      "connectorIngestFailed": "Kon het bestand niet importeren. Controleer het en probeer het opnieuw.",
+      "connectorIngestUnavailable": "Bestandsimport is niet beschikbaar voor dit itemtype."
     },
     "connectors": {
       "notConfigured": "Deze connector is nog niet ingesteld voor deze laag.",
+      "pullNotSupported": "Deze connector ondersteunt geen ophalen van externe records.",
+      "ingestNotSupported": "Deze connector accepteert geen bestandsimporten.",
       "kvk": {
         "kvkUnreachable": "Kan de KvK-API niet bereiken. Probeer het later opnieuw.",
         "kvkUnauthorized": "De KvK-API-sleutel is geweigerd. Controleer de geconfigureerde sleutel.",
         "kvkNotFound": "Geen KvK-record gevonden voor dit nummer.",
         "kvkInvalidResponse": "De KvK-API gaf een onverwachte respons.",
         "invalidConfig": "De KvK-connectorconfiguratie is ongeldig. Controleer de API-sleutel en het polling-interval."
+      },
+      "vcard": {
+        "invalidContentType": "Alleen vCard-bestanden (.vcf) worden geaccepteerd.",
+        "parseFailed": "Het vCard-bestand kon niet worden gelezen.",
+        "tooLarge": "Het vCard-bestand is te groot.",
+        "invalidConfig": "De vCard-connectorconfiguratie is ongeldig."
       }
     }
   },
@@ -281,6 +291,21 @@
       "save": "Opslaan",
       "cancel": "Annuleren",
       "deleteCta": "Contact verwijderen"
+    }
+  },
+  "connectors": {
+    "vcard": {
+      "label": "vCard-import",
+      "description": "Importeer contacten uit een .vcf-bestand dat door je adresboek is geëxporteerd.",
+      "fields": {},
+      "importTitle": "Contacten importeren uit vCard",
+      "importChooseFile": "Kies een .vcf-bestand",
+      "importSubmit": "Contacten importeren",
+      "importSubmitting": "Bezig met importeren…",
+      "importSuccess": "{{created}} nieuwe contacten geïmporteerd en {{updated}} bestaande bijgewerkt.",
+      "importWarningsTitle": "Waarschuwingen",
+      "importEmpty": "Er zijn geen contacten in dit bestand gevonden.",
+      "importNoFile": "Kies eerst een .vcf-bestand."
     }
   }
 }

@@ -73,6 +73,19 @@ export const LocalesConfigSchema = z
 export const ConnectorsConfigSchema = z.object({
   runnerEnabled: z.boolean().default(true),
   tickMs: z.number().int().positive().default(60_000),
+  /**
+   * Phase 4b.2 — cap (in bytes) on the `multipart/form-data` body
+   * accepted by `POST /l/:slug/<kind>/_ingest/:connectorId`. Default
+   * 5 MB — a real vCard export from Google Contacts (~5000 contacts)
+   * weighs ~3 MB; the cap protects against an accidental upload of a
+   * raw mailbox export or a tar.gz misnamed as `.vcf`. Operators that
+   * need to bulk-import larger files raise this in `bunny2.config.ts`.
+   */
+  ingestMaxBytes: z
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024),
 });
 
 /**
@@ -106,7 +119,11 @@ export const AppConfigSchema = z.object({
   llm: LlmConfigSchema.default({}),
   auth: AuthConfigSchema.default({}),
   locales: LocalesConfigSchema.default({ supported: ['en', 'nl'], default: 'en' }),
-  connectors: ConnectorsConfigSchema.default({ runnerEnabled: true, tickMs: 60_000 }),
+  connectors: ConnectorsConfigSchema.default({
+    runnerEnabled: true,
+    tickMs: 60_000,
+    ingestMaxBytes: 5 * 1024 * 1024,
+  }),
   enrichment: EnrichmentConfigSchema.default({
     runnerEnabled: true,
     debounceMs: 5_000,

@@ -42,6 +42,8 @@ export {
   type ConnectorDispatcher,
   type ConnectorDispatcherDeps,
   type ConnectorConfigResolver,
+  type ConnectorIngestDispatchInput,
+  type ConnectorIngestSummary,
 } from './connector-dispatcher';
 
 export {
@@ -88,6 +90,8 @@ export type {
   EntityConnectorSyncRequestedPayload,
   EntityConnectorSyncSucceededPayload,
   EntityConnectorSyncFailedPayload,
+  EntityConnectorIngestRequestedPayload,
+  EntityConnectorIngestCompletedPayload,
   EntityEnrichmentStartedPayload,
   EntityEnrichmentSucceededPayload,
   EntityEnrichmentFailedPayload,
@@ -112,6 +116,11 @@ export type {
   ConnectorEntityInput,
   ConnectorPullInput,
   ConnectorPayloadPatch,
+  ConnectorIngestPayload,
+  ConnectorIngestResult,
+  ConnectorIngestEntity,
+  ConnectorIngestMatchKey,
+  ConnectorIngestContext,
   InsertExternalLinkInput,
   SyncTransitionInput,
   SyncFailureInput,

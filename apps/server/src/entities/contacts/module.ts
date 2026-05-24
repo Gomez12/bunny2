@@ -1,5 +1,7 @@
 import { ContactPayloadSchema, type ContactPayload } from '@bunny2/shared';
 import type { EntityModule } from '../module';
+import type { EntityConnector } from '../connectors/base';
+import { createVcardConnector } from './vcard-connector';
 
 /**
  * Phase 4b.1 — second concrete `EntityModule`.
@@ -33,14 +35,22 @@ export const CONTACT_KIND = 'contact';
 export const CONTACT_TABLE = 'contacts';
 
 /**
- * Phase 4b.1 has no runtime deps yet; the option type is intentionally
- * an empty `Record` so 4b.2 (vCard connector) and 4b.3 (AI enrichment)
- * can extend it additively without breaking the existing call sites.
- * Using `Record<string, never>` instead of an empty interface keeps the
- * `@typescript-eslint/no-empty-object-type` rule happy while preserving
- * the same call-site ergonomics (`createContactModule()` with no args).
+ * Phase 4b.2 — extended for the vCard import connector. The factory
+ * accepts an optional connector list (default: the production
+ * `vcardConnector`) so tests inject deterministic stubs. 4b.3 (AI
+ * enrichment) and 4b.4 (stats provider) extend the same options shape
+ * additively.
  */
-export type CreateContactModuleOptions = Record<string, never>;
+export interface CreateContactModuleOptions {
+  readonly connectors?: readonly EntityConnector<ContactPayload>[];
+}
+
+/**
+ * Per-process default vCard connector for production. Tests build their
+ * own via `createContactModule({ connectors: [...] })` so they do not
+ * inherit the production connector when they need a stub.
+ */
+const defaultVcardConnector = createVcardConnector();
 
 /**
  * Build a fresh `contactModule`. Production wiring calls this once at
@@ -49,12 +59,16 @@ export type CreateContactModuleOptions = Record<string, never>;
  * default export `contactModule` uses the no-deps factory call.
  */
 export function createContactModule(
-  _opts?: CreateContactModuleOptions,
+  opts: CreateContactModuleOptions = {},
 ): EntityModule<ContactPayload> {
+  const connectors: readonly EntityConnector<ContactPayload>[] = opts.connectors ?? [
+    defaultVcardConnector,
+  ];
   return {
     kind: CONTACT_KIND,
     tableName: CONTACT_TABLE,
     payloadSchema: ContactPayloadSchema,
+    connectors,
     indexedColumns: [
       {
         name: 'primary_email',

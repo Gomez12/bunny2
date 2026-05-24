@@ -8,6 +8,7 @@ import type { EntityModule } from './module';
 import type { EntityStore } from './store';
 import { getConnector } from './registry';
 import { publishSyncRequested } from './connectors/base';
+import type { ConnectorDispatcher } from './connector-dispatcher';
 
 /**
  * Phase 4.0 — generic per-kind HTTP router factory.
@@ -53,6 +54,30 @@ export interface MountEntityRoutesDeps<Payload> {
   readonly bus: MessageBus;
   readonly db: Database;
   readonly now?: () => Date;
+  /**
+   * Phase 4b.2 — optional ingest dispatcher. When present, the router
+   * mounts `POST /l/:slug/<kind>/_ingest/:connectorId` which accepts a
+   * `multipart/form-data` body with a `file` part and calls
+   * `dispatcher.ingest(...)` synchronously. When omitted (most tests),
+   * the route is not mounted at all — the contract suite never needs
+   * it. The dispatcher is process-wide; the production wiring shares
+   * the same instance with the `sync.requested` subscriber.
+   */
+  readonly ingestDispatcher?: ConnectorDispatcher;
+  /**
+   * Phase 4b.2 — byte cap on the `_ingest` body. Production wiring
+   * sources this from `config.connectors.ingestMaxBytes` (default
+   * 5 MB); tests pass a small value (e.g. 64) to exercise the oversize
+   * path without uploading a real big file.
+   */
+  readonly ingestMaxBytes?: number;
+  /**
+   * Phase 4b.2 — `originalLocale` value the ingest dispatcher stamps
+   * onto created rows. Defaults to `en` because vCard 3.0 / 4.0 has no
+   * per-card locale. Production wiring sources this from
+   * `config.locales.default`; tests can override it.
+   */
+  readonly defaultLocale?: string;
 }
 
 const STATS_NOT_AVAILABLE = { error: 'errors.entity.statsUnavailable' } as const;
@@ -65,6 +90,97 @@ export function mountEntityRoutes<Payload>(
   const requireLayer = createRequireLayer();
   const base = `/l/:slug/${module.kind}`;
   const now = deps.now ?? (() => new Date());
+
+  // ---------- POST /l/:slug/<kind>/_ingest/:connectorId ------------------
+  //
+  // 4b.2 — payload-bearing connector dispatch. `_ingest` is registered
+  // BEFORE `/:entitySlug` so the prefix wins over a hypothetical entity
+  // slug starting with `_`. The handler:
+  //   1. resolves the layer (requireLayer)
+  //   2. validates the connector id against the registry
+  //   3. reads the `file` field from the multipart body — capped at
+  //      `ingestMaxBytes` to protect the process from a malicious or
+  //      mistaken huge upload (the cap is checked against `File.size`
+  //      BEFORE `await file.arrayBuffer()` so we never load the bytes
+  //      into memory when over the limit)
+  //   4. calls `dispatcher.ingest(...)` synchronously — the user is
+  //      waiting on this response, async via the bus would force the UI
+  //      into a polling loop (see ADR 0014 §3 for the trade-off)
+  //   5. returns `{ created, updated, warnings }` on success.
+  //
+  // Errors map to localized keys:
+  //   - missing dispatcher → `errors.entity.connectorIngestUnavailable` (404)
+  //   - unknown connector  → `errors.entity.connectorUnknown` (400)
+  //   - no file in body    → `errors.entity.validation` (400)
+  //   - over byte cap      → `errors.connectors.vcard.tooLarge` (413)
+  //   - connector throw    → message passed through (HTTP 400) when it
+  //     starts with `errors.`, else `errors.entity.connectorIngestFailed`.
+  if (deps.ingestDispatcher !== undefined) {
+    const dispatcher = deps.ingestDispatcher;
+    const maxBytes = deps.ingestMaxBytes ?? 5 * 1024 * 1024;
+    const defaultLocale = deps.defaultLocale ?? 'en';
+    app.post(`${base}/_ingest/:connectorId`, requireLayer, async (c) => {
+      const layer = c.get('layer');
+      if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+      const user = c.get('user');
+      const connectorId = c.req.param('connectorId');
+      const connector = getConnector(module.kind, connectorId);
+      if (connector === null) {
+        return c.json(ENTITY_CONNECTOR_UNKNOWN, 400);
+      }
+      let form: FormData;
+      try {
+        form = await c.req.formData();
+      } catch {
+        return c.json(BAD_REQUEST, 400);
+      }
+      const file = form.get('file');
+      if (file === null || typeof file === 'string') {
+        return c.json(ENTITY_VALIDATION, 400);
+      }
+      // `File` exposes `size` synchronously — reject big bodies BEFORE
+      // we materialise the bytes in memory.
+      if (file.size > maxBytes) {
+        return c.json({ error: 'errors.connectors.vcard.tooLarge' }, 413);
+      }
+      let bytes: Uint8Array;
+      try {
+        const ab = await file.arrayBuffer();
+        bytes = new Uint8Array(ab);
+      } catch {
+        return c.json(BAD_REQUEST, 400);
+      }
+      const contentType = file.type !== '' ? file.type : 'application/octet-stream';
+      const ingestPayload: {
+        contentType: string;
+        bytes: Uint8Array;
+        filename?: string;
+      } = { contentType, bytes };
+      if (file.name !== undefined && file.name !== '') {
+        ingestPayload.filename = file.name;
+      }
+      try {
+        const summary = await dispatcher.ingest({
+          kind: module.kind,
+          connectorId,
+          layerId: layer.id,
+          actorId: user.id,
+          payload: ingestPayload,
+          originalLocale: defaultLocale,
+        });
+        return c.json(summary, 200);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const safe = message.startsWith('errors.')
+          ? message
+          : 'errors.entity.connectorIngestFailed';
+        // 400 — the file is the user's input. We surface the connector's
+        // localized key (e.g. `errors.connectors.vcard.invalidContentType`)
+        // so the web UI can show the right message.
+        return c.json({ error: safe }, 400);
+      }
+    });
+  }
 
   // ---------- GET /l/:slug/<kind>/_stats ---------------------------------
   //

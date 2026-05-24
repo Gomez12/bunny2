@@ -37,10 +37,118 @@ export interface EntityConnector<Payload> {
    * `ctx.db` via `listExternalLinks` — the link's `payload_json` carries
    * non-secret state. Secrets travel via `ctx.config`, never via the
    * link payload (see file-level doc).
+   *
+   * Optional in 4b.2 onward: `ingest`-only connectors (e.g. vCard
+   * import) omit `pull`. The dispatcher rejects pull dispatch for such
+   * connectors with `errors.connectors.pullNotSupported`.
    */
-  pull(ctx: ConnectorContext, input: ConnectorPullInput): Promise<void>;
-  push(ctx: ConnectorContext, entity: ConnectorEntityInput<Payload>): Promise<void>;
+  pull?(ctx: ConnectorContext, input: ConnectorPullInput): Promise<void>;
+  /**
+   * Optional. Connectors that have no upstream write API (KvK, vCard)
+   * omit it; the dispatcher / future push runners check for presence
+   * before invoking.
+   */
+  push?(ctx: ConnectorContext, entity: ConnectorEntityInput<Payload>): Promise<void>;
   verify(config: Readonly<Record<string, unknown>>): Promise<string | null>;
+  /**
+   * Phase 4b.2 — second connector method shape: push-driven, payload-
+   * bearing. Where `pull` says "the dispatcher knows the externalId,
+   * please fetch one record", `ingest` says "the user uploaded a file
+   * (or a webhook fired) and handed us bytes, please produce a list of
+   * entities to create or update". Implemented by:
+   *  - vCard import (4b.2) — local file parse, may produce N contacts.
+   *  - Google Contacts (planned follow-up) — webhook-delivered single
+   *    contact change.
+   *  - CSV imports, JSON-import buttons, OAuth callback bodies — same
+   *    shape, different parser.
+   *
+   * The dispatcher (extended in 4b.2) applies the result: dedups
+   * against existing layer rows by `matchKey`, then create-or-update via
+   * the generic `EntityStore`. Connectors do NOT touch the store
+   * themselves — they parse + map and hand back a structured result.
+   *
+   * Secrets discipline mirrors `pull`: the connector NEVER puts the
+   * uploaded bytes or the filename into a bus event payload (the
+   * dispatcher publishes only `{ kind, connectorId, layerId,
+   * contentType, byteLength }` for `requested` and a numeric summary for
+   * `completed`).
+   */
+  ingest?(
+    ctx: ConnectorIngestContext,
+    payload: ConnectorIngestPayload,
+  ): Promise<ConnectorIngestResult<Payload>>;
+}
+
+/**
+ * Raw payload handed to a connector's `ingest`. Generic enough for
+ * vCard, CSV, JSON-import, OAuth-callback bodies. The dispatcher
+ * passes `contentType` through verbatim from the HTTP request; the
+ * connector MAY validate or be permissive (vCard tolerates both
+ * `text/vcard` and `text/x-vcard` and a `.vcf` filename).
+ */
+export interface ConnectorIngestPayload {
+  readonly contentType: string;
+  readonly bytes: Uint8Array;
+  readonly filename?: string;
+}
+
+/**
+ * Per-entity result from an `ingest` call. The dispatcher iterates the
+ * `entities` array and resolves each `matchKey` against the per-kind
+ * table in the entity's layer:
+ *  - match found and not soft-deleted → `store.update`.
+ *  - no match (or no `matchKey`) → `store.create`.
+ * `title` is the row's denormalized title — the dispatcher passes it
+ * straight to `store.create` / `store.update`.
+ *
+ * `externalId` is reserved for future per-entity external-link
+ * creation (Google Contacts will set it; vCard import does not — the
+ * .vcf file is not an upstream system the contact stays linked to).
+ */
+export interface ConnectorIngestResult<Payload> {
+  readonly entities: ReadonlyArray<ConnectorIngestEntity<Payload>>;
+  readonly warnings: readonly string[];
+}
+
+export interface ConnectorIngestEntity<Payload> {
+  readonly title: string;
+  readonly payload: Partial<Payload>;
+  readonly externalId?: string;
+  readonly matchKey?: ConnectorIngestMatchKey;
+}
+
+/**
+ * How the dispatcher decides "is this a new entity or an update?" for
+ * one ingest result item. `kind` is the matching strategy — the
+ * dispatcher implements each one against the per-kind table.
+ *
+ *  - `email`: matches a contact by its `primary_email` indexed column,
+ *    case-insensitive. (vCard import's choice.)
+ *  - `externalId`: matches an entity that already has an
+ *    `entity_external_links` row with `{ connector, external_id }` —
+ *    used by upcoming webhook-style connectors.
+ */
+export type ConnectorIngestMatchKey =
+  | { readonly kind: 'email'; readonly value: string }
+  | { readonly kind: 'externalId'; readonly value: string };
+
+/**
+ * Runtime context handed to `ingest`. Mirrors `ConnectorContext`:
+ * `db` / `bus` / `now` / `correlationId` / `config` carry the same
+ * meaning. `layerId` is the target layer for the produced entities —
+ * the dispatcher resolves it from the HTTP route (`/l/:slug/...`).
+ *
+ * `actorId` is the authenticated user — propagated to `store.create` /
+ * `store.update` so audit columns stay honest.
+ */
+export interface ConnectorIngestContext {
+  readonly db: Database;
+  readonly bus: MessageBus;
+  readonly now: () => Date;
+  readonly correlationId?: string;
+  readonly config: Readonly<Record<string, unknown>>;
+  readonly layerId: string;
+  readonly actorId: string;
 }
 
 /**

@@ -572,3 +572,49 @@ export async function removeCompanyExternalLink(
     method: 'DELETE',
   });
 }
+
+// ---------- contacts ingest (phase 4b.2) ---------------------------------
+
+export interface ContactsImportVcardResult {
+  readonly created: number;
+  readonly updated: number;
+  readonly warnings: readonly string[];
+}
+
+/**
+ * Phase 4b.2 — POST a `.vcf` file to the layer's contacts ingest
+ * endpoint. The server returns 200 with a numeric summary and a list of
+ * parse warnings.
+ *
+ * Errors map to `ApiError.errorKey`:
+ *   - `errors.entity.connectorUnknown` (400) — bad URL slug.
+ *   - `errors.connectors.vcard.invalidContentType` (400) — wrong MIME.
+ *   - `errors.connectors.vcard.tooLarge` (413) — file over the server cap.
+ *   - `errors.entity.connectorIngestFailed` (400) — connector threw.
+ */
+export async function importContactsVcard(
+  layerSlug: string,
+  file: File,
+): Promise<ContactsImportVcardResult> {
+  const form = new FormData();
+  form.append('file', file);
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase}/l/${encodeURIComponent(layerSlug)}/contact/_ingest/vcard`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+  } catch {
+    throw new ApiError('errors.network', 0);
+  }
+  if (!res.ok) {
+    const body = await parseJson<ErrorEnvelope>(res);
+    throw new ApiError(errorKeyFrom(body, res.status), res.status);
+  }
+  const body = await parseJson<ContactsImportVcardResult>(res);
+  if (body === null) {
+    throw new ApiError('errors.network', res.status);
+  }
+  return body;
+}

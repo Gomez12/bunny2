@@ -754,6 +754,113 @@ sub-phases stays additive.
 
 ---
 
+## 10f. Ingest (4b.2) — `EntityConnector.ingest`, vCard import
+
+Phase 4b.2 adds a second method to the connector contract:
+
+```ts
+interface EntityConnector<Payload> {
+  // ... (pull, push, verify — all optional from 4b.2)
+  ingest?(
+    ctx: ConnectorIngestContext,
+    payload: { contentType: string; bytes: Uint8Array; filename?: string },
+  ): Promise<ConnectorIngestResult<Payload>>;
+}
+```
+
+`pull` is "the dispatcher knows an `externalId`, please fetch one
+external record"; `ingest` is "the user uploaded a file (or a webhook
+fired) and handed us bytes, please produce a list of entities to
+create or update". Both methods coexist on the interface; a connector
+implements whichever subset matches its shape. KvK (4a.2) implements
+`pull` only. vCard (4b.2) implements `ingest` only. Future Google
+Contacts will implement both. See ADR
+[`0014`](../decisions/0014-connector-ingest.md) for the rationale.
+
+`ingest` returns a structured result:
+
+```ts
+interface ConnectorIngestResult<Payload> {
+  readonly entities: ReadonlyArray<{
+    readonly title: string;
+    readonly payload: Partial<Payload>;
+    readonly externalId?: string;
+    readonly matchKey?: { kind: 'email' | 'externalId'; value: string };
+  }>;
+  readonly warnings: readonly string[];
+}
+```
+
+The dispatcher iterates `entities`, resolves each `matchKey` against
+the layer's per-kind table, and dispatches a `store.create` (no match)
+or `store.update` (existing row) per item. The dedup column for the
+`email` strategy is the `primary_email` indexed column the 4b.1 module
+already maintains.
+
+### HTTP route (synchronous)
+
+```
+POST /l/:slug/<kind>/_ingest/:connectorId
+  Content-Type: multipart/form-data
+  field name: file
+
+  ├── requireLayer
+  ├── lookup connector via getConnector(kind, id)
+  ├── validate `file.size <= ingestMaxBytes` BEFORE reading bytes
+  ├── dispatcher.ingest(...) ← awaited synchronously
+  └── 200 { created, updated, warnings }
+```
+
+The route is mounted BEFORE `/:entitySlug` so the `_ingest` prefix
+wins over a hypothetical entity slug. Errors map to localized keys:
+unknown connector → `errors.entity.connectorUnknown` (400); oversize
+body → `errors.connectors.vcard.tooLarge` (413); connector throw →
+its `errors.` key (400, e.g. `errors.connectors.vcard.invalidContentType`).
+
+Synchronous (vs the async path that 4a.2 uses for `pull`) because the
+user is waiting on a clicked "Import" button. ADR 0014 §5.
+
+### Events
+
+```
+entity.connector.ingest.requested  { kind, connectorId, layerId, contentType, byteLength }
+entity.connector.ingest.completed  { kind, connectorId, layerId, created, updated, warningCount }
+```
+
+Per-entity `entity.<kind>.{created,updated}` events fire from the
+generic store during processing. The ingest events themselves carry
+NO `bytes` and NO `filename` — that is the secret-strip invariant for
+ingest, asserted by `contacts-vcard-connector.test.ts`. There is no
+`ingest.failed` event — a connector throw becomes the HTTP response's
+`errors.*` key; the per-entity events emitted during the loop are the
+failure-resilient signal.
+
+### vCard parser + connector
+
+`apps/server/src/entities/contacts/vcard.ts` is a hand-written vCard
+3.0 / 4.0 parser (no dependency). It covers `FN`, `N`, `EMAIL`,
+`TEL`, `ORG`, `TITLE`, `BDAY`, `NOTE`, `URL`, `ADR`; tolerates CRLF /
+LF / folded continuation lines / quoted-printable; never throws on a
+single bad entry — the function returns whatever it could parse and
+a list of `errors.connectors.vcard.*` warnings.
+
+`apps/server/src/entities/contacts/vcard-connector.ts` wraps the
+parser as the contact module's first `EntityConnector`. The connector
+validates the content type (`text/vcard`, `text/x-vcard`, or a `.vcf`
+filename) and maps every parsed contact to a result item with
+`matchKey = { kind: 'email', value: primaryEmail.toLowerCase() }`
+when an email exists. Cards without an email are always created.
+
+### Foundation extension
+
+ADR 0014 §1 — `EntityConnector.pull` / `push` become optional;
+`ingest` is the new optional third method. The dispatcher rejects
+pull dispatch for a connector with no `pull`
+(`errors.connectors.pullNotSupported`) and ingest dispatch for a
+connector with no `ingest` (`errors.connectors.ingestNotSupported`).
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit
@@ -769,5 +876,8 @@ sub-phases stays additive.
 - `docs/dev/decisions/0013-entity-enrichment.md` — enrichment runner
   shape, rate limit + coalescing, per-job declaration on
   `EntityModule`, secret-strip invariants.
+- `docs/dev/decisions/0014-connector-ingest.md` — second connector
+  method (`ingest`), synchronous HTTP dispatch, dedup-by-matchKey,
+  ingest event taxonomy, anti-leak invariants for upload bytes.
 - `docs/dev/plans/phase-04-first-entities.md` — the phase plan;
   per-kind sub-phases (4a..4d) and the §13 risk table.

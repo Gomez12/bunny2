@@ -108,6 +108,21 @@ export interface AppDeps {
    * set. Defaults match the web bundle (`en`, `nl` with `en` default).
    */
   readonly locales: LocalesConfig;
+  /**
+   * Phase 4b.2 — process-wide connector dispatcher used by the ingest
+   * route (`POST /l/:slug/contact/_ingest/:connectorId`). Optional so
+   * `_helpers/app.ts` (which does NOT wire a dispatcher) keeps working
+   * for tests that don't exercise the ingest path. Production wiring in
+   * `apps/server/src/index.ts` constructs the dispatcher exactly once
+   * (same instance subscribed to `sync.requested`) and passes it here.
+   */
+  readonly ingestDispatcher?: import('../entities').ConnectorDispatcher;
+  /**
+   * Phase 4b.2 — byte cap for ingest uploads. Production wiring sources
+   * this from `config.connectors.ingestMaxBytes`; tests can pass a tiny
+   * value to exercise the oversize path.
+   */
+  readonly ingestMaxBytes?: number;
 }
 
 /**

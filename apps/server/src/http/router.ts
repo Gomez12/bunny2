@@ -146,11 +146,20 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
   // as companies so `makeTestApp`-driven tests can rebuild the app any
   // number of times without resetting the registry; see
   // `apps/server/src/entities/contacts/index.ts`.
+  //
+  // Phase 4b.2 — when the caller wires an `ingestDispatcher`, the
+  // contacts router mounts `POST /l/:slug/contact/_ingest/:connectorId`
+  // for the vCard upload. Tests that drive the contract suite skip the
+  // dispatcher and the route is not mounted; production wiring always
+  // hands the dispatcher in.
   registerContactModule();
   mountContactRoutes(app, {
     db: deps.db,
     bus: deps.bus,
     llm: deps.llmClient,
+    ...(deps.ingestDispatcher === undefined ? {} : { ingestDispatcher: deps.ingestDispatcher }),
+    ...(deps.ingestMaxBytes === undefined ? {} : { ingestMaxBytes: deps.ingestMaxBytes }),
+    defaultLocale: deps.locales.default,
   });
 
   return app;

@@ -140,6 +140,23 @@ const status = (): StatusBody => {
   };
 };
 
+// Phase 4a.2 — connector dispatcher + interval poll runner. The
+// dispatcher subscribes to `entity.connector.sync.requested` once per
+// process (NOT per `createApp` call — tests build dozens of apps
+// against the same bus and must not stack subscribers; see
+// `apps/server/src/entities/connector-dispatcher.ts`). The runner ticks
+// every minute by default; it can be disabled via
+// `connectors.runnerEnabled = false` for offline / smoke runs.
+//
+// Phase 4b.2 — the dispatcher also owns the synchronous `ingest`
+// entry point hit by `POST /l/:slug/<kind>/_ingest/:connectorId`. We
+// pass `llm` so the dispatcher can lazy-build a per-kind `EntityStore`
+// the first time `ingest` runs for that kind. Built BEFORE `createApp`
+// so the contacts router can mount the ingest route with this same
+// instance.
+const connectorDispatcher = createConnectorDispatcher({ db, bus, llm: llmClient });
+connectorDispatcher.start();
+
 const app = createApp({
   bus,
   llmClient,
@@ -149,17 +166,9 @@ const app = createApp({
   resolver,
   layerResolver,
   locales: config.locales,
+  ingestDispatcher: connectorDispatcher,
+  ingestMaxBytes: config.connectors.ingestMaxBytes,
 });
-
-// Phase 4a.2 — connector dispatcher + interval poll runner. The
-// dispatcher subscribes to `entity.connector.sync.requested` once per
-// process (NOT per `createApp` call — tests build dozens of apps
-// against the same bus and must not stack subscribers; see
-// `apps/server/src/entities/connector-dispatcher.ts`). The runner ticks
-// every minute by default; it can be disabled via
-// `connectors.runnerEnabled = false` for offline / smoke runs.
-const connectorDispatcher = createConnectorDispatcher({ db, bus });
-connectorDispatcher.start();
 const connectorRunner = createConnectorRunner({
   db,
   bus,

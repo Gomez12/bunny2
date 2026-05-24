@@ -42,6 +42,8 @@ export const ENTITY_EVENT_TYPES = {
   ConnectorSyncRequested: 'entity.connector.sync.requested',
   ConnectorSyncSucceeded: 'entity.connector.sync.succeeded',
   ConnectorSyncFailed: 'entity.connector.sync.failed',
+  ConnectorIngestRequested: 'entity.connector.ingest.requested',
+  ConnectorIngestCompleted: 'entity.connector.ingest.completed',
   EnrichmentStarted: 'entity.enrichment.started',
   EnrichmentSucceeded: 'entity.enrichment.succeeded',
   EnrichmentFailed: 'entity.enrichment.failed',
@@ -117,6 +119,35 @@ export interface EntityConnectorSyncFailedPayload {
   readonly connector: string;
   readonly externalId: string;
   readonly error: string;
+}
+
+/**
+ * Phase 4b.2 — payload-bearing ingest events.
+ *
+ * Anti-leak invariants:
+ *  - `requested` carries `contentType` + `byteLength` only — NEVER the
+ *    raw `bytes` or the `filename` (filename can contain user emails /
+ *    PII; we log a numeric size instead).
+ *  - `completed` carries a numeric summary only — counts of created /
+ *    updated entities + a warning count. Individual entity refs are
+ *    surfaced via the per-entity `entity.<kind>.{created,updated}`
+ *    events the generic store already emits.
+ */
+export interface EntityConnectorIngestRequestedPayload {
+  readonly kind: string;
+  readonly connectorId: string;
+  readonly layerId: string;
+  readonly contentType: string;
+  readonly byteLength: number;
+}
+
+export interface EntityConnectorIngestCompletedPayload {
+  readonly kind: string;
+  readonly connectorId: string;
+  readonly layerId: string;
+  readonly created: number;
+  readonly updated: number;
+  readonly warningCount: number;
 }
 
 /**

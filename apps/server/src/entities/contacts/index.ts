@@ -18,6 +18,16 @@ export {
   type CreateContactModuleOptions,
 } from './module';
 
+export {
+  createVcardConnector,
+  VcardConfigSchema,
+  VCARD_CONNECTOR_ID,
+  VCARD_CONNECTOR_KIND,
+  VCARD_ERROR_KEYS,
+} from './vcard-connector';
+
+export { parseVcards, type VcardParseItem, type VcardParseResult } from './vcard';
+
 /**
  * Phase 4b.1 — wire-up helper for the contacts module.
  *
@@ -45,6 +55,20 @@ export interface MountContactRoutesDeps {
    * stay additive.
    */
   readonly module?: EntityModule<ContactPayload>;
+  /**
+   * Phase 4b.2 — process-wide ingest dispatcher. When provided, the
+   * generic entity router mounts
+   * `POST /l/:slug/contact/_ingest/:connectorId` for the vCard upload.
+   * Omitted in unit tests that exercise the contract suite only.
+   */
+  readonly ingestDispatcher?: import('../connector-dispatcher').ConnectorDispatcher;
+  /**
+   * Phase 4b.2 — max ingest body size. Production wiring passes
+   * `config.connectors.ingestMaxBytes`; defaults inside the router.
+   */
+  readonly ingestMaxBytes?: number;
+  /** Phase 4b.2 — default locale stamped on ingest-created rows. */
+  readonly defaultLocale?: string;
 }
 
 /**
@@ -80,5 +104,8 @@ export function mountContactRoutes(
     store,
     bus: deps.bus,
     db: deps.db,
+    ...(deps.ingestDispatcher === undefined ? {} : { ingestDispatcher: deps.ingestDispatcher }),
+    ...(deps.ingestMaxBytes === undefined ? {} : { ingestMaxBytes: deps.ingestMaxBytes }),
+    ...(deps.defaultLocale === undefined ? {} : { defaultLocale: deps.defaultLocale }),
   });
 }

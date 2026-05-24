@@ -392,16 +392,26 @@
         "slugTaken": "A contact with this slug already exists in this layer.",
         "emailDuplicate": "Each email address can only be added once.",
         "companyNotFound": "The linked company does not exist in this layer."
-      }
+      },
+      "connectorIngestFailed": "Could not import the file. Please verify it and try again.",
+      "connectorIngestUnavailable": "File import is not available for this item kind."
     },
     "connectors": {
       "notConfigured": "This connector has not been configured for this layer yet.",
+      "pullNotSupported": "This connector does not support pulling external records.",
+      "ingestNotSupported": "This connector does not accept file imports.",
       "kvk": {
         "kvkUnreachable": "Could not reach the KvK API. Please try again later.",
         "kvkUnauthorized": "The KvK API key was rejected. Please verify the configured key.",
         "kvkNotFound": "No KvK record was found for this number.",
         "kvkInvalidResponse": "The KvK API returned an unexpected response.",
         "invalidConfig": "The KvK connector configuration is invalid. Please verify the API key and poll interval."
+      },
+      "vcard": {
+        "invalidContentType": "Only vCard (.vcf) files are accepted.",
+        "parseFailed": "The vCard file could not be parsed.",
+        "tooLarge": "The vCard file is too large.",
+        "invalidConfig": "The vCard connector configuration is invalid."
       }
     }
   },
@@ -500,6 +510,21 @@
       "save": "Save",
       "cancel": "Cancel",
       "deleteCta": "Delete contact"
+    }
+  },
+  "connectors": {
+    "vcard": {
+      "label": "vCard import",
+      "description": "Import contacts from a .vcf file exported by your address book.",
+      "fields": {},
+      "importTitle": "Import contacts from vCard",
+      "importChooseFile": "Choose a .vcf file",
+      "importSubmit": "Import contacts",
+      "importSubmitting": "Importing…",
+      "importSuccess": "Imported {{created}} new and updated {{updated}} existing contacts.",
+      "importWarningsTitle": "Warnings",
+      "importEmpty": "No contacts were found in this file.",
+      "importNoFile": "Please choose a .vcf file first."
     }
   }
 }

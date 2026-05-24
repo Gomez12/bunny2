@@ -1444,3 +1444,151 @@ requested` → `connector.pull` → patch applied) is identical to
   router naming, mirroring the 4a.1 follow-up. The 4b.5 web UI
   surfaces a plural `/l/:slug/contacts` page (singular ↔ plural seam
   stays client-side, as per the 4a.5 close-out).
+
+### 4b.2 shipped (2026-05-24)
+
+**What landed**
+
+- Foundation extension #5: `EntityConnector.ingest` (optional). `pull`
+  and `push` are now optional on the interface too, so ingest-only
+  connectors (vCard) and pull-only connectors (KvK) both fit cleanly.
+  See `apps/server/src/entities/connectors/base.ts` for the new types:
+  `ConnectorIngestPayload`, `ConnectorIngestResult`,
+  `ConnectorIngestEntity`, `ConnectorIngestMatchKey`,
+  `ConnectorIngestContext`.
+- Dispatcher (`apps/server/src/entities/connector-dispatcher.ts`)
+  gained a synchronous `ingest(...)` entry point. The dispatcher
+  resolves per-layer config, calls `connector.ingest`, then iterates
+  the result: each entity item resolves its `matchKey` against the
+  per-kind table (via `primary_email` on contacts) — match wins
+  `store.update`, no match wins `store.create`. Per-entity
+  `entity.<kind>.{created,updated}` events fire from the generic store;
+  one `entity.connector.ingest.requested` fires BEFORE the connector,
+  one `entity.connector.ingest.completed` fires AFTER with the numeric
+  summary.
+- Pull path also gained an early `pull === undefined` guard that
+  surfaces `errors.connectors.pullNotSupported` if a developer attaches
+  an ingest-only connector to an `entity_external_links` row.
+- Two new events in `apps/server/src/entities/events.ts`:
+  `entity.connector.ingest.requested`
+  `{ kind, connectorId, layerId, contentType, byteLength }` and
+  `entity.connector.ingest.completed`
+  `{ kind, connectorId, layerId, created, updated, warningCount }`.
+  NO `bytes` and NO `filename` on either payload — see ADR 0014 §7.
+- vCard parser (`apps/server/src/entities/contacts/vcard.ts`) — pure
+  function over `Uint8Array`. Hand-written vCard 3.0 + 4.0 parser; no
+  npm dependency. Covers `FN`, `N`, `EMAIL` (with `TYPE=` params),
+  `TEL`, `ORG`, `TITLE`, `BDAY`, `NOTE`, `URL`, `ADR`. Tolerates CRLF /
+  LF / mixed; unfolds RFC 6350 §3.2 continuation lines; decodes
+  `ENCODING=QUOTED-PRINTABLE`; deduplicates emails by lowercased value
+  (the payload schema enforces the same rule). Returns
+  `{ entities, warnings }` — never throws on a bad entry.
+- vCard connector (`apps/server/src/entities/contacts/vcard-connector.ts`)
+  — `createVcardConnector()` exposes `id = 'vcard'`, `kind = 'contact'`,
+  `verify` (empty strict zod schema), and `ingest`. Validates the
+  uploaded `contentType` against `text/vcard` / `text/x-vcard` (or a
+  `.vcf` filename). Maps each parsed contact to a result item, setting
+  `matchKey = { kind: 'email', value: primaryEmail.toLowerCase() }`
+  when an email exists. No `pull`, no `push` — `ingest`-only.
+- `createContactModule({ connectors: [vcardConnector] })` is the new
+  factory shape; production wiring (`registerContactModule`) uses
+  the default singleton.
+- HTTP route `POST /l/:slug/<kind>/_ingest/:connectorId` mounted by
+  the generic router when the caller passes
+  `MountEntityRoutesDeps.ingestDispatcher`. Reads
+  `multipart/form-data` `file` field; rejects oversize bodies via
+  `File.size > ingestMaxBytes` BEFORE materialising the bytes; calls
+  the dispatcher synchronously; returns
+  `{ created, updated, warnings }` (200) or the connector's
+  `errors.*` key (400 / 413). Mounted BEFORE `/:entitySlug` so the
+  prefix wins.
+- Config (`apps/server/src/config/schema.ts`) gained
+  `connectors.ingestMaxBytes` (default 5 MB).
+- Boot wiring (`apps/server/src/index.ts`) constructs the connector
+  dispatcher with the LLM client (needed for the dispatcher's lazy
+  per-kind `EntityStore`) and passes the same dispatcher into
+  `createApp` so the contacts router mounts the ingest route with the
+  process-wide instance (no second subscriber on the bus).
+- Web client (`apps/web/src/lib/api.ts`) — `importContactsVcard(slug,
+file)` sends the multipart upload and parses the response.
+- Web page `apps/web/src/pages/ContactsImportPage.tsx` (route
+  `/l/:layerSlug/contacts/import`) — minimal UI: file input restricted
+  to `.vcf`, submit, result panel + warnings list. Reuses existing
+  shadcn `<Card>` / `<Button>` / `<Input>` / `<Label>` — no new
+  components.
+- i18n: en + nl translations for
+  `connectors.vcard.{label,description,fields,importTitle,
+importChooseFile,importSubmit,importSubmitting,importSuccess,
+importWarningsTitle,importEmpty,importNoFile}`,
+  `errors.connectors.vcard.{invalidContentType,parseFailed,tooLarge,
+invalidConfig}`,
+  `errors.connectors.{pullNotSupported,ingestNotSupported}`,
+  `errors.entity.{connectorIngestFailed,connectorIngestUnavailable}`.
+
+**Tests**
+
+- `apps/server/tests/entities/contacts-vcard-parser.test.ts` — 6
+  cases: minimal vCard 3.0, rich vCard 4.0 with folded lines + multi-
+  TYPE + ADR, malformed entry skipped + warning, unterminated card
+  warning, mixed CRLF/LF, escapes + case-insensitive dedup.
+- `apps/server/tests/entities/contacts-vcard-connector.test.ts` —
+  happy path (3 cards → 3 created), dedup-by-email (re-ingest →
+  0 created + 3 updated), case-insensitive email match, invalid
+  content type throws, secret-strip invariant (no filename / no body
+  sentinel string in any bus event).
+- `apps/server/tests/entities/connector-ingest-http.test.ts` — end-to-
+  end multipart upload: happy path, unknown connector → 400, oversize
+  body → 413. Builds a fixture app via a local variant that wires the
+  `ingestDispatcher` (the shared `_helpers/app.ts` does not).
+
+**ADR**
+
+- `0014-connector-ingest.md` — accepted. Covers the four design
+  questions: where the second method lands (on the interface vs. a
+  bypass route), sync vs. async HTTP dispatch, how matchKey
+  dedup resolves against the per-kind table, the event taxonomy split
+  between `sync.*` and `ingest.*`.
+
+**Notable for 4b.3 (contact↔company AI enrichment)**
+
+- vCard import populates `payload.notes` with `ORG: ...` when the
+  parser sees an `ORG` property. 4b.3's enrichment job can read the
+  notes field for hints (vCard's ORG is the company display name —
+  the enrichment job still needs to fuzzy-match it against existing
+  companies in the layer).
+- Per-entity `entity.contact.created` events fire from inside the
+  ingest loop, so 4b.3's enrichment runner (which subscribes to
+  `entity.<kind>.created`) will see freshly-imported contacts as
+  enrichment candidates with no extra wiring.
+- The `connectors.vcard.fields = {}` i18n stub anticipates the
+  admin connector-picker UI; vCard has no per-attachment config so
+  the section stays empty.
+
+**Foundation tweaks (summary)**
+
+- `EntityConnector.pull` / `push` → optional.
+- `EntityConnector.ingest` → optional, new.
+- `ConnectorIngestPayload` / `ConnectorIngestResult` /
+  `ConnectorIngestEntity` / `ConnectorIngestMatchKey` /
+  `ConnectorIngestContext` → new types.
+- `ConnectorDispatcher.ingest(...)` → synchronous entry point.
+- `entity.connector.ingest.{requested,completed}` → new events.
+- `ConnectorsConfig.ingestMaxBytes` → new config knob (default 5 MB).
+- `MountEntityRoutesDeps.{ingestDispatcher,ingestMaxBytes,defaultLocale}`
+  → new optional deps on the generic router.
+- `errors.connectors.{pullNotSupported,ingestNotSupported}` +
+  `errors.entity.{connectorIngestFailed,connectorIngestUnavailable}`
+  → new i18n keys.
+
+**Follow-ups noted**
+
+- Streaming parse for large vCard exports. The current path
+  materialises the full file in memory; the 5 MB cap keeps this safe
+  in practice but a future "import 50 MB Outlook mailbox export" will
+  want line-by-line parsing.
+- Per-row ingest-warning events on the bus. The dispatcher only emits
+  numeric summaries; subscribers that want to react to per-row parse
+  failures see them in the HTTP response but not on the bus.
+- vCard ORG → company link is not auto-suggested. 4b.3 owns the
+  contact ↔ company AI suggestion; the parser stamps `ORG: ...` into
+  `notes` as a hint the enrichment job can read.
