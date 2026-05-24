@@ -1387,6 +1387,24 @@ export async function rejectLayerProposal(
   );
 }
 
+/**
+ * Phase 8.5 — manual rollback. Sends the required reason
+ * (5..2000 chars; server re-validates) and returns the soft-deactivated
+ * capability id. Errors are surfaced through the standard `ApiError`
+ * path; the two server 409 keys (`errors.proposal.notActivated` /
+ * `errors.proposal.alreadyDeactivated`) flow through `errorKeyOf` as-is.
+ */
+export async function rollbackLayerProposal(
+  layerSlug: string,
+  proposalId: string,
+  reason: string,
+): Promise<{ status: 'rolled-back'; capabilityId: string }> {
+  return request<{ status: 'rolled-back'; capabilityId: string }>(
+    `/l/${encodeURIComponent(layerSlug)}/proposals/${encodeURIComponent(proposalId)}/rollback`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+}
+
 export interface ReplaySandboxResponse {
   readonly outcome: string;
   readonly metrics: unknown;

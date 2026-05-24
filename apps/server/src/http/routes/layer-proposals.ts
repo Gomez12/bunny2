@@ -32,6 +32,7 @@ import type { Database } from 'bun:sqlite';
 import type { MessageBus } from '@bunny2/bus';
 import { z } from 'zod';
 import {
+  ProposalRollbackInputSchema,
   ProposalSpecSchema,
   type CapabilitySnapshot,
   type ImprovementProposal,
@@ -61,7 +62,12 @@ import {
   type CapabilityRegistry,
   type SandboxEvidenceInput,
 } from '../../proposals';
-import { PROPOSAL_REJECTED_EVENT_TYPE, type ProposalRejectedPayload } from '../../proposals/events';
+import {
+  PROPOSAL_REJECTED_EVENT_TYPE,
+  PROPOSAL_ROLLED_BACK_EVENT_TYPE,
+  type ProposalRejectedPayload,
+  type ProposalRolledBackPayload,
+} from '../../proposals/events';
 import type { EntityKind, EntityStoreForRetrieval } from '../../chat/pipeline';
 
 const BAD_REQUEST = { error: 'errors.proposals.badRequest' } as const;
@@ -70,6 +76,13 @@ const FORBIDDEN = { error: 'errors.layer.forbidden' } as const;
 const NOT_FOUND = { error: 'errors.proposals.notFound' } as const;
 const SANDBOX_FAILED = { error: 'errors.proposals.sandboxFailed' } as const;
 const ALREADY_TERMINAL = { error: 'errors.proposals.alreadyTerminal' } as const;
+// Phase 8.5 — manual rollback. ADR 0027 §3 keeps the two 409 paths
+// distinct: `notActivated` for a proposal whose status is not
+// `'activated'`; `alreadyDeactivated` for an `activated` proposal whose
+// linked capability is no longer live (admin had already deactivated it
+// via the phase-7.6 capabilities route).
+const NOT_ACTIVATED = { error: 'errors.proposal.notActivated' } as const;
+const ALREADY_DEACTIVATED = { error: 'errors.proposal.alreadyDeactivated' } as const;
 
 const MAX_LIST_LIMIT = 100;
 const DEFAULT_LIST_LIMIT = 50;
@@ -193,6 +206,7 @@ export function registerLayerProposalsRoutes(
   const proposalsRepo = createImprovementProposalsRepo(deps.db);
   const evidenceRepo = createImprovementProposalEvidenceRepo(deps.db);
   const artifactsRepo = createImprovementProposalArtifactsRepo(deps.db);
+  const capabilitiesRepo = createLayerCapabilitiesRepo(deps.db);
   const conversationsRepo = createChatConversationsRepo(deps.db);
   const messagesRepo = createChatMessagesRepo(deps.db);
 
@@ -343,7 +357,7 @@ export function registerLayerProposalsRoutes(
         proposalsRepo,
         evidenceRepo,
         artifactsRepo,
-        layerCapabilitiesRepo: createLayerCapabilitiesRepo(deps.db),
+        layerCapabilitiesRepo: capabilitiesRepo,
         conversationsRepo,
         messagesRepo,
         bus: deps.bus,
@@ -487,6 +501,120 @@ export function registerLayerProposalsRoutes(
       });
       return c.json(SANDBOX_FAILED, 500);
     }
+  });
+
+  // ---------- POST /l/:slug/proposals/:id/rollback -----------------------
+  //
+  // Phase 8.5 — manual rollback (ADR 0027). Soft-deactivates the
+  // proposal-linked capability via `capabilityRegistry.deactivate(...)`
+  // (the v1 control from phase 7.5 — no previous-version restore, no
+  // hard delete), then stamps the three rollback audit columns on the
+  // proposal row. Admin-only; cross-layer probes return 404.
+  //
+  // The two 409 paths discriminate:
+  //   - `errors.proposal.notActivated`         when `status !== 'activated'`
+  //   - `errors.proposal.alreadyDeactivated`   when status is `activated`
+  //                                             but the linked capability
+  //                                             was already deactivated
+  //                                             (e.g. via the phase-7.6
+  //                                             capabilities deactivate
+  //                                             route).
+  //
+  // The reason text is required (5..2000 chars) and is stored on the
+  // proposal row only — never on the bus payload, the structured log,
+  // telemetry, or analytics (ADR 0027 §3; plan §10).
+  app.post('/l/:slug/proposals/:id/rollback', requireLayer, async (c) => {
+    const user = c.get('user');
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    if (!canEditLayer({ user, layer, db: deps.db, isSiteAdmin: computeIsSiteAdmin(user.id) })) {
+      return c.json(FORBIDDEN, 403);
+    }
+    const id = c.req.param('id');
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json(BAD_REQUEST, 400);
+    }
+    const parsed = ProposalRollbackInputSchema.safeParse(raw);
+    if (!parsed.success) return c.json(BAD_REQUEST, 400);
+    const row = proposalsRepo.getProposalById(id);
+    if (row === null || row.deletedAt !== null || row.layerId !== layer.id) {
+      return c.json(NOT_FOUND, 404);
+    }
+    if (row.status !== 'activated') {
+      return c.json(NOT_ACTIVATED, 409);
+    }
+    // Resolve the active capability via the proposal-origin string —
+    // unique per proposal (`proposal:<uuid>`). If the row is missing or
+    // already deactivated (admin nuked it through the capabilities
+    // route), 409 `alreadyDeactivated`; the proposal row is *not*
+    // touched, preserving the prior deactivation's audit (ADR 0027 §3 +
+    // plan §11 rollback-orphan row).
+    const capability = capabilitiesRepo.findActiveByOrigin(layer.id, `proposal:${id}`);
+    if (capability === null) {
+      return c.json(ALREADY_DEACTIVATED, 409);
+    }
+    const nowIso = clock().toISOString();
+    // Capability registry's `deactivate(...)` is idempotent and emits
+    // its own `proposal.deactivated` bus event; the layer scope check
+    // is enforced both by the registry (it reads by `(layer, kind,
+    // name)`) and by the origin lookup above.
+    deps.capabilityRegistry.deactivate({
+      layerId: layer.id,
+      kind: capability.kind,
+      name: capability.name,
+      deactivatedBy: user.id,
+      now: nowIso,
+    });
+    proposalsRepo.recordRollback(id, {
+      rolledBackBy: user.id,
+      reason: parsed.data.reason,
+      now: nowIso,
+    });
+    const payload: ProposalRolledBackPayload = {
+      proposalId: id,
+      layerId: layer.id,
+      artifactKind: row.artifactKind,
+      capabilityId: capability.id,
+      rolledBackBy: user.id,
+    };
+    // Anti-leak: reason text is NOT included in the payload (ADR 0027
+    // §3 + plan §10). Best-effort publish — bus failures don't roll
+    // back the rollback (the row writes are the source of truth).
+    void deps.bus
+      .publish({
+        type: PROPOSAL_ROLLED_BACK_EVENT_TYPE,
+        payload,
+      })
+      .catch((err) => {
+        console.warn('[proposals.rolled-back.publish-failed]', {
+          event: 'proposals.rolled-back.publish-failed',
+          proposalId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    // Structured log — reason is intentionally omitted (free-form user
+    // text; ADR 0027 §3). The proposal id, layer id, capability id, and
+    // actor are sufficient for operational debugging; the reason lives
+    // on the row for admin audit only.
+    console.log('[proposals.rolled-back.ok]', {
+      event: 'proposal.rolled-back.ok',
+      layerId: layer.id,
+      proposalId: id,
+      capabilityId: capability.id,
+      rolledBackBy: user.id,
+      // Bounded counter — closed-enum `artifactKind` dimension is OK
+      // (plan §10), but proposal/layer ids are not used as dimensions.
+      'proposal.rolled-back_count': 1,
+    });
+    // Mirror the deactivate route's narrow response shape. The registry's
+    // own `deactivate(...)` return value is `string | null` (null on a
+    // no-op revisit); we use the canonical `capability.id` from the
+    // origin lookup so the response is stable regardless of registry
+    // race outcomes.
+    return c.json({ status: 'rolled-back' as const, capabilityId: capability.id });
   });
 }
 

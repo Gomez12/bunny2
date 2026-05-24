@@ -461,4 +461,62 @@ describe('layer-capabilities-repo', () => {
       db.close();
     }
   });
+
+  describe('findActiveByOrigin (phase 8.5)', () => {
+    it('returns the active row that matches (layer_id, origin)', () => {
+      const db = mkDb();
+      try {
+        const { layerId } = seedLayerUserAndMessage(db);
+        const repo = createLayerCapabilitiesRepo(db);
+        const proposalId = crypto.randomUUID();
+        const origin = `proposal:${proposalId}`;
+        const created = repo.insertCapability({
+          id: crypto.randomUUID(),
+          layerId,
+          kind: 'skill',
+          name: 'expand-acme-alias',
+          specJson: sampleSpecJson(),
+          origin,
+          activatedAt: now(),
+        });
+        expect(repo.findActiveByOrigin(layerId, origin)?.id).toBe(created.id);
+      } finally {
+        db.close();
+      }
+    });
+
+    it('returns null when no row exists for the given origin', () => {
+      const db = mkDb();
+      try {
+        const { layerId } = seedLayerUserAndMessage(db);
+        const repo = createLayerCapabilitiesRepo(db);
+        expect(repo.findActiveByOrigin(layerId, `proposal:${crypto.randomUUID()}`)).toBeNull();
+      } finally {
+        db.close();
+      }
+    });
+
+    it('returns null when the matching row is already soft-deactivated', () => {
+      const db = mkDb();
+      try {
+        const { layerId } = seedLayerUserAndMessage(db);
+        const repo = createLayerCapabilitiesRepo(db);
+        const proposalId = crypto.randomUUID();
+        const origin = `proposal:${proposalId}`;
+        const created = repo.insertCapability({
+          id: crypto.randomUUID(),
+          layerId,
+          kind: 'skill',
+          name: 'expand-acme-alias',
+          specJson: sampleSpecJson(),
+          origin,
+          activatedAt: now(),
+        });
+        repo.deactivate(created.id, now());
+        expect(repo.findActiveByOrigin(layerId, origin)).toBeNull();
+      } finally {
+        db.close();
+      }
+    });
+  });
 });

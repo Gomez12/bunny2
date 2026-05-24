@@ -584,6 +584,10 @@
       "replanFailed": "Re-plan failed.",
       "invalidSpec": "Proposal spec is invalid."
     },
+    "proposal": {
+      "notActivated": "This proposal is not in the ‘activated’ state.",
+      "alreadyDeactivated": "The linked capability has already been deactivated."
+    },
     "capabilities": {
       "badRequest": "Request was invalid.",
       "notFound": "Capability not found."
@@ -1230,6 +1234,21 @@
     "source": {
       "auto": "auto",
       "manual": "manual"
+    },
+    "rollback": {
+      "cta": "Roll back",
+      "dialogTitle": "Roll back this proposal",
+      "dialogDescription": "This soft-deactivates the linked capability for this layer. It does not restore a previous version and is not reversible.",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "Why are you rolling this back? (at least 5 characters)",
+      "reasonRequired": "Please enter at least 5 characters.",
+      "confirmCta": "Roll back",
+      "cancelCta": "Cancel",
+      "noticeFormat": "Rolled back on {{date}} by {{user}}: {{reason}}",
+      "errorAlreadyDeactivated": "The linked capability has already been deactivated. Nothing to roll back.",
+      "errorNotActivated": "This proposal is not in the ‘activated’ state, so it cannot be rolled back.",
+      "savedToast": "Proposal rolled back.",
+      "errorNetwork": "Could not roll back the proposal. Please try again."
     },
     "autoActivation": {
       "badge": "Auto-activated",

@@ -387,6 +387,10 @@
       "replanFailed": "Herplanning is mislukt.",
       "invalidSpec": "Voorstelspec is ongeldig."
     },
+    "proposal": {
+      "notActivated": "Dit voorstel staat niet op ‘geactiveerd’.",
+      "alreadyDeactivated": "De gekoppelde capability is al gedeactiveerd."
+    },
     "capabilities": {
       "badRequest": "Verzoek was ongeldig.",
       "notFound": "Capability niet gevonden."
@@ -1012,6 +1016,21 @@
     "source": {
       "auto": "auto",
       "manual": "handmatig"
+    },
+    "rollback": {
+      "cta": "Terugdraaien",
+      "dialogTitle": "Dit voorstel terugdraaien",
+      "dialogDescription": "Hiermee wordt de gekoppelde capability voor deze laag zacht gedeactiveerd. Een eerdere versie wordt niet hersteld en deze actie kan niet ongedaan worden gemaakt.",
+      "reasonLabel": "Reden",
+      "reasonPlaceholder": "Waarom draai je dit terug? (minimaal 5 tekens)",
+      "reasonRequired": "Geef minimaal 5 tekens op.",
+      "confirmCta": "Terugdraaien",
+      "cancelCta": "Annuleren",
+      "noticeFormat": "Teruggedraaid op {{date}} door {{user}}: {{reason}}",
+      "errorAlreadyDeactivated": "De gekoppelde capability is al gedeactiveerd. Er is niets om terug te draaien.",
+      "errorNotActivated": "Dit voorstel staat niet op ‘geactiveerd’, dus kan niet worden teruggedraaid.",
+      "savedToast": "Voorstel teruggedraaid.",
+      "errorNetwork": "Kon het voorstel niet terugdraaien. Probeer het opnieuw."
     },
     "autoActivation": {
       "badge": "Auto-geactiveerd",

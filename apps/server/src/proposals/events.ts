@@ -33,6 +33,7 @@ export const PROPOSAL_EVENT_TYPES = [
   'proposal.deactivated',
   'proposal.rejected',
   'proposal.auto-activated',
+  'proposal.rolled-back',
 ] as const;
 
 export type ProposalEventType = (typeof PROPOSAL_EVENT_TYPES)[number];
@@ -147,6 +148,29 @@ export interface ProposalAutoActivatedPayload {
 }
 
 export const PROPOSAL_AUTO_ACTIVATED_EVENT_TYPE: ProposalEventType = 'proposal.auto-activated';
+
+/**
+ * Phase 8.5 — fired by `POST /l/:slug/proposals/:id/rollback` on a
+ * successful soft-deactivation of the proposal-backed capability.
+ * Carries IDs + the actor only; the reason text stays in the
+ * `improvement_proposals.rolled_back_reason` column behind the
+ * authenticated detail route (ADR 0027 §3 — free-form user text is
+ * never logged to telemetry, analytics, or events). The capability
+ * registry's own `proposal.deactivated` event still fires from the
+ * `capabilityRegistry.deactivate(...)` call this route makes; this
+ * event is the rollback-specific signal a phase-9 watcher or external
+ * consumer (e.g. a Slack notifier) can subscribe to without joining
+ * the proposals table.
+ */
+export interface ProposalRolledBackPayload {
+  readonly proposalId: string;
+  readonly layerId: string;
+  readonly artifactKind: ArtifactKind;
+  readonly capabilityId: string;
+  readonly rolledBackBy: string;
+}
+
+export const PROPOSAL_ROLLED_BACK_EVENT_TYPE: ProposalEventType = 'proposal.rolled-back';
 
 /**
  * Phase 8.4 — fired by `PUT /l/:slug/settings/proposals` on a

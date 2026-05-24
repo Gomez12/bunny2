@@ -22,8 +22,10 @@ import { errorKeyOf } from '../lib/errors';
 import { pushToast } from '../lib/toast';
 import {
   approveLayerProposal,
+  ApiError,
   rejectLayerProposal,
   replayProposalSandbox,
+  rollbackLayerProposal,
   type ProposalArtifactItem,
   type ProposalDetailResponse,
   type ProposalEvidenceItem,
@@ -40,6 +42,7 @@ export function LayerProposalDetailPage(): JSX.Element {
   const canEdit = current.status === 'ready' ? current.canEdit : false;
   const state = useLayerProposalDetail(layerSlug ?? '', proposalId);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [rollbackOpen, setRollbackOpen] = useState(false);
 
   useMemo(() => {
     if (layerSlug === null) return;
@@ -80,6 +83,7 @@ export function LayerProposalDetailPage(): JSX.Element {
           canEdit={canEdit}
           onChange={state.reload}
           onOpenReject={() => setRejectOpen(true)}
+          onOpenRollback={() => setRollbackOpen(true)}
         />
       ) : null}
       {rejectOpen && state.data !== null ? (
@@ -89,6 +93,17 @@ export function LayerProposalDetailPage(): JSX.Element {
           onClose={() => setRejectOpen(false)}
           onDone={() => {
             setRejectOpen(false);
+            state.reload();
+          }}
+        />
+      ) : null}
+      {rollbackOpen && state.data !== null ? (
+        <RollbackDialog
+          layerSlug={slug}
+          proposalId={state.data.proposal.id}
+          onClose={() => setRollbackOpen(false)}
+          onDone={() => {
+            setRollbackOpen(false);
             state.reload();
           }}
         />
@@ -103,12 +118,14 @@ function ProposalDetailView({
   canEdit,
   onChange,
   onOpenReject,
+  onOpenRollback,
 }: {
   readonly data: ProposalDetailResponse;
   readonly layerSlug: string;
   readonly canEdit: boolean;
   readonly onChange: () => void;
   readonly onOpenReject: () => void;
+  readonly onOpenRollback: () => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const proposal = data.proposal;
@@ -171,6 +188,13 @@ function ProposalDetailView({
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {proposal.rolledBackAt !== null ? (
+          <RollbackNotice
+            rolledBackAt={proposal.rolledBackAt}
+            rolledBackBy={proposal.rolledBackBy ?? ''}
+            rolledBackReason={proposal.rolledBackReason ?? ''}
+          />
+        ) : null}
         <section>
           <h2 className="text-base font-semibold">{t('proposals.detail.problemSectionTitle')}</h2>
           <p className="mt-1 text-sm">{proposal.problemSummary}</p>
@@ -243,9 +267,60 @@ function ProposalDetailView({
           >
             {t('proposals.detail.replaySandboxCta')}
           </Button>
+          {proposal.status === 'activated' && proposal.rolledBackAt === null ? (
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={onOpenRollback}
+              disabled={!canEdit}
+              title={!canEdit ? t('proposals.detail.adminOnlyTooltip') : undefined}
+            >
+              {t('proposals.rollback.cta')}
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Phase 8.5 — small inline notice rendered at the top of the detail
+ * card when the proposal carries a rollback audit row. The format key
+ * interpolates the timestamp, the actor (currently the raw user id —
+ * the detail page does not yet resolve user ids to display names; the
+ * approve / reject sections also surface ids), and the reason text.
+ * The reason is admin-audit content stored on the proposal row only
+ * (ADR 0027 §3); we render it here for the human face on the trail
+ * but never log or telemeter it.
+ */
+function RollbackNotice({
+  rolledBackAt,
+  rolledBackBy,
+  rolledBackReason,
+}: {
+  readonly rolledBackAt: string;
+  readonly rolledBackBy: string;
+  readonly rolledBackReason: string;
+}): JSX.Element {
+  const { t } = useTranslation();
+  // Use the locale's short date for readability; raw user id is OK
+  // here because the detail page already renders ids elsewhere
+  // (approvedBy / rejectedBy live on the same shape) and no user-name
+  // resolver helper exists in the page today.
+  const date = new Date(rolledBackAt).toLocaleString();
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-md border border-amber-500 bg-amber-50 p-3 text-sm text-amber-900"
+    >
+      {t('proposals.rollback.noticeFormat', {
+        date,
+        user: rolledBackBy,
+        reason: rolledBackReason,
+      })}
+    </div>
   );
 }
 
@@ -437,6 +512,140 @@ function RejectDialog({
           </Button>
           <Button type="submit" disabled={busy || reason.trim().length === 0}>
             {t('proposals.detail.rejectConfirm')}
+          </Button>
+        </div>
+      </form>
+    </dialog>
+  );
+}
+
+/**
+ * Phase 8.5 — confirmation dialog with a required reason textarea.
+ * Mirrors the shape of `RejectDialog` above (native `<dialog>`, the
+ * same primitive `LayerProposalDetailPage` already uses) so we don't
+ * introduce a new dialog component (constraint from §6 of the task).
+ *
+ * Validation: the Confirm button is disabled when `reason.trim()` is
+ * shorter than 5 chars; once the user has typed something the inline
+ * `aria-live="polite"` message announces the validation state without
+ * stealing focus. The server re-validates `5..2000`.
+ *
+ * 409 responses (`errors.proposal.notActivated` /
+ * `errors.proposal.alreadyDeactivated`) render an inline alert in the
+ * dialog with the localized message; on other failures the toast path
+ * fires (mirrors RejectDialog).
+ */
+function RollbackDialog({
+  layerSlug,
+  proposalId,
+  onClose,
+  onDone,
+}: {
+  readonly layerSlug: string;
+  readonly proposalId: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const ref = useRef<HTMLDialogElement | null>(null);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [inlineErrorKey, setInlineErrorKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el !== null && !el.open) el.showModal();
+    return (): void => {
+      if (el !== null && el.open) el.close();
+    };
+  }, []);
+
+  const trimmed = reason.trim();
+  // 5 chars is the server's lower bound (`ProposalRollbackInputSchema`).
+  const tooShort = trimmed.length > 0 && trimmed.length < 5;
+  const canSubmit = trimmed.length >= 5 && !busy;
+
+  const submit = useCallback(async () => {
+    if (trimmed.length < 5) return;
+    setBusy(true);
+    setInlineErrorKey(null);
+    try {
+      await rollbackLayerProposal(layerSlug, proposalId, trimmed);
+      // No reason text in analytics — ADR 0027 §3.
+      console.log('[chat.analytics] proposal_rolled_back', { layerSlug, proposalId });
+      pushToast({ kind: 'success', message: 'proposals.rollback.savedToast' });
+      onDone();
+    } catch (err) {
+      // Surface the two server 409 codes inline in the dialog so the
+      // admin gets context without losing the open dialog state.
+      if (err instanceof ApiError && err.status === 409) {
+        if (err.errorKey === 'errors.proposal.notActivated') {
+          setInlineErrorKey('proposals.rollback.errorNotActivated');
+        } else if (err.errorKey === 'errors.proposal.alreadyDeactivated') {
+          setInlineErrorKey('proposals.rollback.errorAlreadyDeactivated');
+        } else {
+          setInlineErrorKey(err.errorKey);
+        }
+      } else {
+        pushToast({ kind: 'error', message: errorKeyOf(err) });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [layerSlug, proposalId, trimmed, onDone]);
+
+  return (
+    <dialog
+      ref={ref}
+      aria-label={t('proposals.rollback.dialogTitle')}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      className="rounded-md border bg-background p-4 backdrop:bg-black/50"
+    >
+      <form
+        method="dialog"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+        className="flex w-96 flex-col gap-3"
+      >
+        <h2 className="text-base font-semibold">{t('proposals.rollback.dialogTitle')}</h2>
+        <p className="text-sm text-muted-foreground">{t('proposals.rollback.dialogDescription')}</p>
+        <label className="flex flex-col gap-1 text-sm">
+          {t('proposals.rollback.reasonLabel')}
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={t('proposals.rollback.reasonPlaceholder')}
+            maxLength={2000}
+            rows={4}
+            className="rounded-md border bg-background p-2"
+            required
+            minLength={5}
+            aria-describedby="rollback-reason-error"
+          />
+        </label>
+        <p
+          id="rollback-reason-error"
+          aria-live="polite"
+          className={`text-xs ${tooShort ? 'text-destructive' : 'text-muted-foreground'}`}
+        >
+          {tooShort ? t('proposals.rollback.reasonRequired') : ''}
+        </p>
+        {inlineErrorKey !== null ? (
+          <p role="alert" className="text-sm text-destructive">
+            {t(inlineErrorKey, { defaultValue: t('errors.network') })}
+          </p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+            {t('proposals.rollback.cancelCta')}
+          </Button>
+          <Button type="submit" variant="destructive" disabled={!canSubmit}>
+            {busy ? t('common.loading') : t('proposals.rollback.confirmCta')}
           </Button>
         </div>
       </form>

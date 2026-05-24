@@ -71,6 +71,15 @@ export interface LayerCapabilitiesRepo {
    * 404 contract.
    */
   getById(id: string): LayerCapabilityRow | null;
+  /**
+   * Phase 8.5 — find the active (`deactivated_at IS NULL`) capability
+   * for `(layer_id, origin)`. Used by the rollback route to resolve
+   * the `proposal:<id>` origin string to the live capability row so
+   * `capabilityRegistry.deactivate(...)` can soft-deactivate it. The
+   * origin string is unique per proposal (and `'builtin'` for the
+   * built-in seeds), so at most one row matches.
+   */
+  findActiveByOrigin(layerId: string, origin: string): LayerCapabilityRow | null;
   deactivate(id: string, now: string): void;
 }
 
@@ -123,6 +132,12 @@ export function createLayerCapabilitiesRepo(db: Database): LayerCapabilitiesRepo
        ORDER BY layer_id ASC, name ASC`,
   );
 
+  const findActiveByOriginStmt = db.query<SqlRow, [string, string]>(
+    `SELECT ${COLS} FROM layer_capabilities
+       WHERE layer_id = ? AND origin = ? AND deactivated_at IS NULL
+       LIMIT 1`,
+  );
+
   const deactivateStmt = db.query<unknown, [string, string]>(
     `UPDATE layer_capabilities
         SET deactivated_at = ?
@@ -168,6 +183,11 @@ export function createLayerCapabilitiesRepo(db: Database): LayerCapabilitiesRepo
 
     getById(id) {
       const row = findById.get(id);
+      return row === null ? null : rowToCapability(row);
+    },
+
+    findActiveByOrigin(layerId, origin) {
+      const row = findActiveByOriginStmt.get(layerId, origin);
       return row === null ? null : rowToCapability(row);
     },
 

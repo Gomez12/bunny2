@@ -342,3 +342,20 @@ export const AutoActivationDecisionSchema = z.discriminatedUnion('outcome', [
   }),
 ]);
 export type AutoActivationDecision = z.infer<typeof AutoActivationDecisionSchema>;
+
+// ---------- phase 8.5 — manual rollback input -------------------------
+
+/**
+ * Input shape for `POST /l/:slug/proposals/:id/rollback` (phase 8.5).
+ * The reason is required (≥ 5 chars) so the audit row is always
+ * meaningful; the upper bound (2000 chars) is the same shape used by
+ * the reject route's reason field expanded for rollback context.
+ * ADR 0027 §3 — the reason is stored on the proposal row only and is
+ * never logged to telemetry or analytics.
+ */
+export const ProposalRollbackInputSchema = z
+  .object({
+    reason: z.string().min(5).max(2000),
+  })
+  .strict();
+export type ProposalRollbackInput = z.infer<typeof ProposalRollbackInputSchema>;
