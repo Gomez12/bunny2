@@ -17,7 +17,7 @@ import { safeRmSync } from './_helpers/temp-dir';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Database } from 'bun:sqlite';
-import { InMemoryMessageBus } from '@bunny2/bus';
+import { InMemoryMessageBus } from '@bunny2/bus/test-utils';
 import { openDatabase } from '../src/storage/sqlite';
 import { createGroupsRepo } from '../src/repos/groups-repo';
 import { createUsersRepo } from '../src/repos/users-repo';

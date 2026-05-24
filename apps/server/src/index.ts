@@ -1,15 +1,14 @@
 import { appName, appVersion } from '@bunny2/shared';
 import {
-  InMemoryMessageBus,
+  DurableSqliteMessageBus,
   correlationIdMiddleware,
   errorCaptureMiddleware,
-  telemetryMiddleware,
 } from '@bunny2/bus';
 import { loadConfig } from './config';
 import { openDatabase } from './storage/sqlite';
 import { currentSchemaVersion } from './storage/migrations';
 import { openLanceDB } from './storage/lancedb';
-import { createSqliteEventLog } from './bus/event-log';
+import { createSqliteEventLog, writeEventRow } from './bus/event-log';
 import {
   createLlmClient,
   createSqliteLlmCallLog,
@@ -43,15 +42,25 @@ const lance = await openLanceDB(dataDir);
 const lanceTables = await lance.tableNames();
 const schemaVersion = currentSchemaVersion(db);
 
+// Phase 5.1 — `DurableSqliteMessageBus` is the only production
+// adapter. The atomic `INSERT events + INSERT bus_outbox` happens
+// inside the adapter's `publish()` transaction via `writeEventRow`,
+// so the old `telemetryMiddleware(eventLog.writer)` is gone — that
+// middleware would write the `events` row OUTSIDE the outbox
+// transaction, defeating the atomicity guarantee. `correlationIdMiddleware`
+// + `errorCaptureMiddleware` still wrap dispatch.
+//
+// `createSqliteEventLog` is kept around for the `status.bus.events`
+// counter that the `/status` page reads — its `writer` is unused on
+// the production path (the durable adapter inlines that write).
 const eventLog = createSqliteEventLog(db);
-const bus = new InMemoryMessageBus({
-  middlewares: [
-    correlationIdMiddleware,
-    telemetryMiddleware(eventLog.writer),
-    errorCaptureMiddleware(),
-  ],
+const bus = new DurableSqliteMessageBus(db, {
+  writeEvent: (event) => writeEventRow(db, event),
+  middlewares: [correlationIdMiddleware, errorCaptureMiddleware()],
+  subscriberKey: 'server-main',
 });
-const busAdapterName = 'in-memory';
+bus.start();
+const busAdapterName = 'durable-sqlite';
 
 const llmCallLog = createSqliteLlmCallLog(db);
 const rawLlmClient = createLlmClient({

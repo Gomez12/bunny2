@@ -34,7 +34,30 @@ export type EventHandler<TPayload = unknown> = (event: BusEvent<TPayload>) => Pr
 
 export type Unsubscribe = () => void;
 
+/**
+ * Optional per-subscriber configuration. Both fields are honored only by
+ * the durable adapter; the in-memory fixture ignores them.
+ *
+ * Phase 5.1: the durable adapter uses a single bus-level
+ * `subscriberKey` (set at construction time) for offset + DLQ
+ * bookkeeping; `subscriberKey` here is reserved for future
+ * per-subscriber fan-out and currently ignored. `idempotent` is the
+ * bus-level idempotency declaration — when ANY subscriber on the bus
+ * declares itself idempotent, the durable adapter replays `in_flight`
+ * rows past the lease window on boot rather than abandoning them.
+ */
+export interface SubscribeOptions {
+  /** Stable id used by the durable adapter for offset + DLQ rows. */
+  readonly subscriberKey?: string;
+  /** Opt in to replay of `in_flight` rows past the lease window. */
+  readonly idempotent?: boolean;
+}
+
 export interface MessageBus {
   publish<TPayload>(input: PublishInput<TPayload>): Promise<BusEvent<TPayload>>;
-  subscribe<TPayload>(type: string, handler: EventHandler<TPayload>): Unsubscribe;
+  subscribe<TPayload>(
+    type: string,
+    handler: EventHandler<TPayload>,
+    options?: SubscribeOptions,
+  ): Unsubscribe;
 }

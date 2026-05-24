@@ -12,7 +12,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { Database } from 'bun:sqlite';
-import { InMemoryMessageBus } from '@bunny2/bus';
+import { InMemoryMessageBus } from '@bunny2/bus/test-utils';
 import { openDatabase } from '../../src/storage/sqlite';
 import { createUsersRepo } from '../../src/repos/users-repo';
 import { createLayersRepo } from '../../src/repos/layers-repo';

@@ -47,12 +47,8 @@ import * as fs from 'node:fs';
 import { safeRmSync } from './_helpers/temp-dir';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import {
-  InMemoryMessageBus,
-  correlationIdMiddleware,
-  errorCaptureMiddleware,
-  telemetryMiddleware,
-} from '@bunny2/bus';
+import { correlationIdMiddleware, errorCaptureMiddleware, telemetryMiddleware } from '@bunny2/bus';
+import { InMemoryMessageBus } from '@bunny2/bus/test-utils';
 import { loadConfig } from '../src/config';
 import { openDatabase } from '../src/storage/sqlite';
 import { currentSchemaVersion } from '../src/storage/migrations';

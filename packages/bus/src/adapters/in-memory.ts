@@ -1,5 +1,12 @@
 import { composeMiddleware, type Middleware, type MiddlewareNext } from '../middleware';
-import type { BusEvent, EventHandler, MessageBus, PublishInput, Unsubscribe } from '../types';
+import type {
+  BusEvent,
+  EventHandler,
+  MessageBus,
+  PublishInput,
+  SubscribeOptions,
+  Unsubscribe,
+} from '../types';
 
 export type HandlerErrorLogger = (error: unknown, event: BusEvent) => void;
 
@@ -60,7 +67,14 @@ export class InMemoryMessageBus implements MessageBus {
     return event;
   }
 
-  subscribe<TPayload>(type: string, handler: EventHandler<TPayload>): Unsubscribe {
+  subscribe<TPayload>(
+    type: string,
+    handler: EventHandler<TPayload>,
+    _options?: SubscribeOptions,
+  ): Unsubscribe {
+    // Options are accepted for API symmetry with the durable adapter but
+    // ignored here — the in-memory fixture has no offset / DLQ machinery.
+    void _options;
     const set = this.handlers.get(type) ?? new Set<EventHandler>();
     set.add(handler as EventHandler);
     this.handlers.set(type, set);

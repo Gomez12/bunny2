@@ -12,7 +12,8 @@
  * This proves event sourcing is real: state is rebuildable from the log
  * alone, with no live producers.
  */
-import { InMemoryMessageBus, type BusEvent } from '../packages/bus/src';
+import type { BusEvent } from '../packages/bus/src';
+import { InMemoryMessageBus } from '../packages/bus/test-utils';
 import { loadConfig } from '../apps/server/src/config';
 import { openDatabase } from '../apps/server/src/storage/sqlite';
 import { replayEvents, type ReplayOptions } from '../apps/server/src/bus/event-log';

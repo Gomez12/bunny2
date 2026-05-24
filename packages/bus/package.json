@@ -5,7 +5,8 @@
   "version": "0.0.0",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./test-utils": "./test-utils/index.ts"
   },
   "scripts": {
     "build": "echo 'bus is consumed as source via Bun workspaces — no build needed' && exit 0",

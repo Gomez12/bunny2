@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0012_scheduled_tasks');
+      expect(currentSchemaVersion(db)).toBe('0013_durable_bus');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -60,6 +60,10 @@ describe('migrations', () => {
       // 0012 — generic scheduled tasks + run history (phase 5.0).
       expect(tables).toContain('scheduled_tasks');
       expect(tables).toContain('scheduled_task_runs');
+      // 0013 — durable SQLite-backed bus (phase 5.1).
+      expect(tables).toContain('bus_outbox');
+      expect(tables).toContain('bus_offsets');
+      expect(tables).toContain('bus_dlq');
 
       const indexes = db
         .query<{ name: string }, []>(
@@ -114,6 +118,9 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_scheduled_tasks_due');
       expect(indexes).toContain('idx_scheduled_task_runs_task');
       expect(indexes).toContain('idx_scheduled_task_runs_recent');
+      // 0013 indexes — durable bus.
+      expect(indexes).toContain('idx_bus_outbox_pending');
+      expect(indexes).toContain('idx_bus_dlq_subscriber');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -229,6 +236,7 @@ describe('migrations', () => {
         '0010_todos',
         '0011_calendar_projection_todos',
         '0012_scheduled_tasks',
+        '0013_durable_bus',
       ]);
     } finally {
       db2.close();

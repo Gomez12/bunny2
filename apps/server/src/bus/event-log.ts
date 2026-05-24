@@ -2,35 +2,47 @@ import type { Database } from 'bun:sqlite';
 import type { BusEvent, TelemetryWriter } from '@bunny2/bus';
 
 /**
+ * Inserts a single `events` row. Plain function (no prepared-statement
+ * cache) so it can be called inside any `db.transaction(...)` block,
+ * including the one the durable bus uses to write the outbox row in
+ * the same SQLite transaction as the canonical event log row.
+ *
+ * Column names match the migration in
+ * `apps/server/src/storage/migrations/0001_init.sql`.
+ */
+export function writeEventRow(db: Database, event: BusEvent): void {
+  db.query<unknown, [string, string, string, string | null, string | null, string, string | null]>(
+    `INSERT INTO events (id, type, occurred_at, correlation_id, flow_id, payload, metadata)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    event.id,
+    event.type,
+    event.occurredAt,
+    event.correlationId ?? null,
+    event.flowId ?? null,
+    JSON.stringify(event.payload ?? null),
+    event.metadata === undefined ? null : JSON.stringify(event.metadata),
+  );
+}
+
+/**
  * Persists bus events to the `events` table. Column names match the
  * migration in `apps/server/src/storage/migrations/0001_init.sql`.
  *
- * Returned writer is intended to be passed to `telemetryMiddleware`.
+ * Returned writer is intended to be passed to `telemetryMiddleware`
+ * for the in-memory bus fixture used by tests. Production (the
+ * durable adapter) writes the same `events` row INSIDE its publish
+ * transaction via {@link writeEventRow} so the outbox + event-log
+ * insertion is atomic.
  */
 export function createSqliteEventLog(db: Database): {
   writer: TelemetryWriter;
   count: () => number;
 } {
-  const insert = db.query<
-    unknown,
-    [string, string, string, string | null, string | null, string, string | null]
-  >(
-    `INSERT INTO events (id, type, occurred_at, correlation_id, flow_id, payload, metadata)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  );
-
   const countStmt = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM events');
 
   const writer: TelemetryWriter = (event) => {
-    insert.run(
-      event.id,
-      event.type,
-      event.occurredAt,
-      event.correlationId ?? null,
-      event.flowId ?? null,
-      JSON.stringify(event.payload ?? null),
-      event.metadata === undefined ? null : JSON.stringify(event.metadata),
-    );
+    writeEventRow(db, event);
   };
 
   return {

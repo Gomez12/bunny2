@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  InMemoryMessageBus,
   correlationIdMiddleware,
   errorCaptureMiddleware,
   telemetryMiddleware,
   type BusEvent,
   type Middleware,
 } from '../src';
+import { InMemoryMessageBus } from '../test-utils';
 
 describe('correlationIdMiddleware', () => {
   it('assigns a correlation id when the incoming event has none', async () => {

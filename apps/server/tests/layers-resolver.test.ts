@@ -15,7 +15,7 @@ import { Database } from 'bun:sqlite';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { InMemoryMessageBus } from '@bunny2/bus';
+import { InMemoryMessageBus } from '@bunny2/bus/test-utils';
 import { safeRmSync } from './_helpers/temp-dir';
 import { openDatabase } from '../src/storage/sqlite';
 import { createUsersRepo } from '../src/repos/users-repo';
