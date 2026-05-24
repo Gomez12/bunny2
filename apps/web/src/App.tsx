@@ -206,6 +206,32 @@ function AppShell(): JSX.Element {
                     </Button>
                   </li>
                 ) : null}
+                {isAdmin ? (
+                  <li>
+                    <Button
+                      type="button"
+                      variant={active('/admin/scheduled-tasks') ? 'default' : 'ghost'}
+                      size="sm"
+                      aria-current={active('/admin/scheduled-tasks') ? 'page' : undefined}
+                      onClick={() => nav('/admin/scheduled-tasks')}
+                    >
+                      {t('nav.adminScheduledTasks')}
+                    </Button>
+                  </li>
+                ) : null}
+                {isAdmin ? (
+                  <li>
+                    <Button
+                      type="button"
+                      variant={active('/admin/bus/dlq') ? 'default' : 'ghost'}
+                      size="sm"
+                      aria-current={active('/admin/bus/dlq') ? 'page' : undefined}
+                      onClick={() => nav('/admin/bus/dlq')}
+                    >
+                      {t('nav.adminBusDlq')}
+                    </Button>
+                  </li>
+                ) : null}
               </ul>
             </nav>
             <LayerSwitcher />
