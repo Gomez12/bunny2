@@ -299,6 +299,18 @@
           "statWithKvk": "With KvK link",
           "statMissingDescription": "Missing description",
           "statRecentlyEnriched": "Enriched in last 24h"
+        },
+        "contacts": {
+          "title": "Contacts",
+          "loading": "Loading contacts…",
+          "error": "Could not load contact stats.",
+          "empty": "No contacts in this layer yet. Import a vCard to get started.",
+          "viewAllCta": "View contacts",
+          "importCta": "Import vCard",
+          "statTotal": "Total contacts",
+          "statWithCompanyLink": "Linked to a company",
+          "statMissingEmail": "Without an email address",
+          "statRecentlyEnriched": "Enriched in last 24h"
         }
       }
     },

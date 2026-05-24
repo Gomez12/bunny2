@@ -5,5 +5,6 @@
  * todos in 4d.4) adds a single line here.
  */
 import './CompaniesWidget';
+import './ContactsWidget';
 
 export { listDashboardWidgets, type DashboardWidget, type WidgetProps } from './widget-registry';

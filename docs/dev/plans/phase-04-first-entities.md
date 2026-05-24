@@ -1693,3 +1693,105 @@ contract changes. ADR 0013 already governs the enrichment model.
   when `companyEntityId` is applied; a future bus subscriber could
   derive a per-layer "links suggested today" counter without
   touching the per-kind table.
+
+### 4b.4 shipped (2026-05-24)
+
+**What landed**
+
+- `contactStatsProvider` at `apps/server/src/entities/contacts/stats.ts`
+  — second concrete consumer of the §4a.4 `EntityModule.statsProvider`
+  slot. Pure SQL, layer-scoped, clock-injectable. Returns
+  `{ total, withCompanyLink, missingEmail, recentlyEnriched }`:
+  - `total` — non-soft-deleted contacts in the layer.
+  - `withCompanyLink` — `company_entity_id IS NOT NULL`. Reads the
+    indexed column the 4b.1 migration added (`idx_contacts_company`).
+  - `missingEmail` — `primary_email IS NULL`. Same indexed-column
+    path (`idx_contacts_primary_email`), so the counter stays cheap
+    even on layers with thousands of contacts.
+  - `recentlyEnriched` — joins `entity_souls` on `entity_id` with
+    `entity_kind = 'contact'` and `updated_at > now - 24h`. Mirrors
+    the SQL in `companies/stats.ts` exactly; the enrichment runner
+    writes the timestamp via `recordLastEnriched`.
+- Wired onto `contactModule` (`apps/server/src/entities/contacts/module.ts`).
+  Re-exported from `apps/server/src/entities/contacts/index.ts`.
+- The §4.0 router exposes `GET /l/:slug/contact/_stats` automatically
+  the moment `statsProvider` is non-undefined — zero router touches.
+- Web dashboard:
+  - `apps/web/src/dashboard/contacts-widget-state.ts` — pure reducer
+    mirroring `companies-widget-state.ts`, mapping
+    `{loading, error, ready}` inputs to the four render branches
+    the component draws.
+  - `apps/web/src/dashboard/ContactsWidget.tsx` — shadcn `<Card>`
+    with the same shape as `CompaniesWidget.tsx`: big-number total,
+    three small stat lines, "View contacts" → `/l/:slug/contacts`,
+    "Import vCard" → `/l/:slug/contacts/import` (the 4b.2 page that
+    already exists). Loading / empty / error / ready branches. Side-
+    effect registration via the existing `dashboard/widgets` barrel.
+    `order: 200` so Contacts renders after Companies (`order: 100`).
+  - `apps/web/src/lib/api.ts` — `getContactStats(slug)` +
+    `ContactStatsResponse` typed envelope.
+- i18n: `layer.dashboard.widgets.contacts.{title, loading, error,
+empty, viewAllCta, importCta, statTotal, statWithCompanyLink,
+statMissingEmail, statRecentlyEnriched}` in BOTH `en.json` and
+  `nl.json` (real Dutch translations).
+
+**Foundation tweaks**
+
+- **None.** The four §4.0 + 4a-block extension slots
+  (`indexedColumns`, `getConnector` / dispatcher / runner,
+  `enrichmentJobs`, `statsProvider`) already covered this consumer.
+  The §4a.4 `statsProvider` slot took the second consumer cleanly
+  with ZERO contract changes — empirical validation of the slot.
+
+**Tests**
+
+- `apps/server/tests/entities/contacts-stats.test.ts` — three HTTP
+  scenarios:
+  - Empty layer returns `{0,0,0,0}`.
+  - Happy mix of four seeded contacts: 1 with `companyEntityId`,
+    1 with phone-only (no email), 1 recently enriched (soul row
+    stamped within the 24h window), 1 vanilla. Each counter
+    independently observable. Decoy: a stale soul row on the
+    vanilla contact (48h ago) proves the 24h cutoff. Asserts the
+    final shape is exactly
+    `{ total: 4, withCompanyLink: 1, missingEmail: 1, recentlyEnriched: 1 }`.
+  - Cross-layer isolation: contacts in a sibling layer never
+    contribute to the requested layer's counts.
+- `apps/web/tests/contacts-widget.test.ts` — the pure reducer
+  matrix (loading / error / empty / ready / off-by-one guard on
+  `total === 1`), the widget registry contract (registration
+  shape + co-existence ordering vs Companies).
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10d "Stats provider (4a.4)"
+  now records contacts as the second consumer and explicitly notes
+  the zero-tweak adoption.
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/tasklist.md` 4b.4 row → `done`.
+
+**No new ADR** — 4b.4 consumes the foundation cleanly with zero
+contract changes. ADR 0011 already governs the entity contract; the
+4a.4 close-out already documented the `statsProvider` slot.
+
+**Notable for 4b.5 (web UI)**
+
+- The `/l/:layerSlug/contacts` list page does not exist yet. The
+  widget's "View contacts" CTA in the ready branch will hit the
+  React Router 404 page until 4b.5 mounts the list route. The
+  widget never enters the ready branch on an empty layer (the
+  empty branch fires when `total === 0`), so the dead-link
+  window is exactly the case where 4b.2 import was run but the
+  4b.5 list page hasn't landed — purely transient.
+- The "Import vCard" CTA resolves immediately: the 4b.2 page at
+  `/l/:layerSlug/contacts/import` is wired in `apps/web/src/App.tsx`.
+- The singular ↔ plural URL seam is the same as Companies: the
+  server URL is `/l/:slug/contact/...` per the §4.0 router naming;
+  the widget links to the plural-segment client pages. If 4b.5
+  prefers a different routeSegment for its own reason, the §4.0
+  optional `routeSegment` override discussed in the 4a.1 follow-up
+  becomes the natural place to fix it — still not now.
+- The dashboard widget renders after Companies because of the
+  `order: 100` / `order: 200` choice. 4c.4 / 4d.4 will pick 300 /
+  400 to keep the order deterministic without re-touching the
+  earlier widgets.

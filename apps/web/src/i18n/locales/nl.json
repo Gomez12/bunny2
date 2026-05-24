@@ -58,6 +58,18 @@
           "statWithKvk": "Met KvK-koppeling",
           "statMissingDescription": "Zonder beschrijving",
           "statRecentlyEnriched": "Verrijkt in laatste 24 uur"
+        },
+        "contacts": {
+          "title": "Contacten",
+          "loading": "Contacten laden…",
+          "error": "Kon contactstatistieken niet laden.",
+          "empty": "Nog geen contacten in deze laag. Importeer een vCard om te beginnen.",
+          "viewAllCta": "Contacten bekijken",
+          "importCta": "vCard importeren",
+          "statTotal": "Totaal contacten",
+          "statWithCompanyLink": "Gekoppeld aan een bedrijf",
+          "statMissingEmail": "Zonder e-mailadres",
+          "statRecentlyEnriched": "Verrijkt in laatste 24 uur"
         }
       }
     }

@@ -30,6 +30,8 @@ export { parseVcards, type VcardParseItem, type VcardParseResult } from './vcard
 
 export { contactsSuggestCompanyJob, contactEnrichmentJobs } from './enrichment';
 
+export { contactStatsProvider, type ContactStats } from './stats';
+
 /**
  * Phase 4b.1 — wire-up helper for the contacts module.
  *

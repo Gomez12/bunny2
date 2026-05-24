@@ -744,6 +744,17 @@ Companies dashboard widget. "Recently enriched" reads
 `entity_souls.updated_at` — the timestamp the enrichment runner
 writes via `recordLastEnriched` in `enrichment-runner.ts`.
 
+Phase 4b.4 added the second consumer: `contactStatsProvider`
+(`apps/server/src/entities/contacts/stats.ts`) returns
+`{ total, withCompanyLink, missingEmail, recentlyEnriched }` for the
+Contacts dashboard widget. It hangs off the exact same
+`EntityModule.statsProvider?` slot with ZERO contract changes —
+empirical confirmation the §4a.4 foundation generalises to a second
+kind cleanly. `withCompanyLink` reads the indexed `company_entity_id`
+column from 4b.1 directly; `missingEmail` reads the indexed
+`primary_email` column. Stats remain pure SQL, layer-scoped, and
+clock-injectable per the design rules above.
+
 The dashboard widget lives in `apps/web/src/dashboard/`. A minimal
 client-side registry (`widget-registry.ts`) lets each per-kind
 sub-phase add a widget by importing `CompaniesWidget`-style modules

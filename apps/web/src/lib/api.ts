@@ -488,6 +488,27 @@ export async function getCompanyStats(slug: string): Promise<CompanyStatsRespons
   return res.stats;
 }
 
+/**
+ * Contacts aggregate stats — shape mirrors the server-side
+ * `ContactStats` type in `apps/server/src/entities/contacts/stats.ts`.
+ * Second consumer of the §4a.4 stats route (`GET /l/:slug/<kind>/_stats`)
+ * — empirical validation that the entity-foundation slot generalises
+ * cleanly with zero contract changes.
+ */
+export interface ContactStatsResponse {
+  readonly total: number;
+  readonly withCompanyLink: number;
+  readonly missingEmail: number;
+  readonly recentlyEnriched: number;
+}
+
+export async function getContactStats(slug: string): Promise<ContactStatsResponse> {
+  const res = await request<{ stats: ContactStatsResponse }>(
+    `/l/${encodeURIComponent(slug)}/contact/_stats`,
+  );
+  return res.stats;
+}
+
 // ---------- companies CRUD (phase 4a.5) ------------------------------------
 //
 // Web URLs use the plural `/l/:slug/companies` segment (see

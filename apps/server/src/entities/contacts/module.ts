@@ -3,6 +3,7 @@ import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
 import { createVcardConnector } from './vcard-connector';
 import { contactEnrichmentJobs } from './enrichment';
+import { contactStatsProvider } from './stats';
 
 /**
  * Phase 4b.1 — second concrete `EntityModule`.
@@ -93,6 +94,7 @@ export function createContactModule(
         extract: (payload) => payload.companyEntityId ?? null,
       },
     ],
+    statsProvider: contactStatsProvider,
     toSummary({ ref, meta, payload, title }) {
       const subtitle =
         primaryEmailOf(payload) ?? primaryPhoneOf(payload) ?? payload.jobTitle ?? null;
