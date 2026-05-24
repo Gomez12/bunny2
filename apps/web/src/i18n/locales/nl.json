@@ -108,6 +108,14 @@
         "description": "Omschrijving (optioneel)",
         "submit": "Laag aanmaken",
         "success": "Projectlaag aangemaakt."
+      },
+      "delete": {
+        "cardTitle": "Gevarenzone",
+        "intro": "Het verwijderen van deze projectlaag haalt hem weg bij iedereen die hem nu kan zien. Bestaande items in de laag blijven in de database staan (soft-delete) zodat een sitebeheerder ze kan herstellen, maar de laag verschijnt niet meer in de switcher.",
+        "cta": "Laag verwijderen",
+        "confirmTitle": "Deze laag verwijderen?",
+        "confirmBody": "“{{name}}” verdwijnt uit jouw switcher en uit het zicht van alle andere leden. Dit kan niet meer via de UI ongedaan worden gemaakt.",
+        "deleted": "Laag “{{name}}” verwijderd."
       }
     }
   },

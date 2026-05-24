@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { ConfirmDialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
@@ -10,6 +11,7 @@ import { Tabs, type TabDef } from '../components/ui/tabs';
 import { LayerTypeBadge } from '../components/LayerTypeBadge';
 import {
   addLayerVisibility,
+  deleteLayer,
   getLayer,
   getSystemLocales,
   registerLayerAttachment,
@@ -117,7 +119,92 @@ export function LayerSettingsPage(): JSX.Element {
           />
         </CardContent>
       </Card>
+      <DangerZone layer={layer} canEdit={canEdit} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Danger zone — delete a project layer.
+
+/**
+ * Soft-delete UI. Hidden for personal / group / everyone layers (the
+ * server rejects those with `errors.layer.notDeletable`, but there is
+ * no need to surface a button that always errors). For project layers
+ * the card is always rendered so the destructive action stays
+ * discoverable; the button is disabled when the caller lacks edit
+ * rights, mirroring the rest of the page (§4.1).
+ *
+ * On success we route to `/layers`. We deliberately navigate BEFORE
+ * `refreshLayers()` resolves — once the current layer is gone the
+ * settings page's `useCurrentLayer()` would otherwise flip to a
+ * not-visible state and render nothing while the toast fires.
+ */
+function DangerZone(props: TabProps): JSX.Element | null {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
+
+  if (props.layer.type !== 'project') return null;
+
+  async function handleConfirm(): Promise<void> {
+    if (pending) return;
+    setPending(true);
+    setErrorKey(null);
+    try {
+      await deleteLayer(props.layer.slug);
+      setOpen(false);
+      pushToast({
+        kind: 'success',
+        message: t('admin.layers.delete.deleted', { name: props.layer.name }),
+      });
+      navigate('/layers');
+      await refreshLayers();
+    } catch (err: unknown) {
+      setErrorKey(errorKeyOf(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function handleClose(): void {
+    if (pending) return;
+    setOpen(false);
+    setErrorKey(null);
+  }
+
+  return (
+    <Card className="border-destructive/40">
+      <CardHeader className="space-y-1">
+        <CardTitle className="text-destructive">{t('admin.layers.delete.cardTitle')}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">{t('admin.layers.delete.intro')}</p>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={!props.canEdit || pending}
+            onClick={() => setOpen(true)}
+          >
+            {t('admin.layers.delete.cta')}
+          </Button>
+        </div>
+      </CardContent>
+      <ConfirmDialog
+        open={open}
+        title={t('admin.layers.delete.confirmTitle')}
+        body={t('admin.layers.delete.confirmBody', { name: props.layer.name })}
+        confirmLabel={t('admin.layers.delete.cta')}
+        destructive
+        busy={pending}
+        errorKey={errorKey}
+        onConfirm={() => void handleConfirm()}
+        onClose={handleClose}
+      />
+    </Card>
   );
 }
 

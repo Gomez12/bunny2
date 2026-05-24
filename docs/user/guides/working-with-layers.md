@@ -136,6 +136,26 @@ the server-side endpoints are all in place and tested, but three
 read-side gaps on the UI side are tracked as explicit follow-ups
 so they don't get lost.
 
+### Deleting a project layer
+
+If you created a project layer by accident — or it has served its
+purpose — open the layer's settings and scroll to the **Danger
+zone** card under the tabs. The card only appears for **project**
+layers; personal, group, and "everyone" layers are seeded
+automatically and can't be removed.
+
+Click **Delete layer**. A confirmation dialog asks you to confirm
+the destructive action. On confirmation the layer disappears from
+your switcher and from every other member's view, and you're
+routed back to the **My Layers** page. The entities that were
+created inside the layer are kept in the database as soft-deleted
+records so a site administrator can recover them; through the UI
+the deletion is permanent.
+
+You need edit rights to see the button enabled — that's the layer's
+owner or a site administrator. If the button is disabled, ask the
+owner (or an admin) to do it for you.
+
 ---
 
 ## 6. Where does my data go?

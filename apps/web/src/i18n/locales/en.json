@@ -261,6 +261,14 @@
           "skill": "Skill",
           "mcp_server": "MCP server"
         }
+      },
+      "delete": {
+        "cardTitle": "Danger zone",
+        "intro": "Deleting this project layer hides it from everyone who can currently see it. Existing entities created in the layer are kept in the database (soft-delete) so a site administrator can recover them, but no one will see the layer in the switcher anymore.",
+        "cta": "Delete layer",
+        "confirmTitle": "Delete this layer?",
+        "confirmBody": "“{{name}}” will disappear from your switcher and from every other member’s view. This cannot be undone from the UI.",
+        "deleted": "Layer “{{name}}” deleted."
       }
     }
   },
