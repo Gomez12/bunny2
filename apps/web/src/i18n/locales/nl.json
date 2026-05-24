@@ -215,7 +215,98 @@
     "placeholder": "Typ je bericht en druk op Enter om te verzenden.",
     "send": "Verzenden",
     "sending": "Bezig met verzenden…",
-    "responseTitle": "Antwoord"
+    "responseTitle": "Antwoord",
+    "systemDiagnostic": {
+      "title": "Systeemchat (diagnose)",
+      "banner": "Deze pagina test de standaard-LLM-configuratie buiten een laag. Gebruik de chat per laag voor echte gesprekken met je entiteiten.",
+      "openLayerChatCta": "Open de chat voor deze laag"
+    },
+    "conversation": {
+      "newCta": "Nieuw gesprek",
+      "emptyTitle": "Nieuw gesprek",
+      "emptyDescription": "Stel een vraag over de entiteiten in deze laag.",
+      "deleteCta": "Gesprek verwijderen",
+      "deleteConfirm": "Dit gesprek verwijderen? Het wordt verborgen maar blijft in het auditspoor staan.",
+      "listLabel": "Gesprekken",
+      "untitled": "Naamloos gesprek"
+    },
+    "thread": {
+      "label": "Gespreksverloop",
+      "loading": "Gesprek laden…",
+      "empty": "Nog geen berichten. Stel een vraag om te beginnen."
+    },
+    "message": {
+      "userYou": "Jij",
+      "assistant": "Assistent",
+      "statusQueued": "In wachtrij",
+      "statusRunning": "Bezig…",
+      "statusDone": "Klaar",
+      "statusFailed": "Mislukt"
+    },
+    "feedback": {
+      "upLabel": "Nuttig",
+      "downLabel": "Niet nuttig",
+      "upAria": "Markeer het antwoord als nuttig",
+      "downAria": "Markeer het antwoord als niet nuttig",
+      "reasonLabel": "Wat ging er mis? (optioneel)",
+      "reasonPlaceholder": "Vertel kort wat er mis was met het antwoord.",
+      "submit": "Feedback versturen",
+      "saved": "Bedankt — je feedback is opgeslagen.",
+      "dialogTitle": "Feedback versturen"
+    },
+    "pipeline": {
+      "title": "Pijplijnstatus",
+      "steps": {
+        "intent": {
+          "queued": "Intentie · in wachtrij",
+          "running": "Intentie · bezig",
+          "succeeded": "Intentie · klaar",
+          "failed": "Intentie · mislukt",
+          "skipped": "Intentie · overgeslagen"
+        },
+        "entities": {
+          "queued": "Entiteiten · in wachtrij",
+          "running": "Entiteiten · bezig",
+          "succeeded": "Entiteiten · klaar",
+          "failed": "Entiteiten · mislukt",
+          "skipped": "Entiteiten · overgeslagen"
+        },
+        "retrieval": {
+          "queued": "Ophalen · in wachtrij",
+          "running": "Ophalen · bezig",
+          "succeeded": "Ophalen · klaar",
+          "failed": "Ophalen · mislukt",
+          "skipped": "Ophalen · overgeslagen"
+        },
+        "answer": {
+          "queued": "Antwoord · in wachtrij",
+          "running": "Antwoord · bezig",
+          "succeeded": "Antwoord · klaar",
+          "failed": "Antwoord · mislukt",
+          "skipped": "Antwoord · overgeslagen"
+        }
+      }
+    },
+    "empty": {
+      "noConversations": "Nog geen gesprekken.",
+      "startWith": "Start een nieuw gesprek om een vraag te stellen over de entiteiten in deze laag."
+    },
+    "composer": {
+      "label": "Bericht",
+      "placeholder": "Stel een vraag over deze laag. Druk op Enter om te verzenden, Shift+Enter voor een nieuwe regel.",
+      "sendCta": "Versturen",
+      "sendingCta": "Bezig met verzenden…",
+      "enterToSend": "Druk op Enter om te verzenden",
+      "shiftEnterNewline": "Shift+Enter voegt een nieuwe regel in"
+    },
+    "errors": {
+      "network": "Kan de server niet bereiken. Probeer het opnieuw.",
+      "upstream": "De chat-service gaf een fout. Probeer het opnieuw.",
+      "validation": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw.",
+      "layerNotVisible": "Deze laag is niet meer zichtbaar voor jou.",
+      "streamAborted": "Het antwoord werd onderbroken voordat het klaar was.",
+      "intentInvalid": "Je bericht kon niet worden begrepen. Herformuleer het."
+    }
   },
   "errors": {
     "network": "Kan de server niet bereiken. Probeer het opnieuw.",

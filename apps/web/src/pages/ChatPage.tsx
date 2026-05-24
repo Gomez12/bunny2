@@ -1,11 +1,13 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { ApiError, postChat, type ChatResponse } from '../lib/api';
+import { useSession } from '../lib/session';
 
 type ChatState =
   | { kind: 'idle' }
@@ -22,9 +24,11 @@ type ChatState =
  */
 export function ChatPage(): JSX.Element {
   const { t } = useTranslation();
+  const session = useSession();
   const [message, setMessage] = useState('');
   const [model, setModel] = useState('');
   const [state, setState] = useState<ChatState>({ kind: 'idle' });
+  const activeLayerSlug = session.personalLayerSlug;
 
   async function submit(): Promise<void> {
     const trimmed = message.trim();
@@ -62,9 +66,20 @@ export function ChatPage(): JSX.Element {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>{t('chat.title')}</CardTitle>
+          <CardTitle>{t('chat.systemDiagnostic.title')}</CardTitle>
         </CardHeader>
         <CardContent>
+          <p className="mb-2 text-sm text-muted-foreground">{t('chat.systemDiagnostic.banner')}</p>
+          {activeLayerSlug !== null ? (
+            <p className="mb-4 text-sm">
+              <Link
+                to={`/l/${activeLayerSlug}/chat`}
+                className="font-medium underline-offset-2 hover:underline"
+              >
+                {t('chat.systemDiagnostic.openLayerChatCta')}
+              </Link>
+            </p>
+          ) : null}
           <p className="mb-4 text-sm text-muted-foreground">{t('chat.description')}</p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">

@@ -14,6 +14,12 @@
  */
 
 import type {
+  ChatConversation as SharedChatConversation,
+  ChatMessage as SharedChatMessage,
+  ChatMessageFeedback as SharedChatMessageFeedback,
+  ChatFeedbackValue as SharedChatFeedbackValue,
+} from '@bunny2/shared';
+import type {
   AddCompanyExternalLinkPayload,
   AddLayerMemberPayload,
   AddLayerVisibilityPayload,
@@ -1097,4 +1103,92 @@ export async function replayAdminBusDlq(outboxId: string): Promise<void> {
   await request<{ ok: true }>(`/admin/bus/dlq/${encodeURIComponent(outboxId)}/replay`, {
     method: 'POST',
   });
+}
+
+// ---------- per-layer chat (phase 6.5) -------------------------------------
+//
+// Routes are mounted under `/l/:slug/chat/*` by
+// `apps/server/src/http/routes/layer-chat.ts`. The SSE message endpoint
+// is NOT wrapped here — see `apps/web/src/lib/sse-fetch.ts` for the
+// streaming helper. The functions below cover the synchronous JSON
+// routes (conversation CRUD + feedback).
+
+export type LayerChatConversation = SharedChatConversation;
+export type LayerChatMessage = SharedChatMessage;
+export type LayerChatFeedback = SharedChatMessageFeedback;
+export type LayerChatFeedbackValue = SharedChatFeedbackValue;
+
+function chatConversationsBase(layerSlug: string): string {
+  return `/l/${encodeURIComponent(layerSlug)}/chat/conversations`;
+}
+
+export async function listLayerChatConversations(
+  layerSlug: string,
+): Promise<readonly LayerChatConversation[]> {
+  const res = await request<{ conversations: readonly LayerChatConversation[] }>(
+    chatConversationsBase(layerSlug),
+  );
+  return res.conversations;
+}
+
+export async function createLayerChatConversation(
+  layerSlug: string,
+  body: { title?: string; locale?: string } = {},
+): Promise<LayerChatConversation> {
+  const payload: { title?: string; locale?: string } = {};
+  if (body.title !== undefined) payload.title = body.title;
+  if (body.locale !== undefined) payload.locale = body.locale;
+  const res = await request<{ conversation: LayerChatConversation }>(
+    chatConversationsBase(layerSlug),
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
+  return res.conversation;
+}
+
+export async function deleteLayerChatConversation(
+  layerSlug: string,
+  conversationId: string,
+): Promise<void> {
+  await request<{ ok: true }>(
+    `${chatConversationsBase(layerSlug)}/${encodeURIComponent(conversationId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function listLayerChatMessages(
+  layerSlug: string,
+  conversationId: string,
+): Promise<readonly LayerChatMessage[]> {
+  const res = await request<{ messages: readonly LayerChatMessage[] }>(
+    `${chatConversationsBase(layerSlug)}/${encodeURIComponent(conversationId)}/messages`,
+  );
+  return res.messages;
+}
+
+/**
+ * Build the relative path the SSE helper posts to. The body is sent
+ * by the SSE helper itself (`{ content }` only — no model override
+ * per plan §10).
+ */
+export function layerChatMessageStreamPath(layerSlug: string, conversationId: string): string {
+  return `${chatConversationsBase(layerSlug)}/${encodeURIComponent(conversationId)}/messages`;
+}
+
+export async function postLayerChatFeedback(
+  layerSlug: string,
+  messageId: string,
+  body: { value: LayerChatFeedbackValue; reason?: string },
+): Promise<LayerChatFeedback> {
+  const payload: { value: LayerChatFeedbackValue; reason?: string } = { value: body.value };
+  if (body.value === 'down' && body.reason !== undefined && body.reason.length > 0) {
+    payload.reason = body.reason;
+  }
+  const res = await request<{ feedback: LayerChatFeedback }>(
+    `/l/${encodeURIComponent(layerSlug)}/chat/messages/${encodeURIComponent(messageId)}/feedback`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+  return res.feedback;
 }

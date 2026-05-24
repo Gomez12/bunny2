@@ -87,7 +87,98 @@
     "metaModel": "Model",
     "metaTokensIn": "Tokens in",
     "metaTokensOut": "Tokens out",
-    "metaCorrelationId": "Correlation ID"
+    "metaCorrelationId": "Correlation ID",
+    "systemDiagnostic": {
+      "title": "System chat (diagnostic)",
+      "banner": "This page tests the system-default LLM configuration outside any layer. For real conversations with your entities, use the per-layer chat.",
+      "openLayerChatCta": "Open chat for this layer"
+    },
+    "conversation": {
+      "newCta": "New conversation",
+      "emptyTitle": "New conversation",
+      "emptyDescription": "Ask a question about the entities in this layer.",
+      "deleteCta": "Delete conversation",
+      "deleteConfirm": "Delete this conversation? It will be hidden but kept in the audit trail.",
+      "listLabel": "Conversations",
+      "untitled": "Untitled conversation"
+    },
+    "thread": {
+      "label": "Conversation thread",
+      "loading": "Loading conversation…",
+      "empty": "No messages yet. Send a question to get started."
+    },
+    "message": {
+      "userYou": "You",
+      "assistant": "Assistant",
+      "statusQueued": "Queued",
+      "statusRunning": "Running…",
+      "statusDone": "Done",
+      "statusFailed": "Failed"
+    },
+    "feedback": {
+      "upLabel": "Helpful",
+      "downLabel": "Not helpful",
+      "upAria": "Mark the answer as helpful",
+      "downAria": "Mark the answer as not helpful",
+      "reasonLabel": "What went wrong? (optional)",
+      "reasonPlaceholder": "Tell us briefly what was wrong with the answer.",
+      "submit": "Submit feedback",
+      "saved": "Thanks — your feedback has been saved.",
+      "dialogTitle": "Send feedback"
+    },
+    "pipeline": {
+      "title": "Pipeline status",
+      "steps": {
+        "intent": {
+          "queued": "Intent · queued",
+          "running": "Intent · running",
+          "succeeded": "Intent · done",
+          "failed": "Intent · failed",
+          "skipped": "Intent · skipped"
+        },
+        "entities": {
+          "queued": "Entities · queued",
+          "running": "Entities · running",
+          "succeeded": "Entities · done",
+          "failed": "Entities · failed",
+          "skipped": "Entities · skipped"
+        },
+        "retrieval": {
+          "queued": "Retrieval · queued",
+          "running": "Retrieval · running",
+          "succeeded": "Retrieval · done",
+          "failed": "Retrieval · failed",
+          "skipped": "Retrieval · skipped"
+        },
+        "answer": {
+          "queued": "Answer · queued",
+          "running": "Answer · running",
+          "succeeded": "Answer · done",
+          "failed": "Answer · failed",
+          "skipped": "Answer · skipped"
+        }
+      }
+    },
+    "empty": {
+      "noConversations": "No conversations yet.",
+      "startWith": "Start a new conversation to ask a question about this layer's entities."
+    },
+    "composer": {
+      "label": "Message",
+      "placeholder": "Ask a question about this layer. Press Enter to send, Shift+Enter for a new line.",
+      "sendCta": "Send",
+      "sendingCta": "Sending…",
+      "enterToSend": "Press Enter to send",
+      "shiftEnterNewline": "Shift+Enter inserts a new line"
+    },
+    "errors": {
+      "network": "Could not reach the server. Please try again.",
+      "upstream": "The chat service returned an error. Please try again.",
+      "validation": "The request could not be processed. Please check the input and try again.",
+      "layerNotVisible": "This layer is no longer visible to you.",
+      "streamAborted": "The answer was interrupted before it finished.",
+      "intentInvalid": "Your message could not be understood. Please rephrase it."
+    }
   },
   "admin": {
     "users": {

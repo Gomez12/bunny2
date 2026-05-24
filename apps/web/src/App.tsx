@@ -24,6 +24,7 @@ import { AdminBusDlqPage } from './pages/admin/AdminBusDlqPage';
 import { ScheduledTasksListPage } from './pages/ScheduledTasksListPage';
 import { MyLayersPage } from './pages/MyLayersPage';
 import { LayerSettingsPage } from './pages/LayerSettingsPage';
+import { LayerChatPage } from './pages/LayerChatPage';
 import { LayerDashboardPage } from './pages/LayerDashboardPage';
 import { CalendarEventDetailPage } from './pages/CalendarEventDetailPage';
 import { CalendarPage } from './pages/CalendarPage';
@@ -243,6 +244,7 @@ function AppShell(): JSX.Element {
           <Route path="/l/:layerSlug/todos/new" element={<TodosPage />} />
           <Route path="/l/:layerSlug/todos/:todoSlug" element={<TodoDetailPage />} />
           <Route path="/l/:layerSlug/scheduled-tasks" element={<ScheduledTasksListPage />} />
+          <Route path="/l/:layerSlug/chat" element={<LayerChatPage />} />
           <Route path="/l/:layerSlug" element={<LayerSlugIndexRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -292,6 +294,7 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
     if (sub === 'calendar') return t('layer.shell.subpages.calendar');
     if (sub === 'todos') return t('layer.shell.subpages.todos');
     if (sub === 'scheduled-tasks') return t('layer.shell.subpages.scheduledTasks');
+    if (sub === 'chat') return t('nav.chat');
     return null;
   }
   if (pathname.startsWith('/layers')) return t('admin.layers.list.title');
