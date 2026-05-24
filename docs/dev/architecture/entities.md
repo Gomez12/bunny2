@@ -650,6 +650,60 @@ is recomputed for the success event using the same `PricingMap` the
 LLM wrapper uses, so the event surfaces the per-call USD figure
 without joining `llm_calls`.
 
+### Deterministic-first / LLM-fallback pattern (4b.3 onward)
+
+The contacts `suggestCompany` job introduces a pattern future kinds
+should reuse when a job has cheap deterministic signals available:
+
+1. **Cheap rules first.** Try every rule that can answer with no LLM
+   call — a domain match, an exact normalised name, a stored
+   `external_id`. When exactly one candidate emerges, return the
+   patch immediately. Burning LLM tokens on a problem rules can
+   solve is waste, and the deterministic path is the one tests can
+   pin without an LLM stub.
+2. **Collect weak candidates.** Rules that match more than one
+   company (ambiguous), or a fuzzy match (Levenshtein ≤ 2 over a
+   normalised name), produce a candidate set instead of an answer.
+3. **LLM only on weak signal.** When step 1 yields no answer AND
+   step 2 produced at least one weak candidate, build a minimal
+   sanitised prompt (the contact's `(givenName, familyName, primary
+email, jobTitle, notes excerpt)`; per-candidate `(slug, title,
+website)`) and ask the model for `{ slug, confidence }`. Apply
+   the link only when `confidence >= 0.8` and the slug matches a
+   candidate. Anything else returns `{}`.
+4. **Hard gate on user-set fields.** The runner's `applyPatch`
+   already refuses to overwrite a non-empty field (except
+   `description`), but the job ALSO short-circuits when
+   `payload.companyEntityId` is already set, so the candidate list
+   is never even enumerated. Defense in depth keeps the LLM cost
+   profile predictable.
+
+Concrete production job: `contacts.suggestCompany`
+(`apps/server/src/entities/contacts/enrichment.ts`). Runs on
+`created`, `updated`, and `sync.succeeded`. Returns either
+`{ patch: { companyEntityId }, tokensIn, tokensOut }` or `{}` per the
+table below.
+
+| Path                 | Trigger                                                                                 | LLM called? | Result                              |
+| -------------------- | --------------------------------------------------------------------------------------- | ----------- | ----------------------------------- |
+| Domain (exact, sole) | `primary email` host == company `website` host or `email` domain (modulo `www.`)        | No          | `companyEntityId` applied.          |
+| Domain (ambiguous)   | Multiple companies match the same domain                                                | Yes         | Pick if confidence ≥ 0.8, else `{}` |
+| ORG hint (exact)     | `ORG: <name>` line in `notes`, normalised exact match against legalName/tradeName/title | No          | `companyEntityId` applied.          |
+| ORG hint (fuzzy)     | Same line, Levenshtein ≤ 2 against any candidate                                        | Yes         | Pick if confidence ≥ 0.8, else `{}` |
+| No signal            | No email AND no ORG hint, OR no companies in the layer                                  | No          | `{}`                                |
+| Already linked       | `payload.companyEntityId` already set                                                   | No          | `{}` (job exits before enumeration) |
+
+Cross-layer isolation is a free property of this pattern: candidate
+enumeration walks the layer the contact lives in via the companies
+store, so a company in layer A is never visible to a contact in
+layer B — there is no shared candidate set across layers.
+
+Secret-strip discipline mirrors 4a.3: the candidate-list projection
+hands the LLM only `(slug, title, website)`; the attachment row's
+`apiKey` lives in `layer_attachments.config` and never reaches any
+company payload. The 4b.3 secret-strip regression test asserts the
+literal apiKey never appears in any LLM prompt nor in any bus event.
+
 ---
 
 ## 10d. Stats provider (4a.4)

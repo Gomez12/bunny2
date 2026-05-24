@@ -1592,3 +1592,104 @@ invalidConfig}`,
 - vCard ORG → company link is not auto-suggested. 4b.3 owns the
   contact ↔ company AI suggestion; the parser stamps `ORG: ...` into
   `notes` as a hint the enrichment job can read.
+
+### 4b.3 shipped (2026-05-24)
+
+**What landed**
+
+- New enrichment job `contacts.suggestCompany`
+  (`apps/server/src/entities/contacts/enrichment.ts`). Runs on
+  `created`, `updated`, and `sync.succeeded`. Strategy is
+  **deterministic-first, LLM-fallback** in the order documented in
+  `docs/dev/architecture/entities.md` §10c "Deterministic-first /
+  LLM-fallback pattern":
+  1. Domain match — primary-email domain vs company `website` host
+     (`www.` stripped) or company `email` domain. A single exact
+     match wins without any LLM call. Multiple matches fall through
+     to the LLM with the matches as candidates.
+  2. vCard ORG-hint match — `^ORG: (.+)$` line in `payload.notes`
+     (the 4b.2 parser format), compared case-insensitively against
+     `legalName`, `tradeName`, and `title`. Exact match wins
+     without LLM; fuzzy match (Levenshtein ≤ 2 over
+     whitespace-normalised strings) collects candidates for the
+     LLM step.
+  3. LLM fallback — only when steps 1 and 2 produced a non-empty
+     weak candidate set. The sanitised prompt carries the contact's
+     `(givenName, familyName, primary email, jobTitle, notes
+excerpt)` and per-candidate `(slug, title, website)` only.
+     The model returns `{ slug, confidence }`; the job applies the
+     link only when `confidence >= 0.8` and the slug resolves to a
+     candidate.
+- The job short-circuits with `{}` when `payload.companyEntityId` is
+  already set — defense in depth against the runner's no-overwrite
+  invariant. Also returns `{}` when there are zero companies in the
+  layer (covers the cross-layer isolation case for free).
+- `CreateContactModuleOptions` extended with an optional
+  `enrichmentJobs?: readonly EnrichmentJob<ContactPayload>[]` slot,
+  mirroring `createCompanyModule`. Default singleton wires the
+  production job; tests inject deterministic stubs.
+
+**Foundation tweaks**
+
+- **None.** The 4a.3 `EntityModule.enrichmentJobs` slot, the generic
+  enrichment runner, and the existing `EntityStore.listSummaries(...)`
+  helper were sufficient. The job constructs a one-shot
+  companies-store from the registry to enumerate candidates — no
+  cross-kind store method needed.
+- The proposed `EntityStore.listSummariesByLayer(layerId, kind)`
+  helper was NOT added: `listSummaries([layerId])` already provides
+  layer-scoped, non-deleted summaries for the store's bound kind,
+  which is exactly what a second-kind lookup needs after constructing
+  the appropriate per-kind store via `getEntityModule(...)`.
+
+**Tests**
+
+- `apps/server/tests/entities/contacts-enrichment.test.ts` — eight
+  scenarios:
+  - **Domain match (deterministic):** `cs@ami.nl` → AMI BV; no LLM
+    call.
+  - **ORG hint (deterministic):** `ORG: Acme Holdings` → Acme; no
+    LLM call.
+  - **LLM fallback applied:** `ORG: Acme Holding` (Lev=1 vs "Acme
+    Holdings") → fake LLM returns `{slug:"acme-holdings",
+confidence:0.92}` → link applied; exactly one LLM call.
+  - **Low-confidence LLM:** same setup, confidence 0.4 → no link.
+  - **LLM returns "none":** no link.
+  - **No-overwrite invariant:** explicit pre-set `companyEntityId`
+    is preserved even when the deterministic path would suggest a
+    different company; LLM never called.
+  - **Secret-strip invariant:** attached KvK apiKey never appears
+    in any LLM prompt or any bus-event payload.
+  - **Cross-layer isolation:** companies in layer A are not
+    candidates for a contact in layer B; LLM never called.
+
+**i18n**
+
+- `entity.enrichment.contacts.suggestCompany.{running,
+appliedCompany, noMatch}` in en + nl (real Dutch translations).
+  These are kept minimal — surface labels for the future 4b.4 / 4b.5
+  UI.
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10c — new "Deterministic-first
+  / LLM-fallback pattern (4b.3 onward)" subsection documenting the
+  three-step pattern, the per-path LLM-called table, the cross-layer
+  isolation property, and the secret-strip discipline.
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/tasklist.md` 4b.3 row → `done`.
+
+**No new ADR** — 4b.3 consumes the foundation cleanly with zero
+contract changes. ADR 0013 already governs the enrichment model.
+
+**Notable for 4b.4 (dashboard widget)**
+
+- A contact-stats provider on `EntityModule.statsProvider` (the 4a.4
+  slot) is the natural home for "how many contacts in this layer
+  have a `companyEntityId` set" — the dashboard widget's headline
+  number. The enrichment job populates that link; the stats provider
+  surfaces the rate at which it has run.
+- The `entity.enrichment.succeeded` event carries `hasPatch: true`
+  when `companyEntityId` is applied; a future bus subscriber could
+  derive a per-layer "links suggested today" counter without
+  touching the per-kind table.

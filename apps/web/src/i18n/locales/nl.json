@@ -291,6 +291,15 @@
       "save": "Opslaan",
       "cancel": "Annuleren",
       "deleteCta": "Contact verwijderen"
+    },
+    "enrichment": {
+      "contacts": {
+        "suggestCompany": {
+          "running": "Bezig met voorstellen van een bedrijfskoppeling…",
+          "appliedCompany": "{{contact}} gekoppeld aan {{company}}.",
+          "noMatch": "Nog geen passend bedrijf gevonden voor dit contact."
+        }
+      }
     }
   },
   "connectors": {

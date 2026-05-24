@@ -510,6 +510,15 @@
       "save": "Save",
       "cancel": "Cancel",
       "deleteCta": "Delete contact"
+    },
+    "enrichment": {
+      "contacts": {
+        "suggestCompany": {
+          "running": "Suggesting a company link…",
+          "appliedCompany": "Linked {{contact}} to {{company}}.",
+          "noMatch": "No matching company found for this contact yet."
+        }
+      }
     }
   },
   "connectors": {

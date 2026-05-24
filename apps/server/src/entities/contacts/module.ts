@@ -1,7 +1,8 @@
 import { ContactPayloadSchema, type ContactPayload } from '@bunny2/shared';
-import type { EntityModule } from '../module';
+import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
 import { createVcardConnector } from './vcard-connector';
+import { contactEnrichmentJobs } from './enrichment';
 
 /**
  * Phase 4b.1 — second concrete `EntityModule`.
@@ -37,12 +38,18 @@ export const CONTACT_TABLE = 'contacts';
 /**
  * Phase 4b.2 — extended for the vCard import connector. The factory
  * accepts an optional connector list (default: the production
- * `vcardConnector`) so tests inject deterministic stubs. 4b.3 (AI
- * enrichment) and 4b.4 (stats provider) extend the same options shape
- * additively.
+ * `vcardConnector`) so tests inject deterministic stubs.
+ *
+ * Phase 4b.3 — extended for the contact↔company suggestion enrichment
+ * job. The factory accepts an optional `enrichmentJobs` list (default:
+ * the production `contactEnrichmentJobs`) so tests can inject a
+ * deterministic fake LLM via a custom job list, or omit jobs entirely
+ * for the contract suite. 4b.4 (stats provider) extends the same
+ * options shape additively.
  */
 export interface CreateContactModuleOptions {
   readonly connectors?: readonly EntityConnector<ContactPayload>[];
+  readonly enrichmentJobs?: readonly EnrichmentJob<ContactPayload>[];
 }
 
 /**
@@ -64,11 +71,14 @@ export function createContactModule(
   const connectors: readonly EntityConnector<ContactPayload>[] = opts.connectors ?? [
     defaultVcardConnector,
   ];
+  const enrichmentJobs: readonly EnrichmentJob<ContactPayload>[] =
+    opts.enrichmentJobs ?? contactEnrichmentJobs;
   return {
     kind: CONTACT_KIND,
     tableName: CONTACT_TABLE,
     payloadSchema: ContactPayloadSchema,
     connectors,
+    enrichmentJobs,
     indexedColumns: [
       {
         name: 'primary_email',
