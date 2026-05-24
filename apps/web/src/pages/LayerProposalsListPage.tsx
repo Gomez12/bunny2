@@ -152,6 +152,9 @@ function ProposalsTable({
               {t('proposals.list.thresholdHeader')}
             </th>
             <th scope="col" className="py-2 pr-4">
+              {t('proposals.list.sourceHeader')}
+            </th>
+            <th scope="col" className="py-2 pr-4">
               {t('proposals.list.statusHeader')}
             </th>
           </tr>
@@ -178,6 +181,9 @@ function ProposalsTable({
               <td className="py-2 pr-4 tabular-nums">{formatImpactDelta(row.thumbsUpDelta)}</td>
               <td className="py-2 pr-4 tabular-nums">{row.threshold.toFixed(2)}</td>
               <td className="py-2 pr-4">
+                <SourceChip row={row} />
+              </td>
+              <td className="py-2 pr-4">
                 <span className="rounded-full border px-2 py-0.5 text-xs uppercase">
                   {t(`proposals.status.${row.status}`)}
                 </span>
@@ -188,4 +194,41 @@ function ProposalsTable({
       </table>
     </div>
   );
+}
+
+/**
+ * Phase 8.4 — Source chip: `auto` when the proposal was activated by
+ * the `proposals.auto-activate` job (audit `autoActivatedBy === 'system'`),
+ * `manual` when an admin approved it (audit `approvedBy !== null`),
+ * and an em-dash for everything else (new / rejected / superseded
+ * proposals that never reached an activated state). Visible text
+ * (not icon-only) per plan §9 accessibility note.
+ */
+function SourceChip({ row }: { readonly row: ProposalSummary }): JSX.Element {
+  const { t } = useTranslation();
+  if (row.autoActivatedBy === 'system') {
+    const label = t('proposals.source.auto');
+    return (
+      <span
+        title={label}
+        aria-label={label}
+        className="rounded-full border px-2 py-0.5 text-xs uppercase"
+      >
+        {label}
+      </span>
+    );
+  }
+  if (row.status === 'activated') {
+    const label = t('proposals.source.manual');
+    return (
+      <span
+        title={label}
+        aria-label={label}
+        className="rounded-full border px-2 py-0.5 text-xs uppercase"
+      >
+        {label}
+      </span>
+    );
+  }
+  return <span aria-hidden="true">—</span>;
 }

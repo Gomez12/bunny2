@@ -28,6 +28,7 @@ import {
   type ProposalDetailResponse,
   type ProposalEvidenceItem,
 } from '../lib/api';
+import { AutoActivationDecisionSchema, type AutoActivationDecision } from '@bunny2/shared';
 import { useLayerProposalDetail, formatImpactDelta } from './layer-proposals-page-state';
 
 export function LayerProposalDetailPage(): JSX.Element {
@@ -212,6 +213,9 @@ function ProposalDetailView({
           </dl>
         </section>
         <SandboxSection artifacts={data.artifacts} />
+        {proposal.autoActivationDecisionJson !== null ? (
+          <AutoActivationDecisionPanel decisionJson={proposal.autoActivationDecisionJson} />
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -437,6 +441,105 @@ function RejectDialog({
         </div>
       </form>
     </dialog>
+  );
+}
+
+/**
+ * Phase 8.4 — collapsed "Auto-activation decision" panel. Reads the
+ * stringified JSON from `improvement_proposals.auto_activation_decision_json`,
+ * parses + validates with the shared zod schema, then renders the
+ * seven gate records as a semantic `<table>` (per plan §9 accessibility:
+ * `<th>` for column headers; no `aria-sort` because the table is not
+ * user-sortable). Renders a localized alert when parse / validation
+ * fails so the gap is visible to admins rather than silently swallowed.
+ */
+function AutoActivationDecisionPanel({
+  decisionJson,
+}: {
+  readonly decisionJson: string;
+}): JSX.Element {
+  const { t } = useTranslation();
+  let parsed: AutoActivationDecision | null = null;
+  let parseFailed = false;
+  try {
+    const raw = JSON.parse(decisionJson) as unknown;
+    const result = AutoActivationDecisionSchema.safeParse(raw);
+    if (result.success) parsed = result.data;
+    else parseFailed = true;
+  } catch {
+    parseFailed = true;
+  }
+  if (parseFailed || parsed === null) {
+    return (
+      <section aria-labelledby="auto-activation-decision">
+        <h2 id="auto-activation-decision" className="text-base font-semibold">
+          {t('proposals.autoActivation.decisionTitle')}
+        </h2>
+        <p role="alert" className="text-sm text-destructive">
+          {t('proposals.autoActivation.decisionMalformed')}
+        </p>
+      </section>
+    );
+  }
+  const decision: AutoActivationDecision = parsed;
+  return (
+    <section aria-labelledby="auto-activation-decision">
+      <h2 id="auto-activation-decision" className="text-base font-semibold">
+        {t('proposals.autoActivation.decisionTitle')}
+      </h2>
+      <details className="mt-2 rounded-md border p-3">
+        <summary className="cursor-pointer text-sm">{t('proposals.autoActivation.badge')}</summary>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th scope="col" className="py-1 pr-3">
+                  {t('proposals.autoActivation.decisionGateColumn')}
+                </th>
+                <th scope="col" className="py-1 pr-3">
+                  {t('proposals.autoActivation.decisionResultColumn')}
+                </th>
+                <th scope="col" className="py-1">
+                  {t('proposals.autoActivation.decisionDetailColumn')}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {decision.gates.map((gate, idx) => (
+                <tr key={`${gate.name}-${idx}`} className="border-b last:border-0">
+                  <td className="py-1 pr-3 font-mono text-xs">{gate.name}</td>
+                  <td className="py-1 pr-3">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-xs uppercase ${
+                        gate.passed
+                          ? 'border-green-500 text-green-700'
+                          : 'border-red-500 text-red-700'
+                      }`}
+                    >
+                      {gate.passed
+                        ? t('proposals.autoActivation.decisionGatePassed')
+                        : t('proposals.autoActivation.decisionGateFailed')}
+                    </span>
+                  </td>
+                  <td className="py-1">
+                    <code className="text-xs">
+                      {gate.detail !== undefined ? JSON.stringify(gate.detail) : '—'}
+                    </code>
+                  </td>
+                </tr>
+              ))}
+              {decision.outcome === 'rejected' ? (
+                <tr>
+                  <td colSpan={3} className="py-2 text-xs text-destructive">
+                    {t('proposals.autoActivation.decisionRejected', { reason: decision.reason })}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
   );
 }
 

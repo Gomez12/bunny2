@@ -25,6 +25,7 @@ import { errorKeyOf } from '../lib/errors';
 import { refreshLayers, useSession } from '../lib/session';
 import { pushToast } from '../lib/toast';
 import { useCurrentLayer } from '../lib/use-current-layer';
+import { LayerSettingsProposalsTab } from './LayerSettingsProposalsTab';
 
 /**
  * Layer settings — General / Members / Visibility / Locales / Attachments.
@@ -42,7 +43,14 @@ import { useCurrentLayer } from '../lib/use-current-layer';
  * tab-local state without a full reload, then push a toast.
  */
 
-const TAB_VALUES = ['general', 'members', 'visibility', 'locales', 'attachments'] as const;
+const TAB_VALUES = [
+  'general',
+  'members',
+  'visibility',
+  'locales',
+  'attachments',
+  'proposals',
+] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function parseTab(raw: string | null): TabValue {
@@ -97,6 +105,11 @@ export function LayerSettingsPage(): JSX.Element {
       value: 'attachments',
       label: t('admin.layers.detail.tabs.attachments'),
       panel: <AttachmentsTab layer={layer} canEdit={canEdit} />,
+    },
+    {
+      value: 'proposals',
+      label: t('nav.layerSettings.proposals'),
+      panel: <LayerSettingsProposalsTab layer={layer} canEdit={canEdit} />,
     },
   ];
 

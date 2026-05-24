@@ -39,6 +39,7 @@ import { registerAdminBusRoutes } from './routes/admin-bus';
 import { registerLayerChatRoutes } from './routes/layer-chat';
 import { registerLayerProposalsRoutes } from './routes/layer-proposals';
 import { registerLayerCapabilitiesRoutes } from './routes/layer-capabilities';
+import { registerLayerProposalSettingsRoutes } from './routes/layer-proposal-settings';
 import { createSqliteLlmCallLog } from '../llm/call-log';
 import {
   createEntityStore as createGenericEntityStore,
@@ -392,6 +393,14 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
       db: deps.db,
       resolver: deps.resolver,
       capabilityRegistry: deps.capabilityRegistry,
+    });
+    // Phase 8.4 — admin-tunable auto-activation knobs per layer. Wired
+    // alongside the proposals + capabilities routes so the settings,
+    // proposals, and capabilities surfaces all share the same dep set.
+    registerLayerProposalSettingsRoutes(app, {
+      bus: deps.bus,
+      db: deps.db,
+      resolver: deps.resolver,
     });
   }
 

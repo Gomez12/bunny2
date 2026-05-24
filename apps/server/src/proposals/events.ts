@@ -147,3 +147,28 @@ export interface ProposalAutoActivatedPayload {
 }
 
 export const PROPOSAL_AUTO_ACTIVATED_EVENT_TYPE: ProposalEventType = 'proposal.auto-activated';
+
+/**
+ * Phase 8.4 — fired by `PUT /l/:slug/settings/proposals` on a
+ * successful upsert (ADR 0026 §1, plan §2). Carries IDs + the closed
+ * set of field names whose value changed since the previous row; no
+ * values, no reason text. On a first-save the payload lists every
+ * field name (`'autoActivationEnabled'`, …) so subscribers can tell
+ * "settings created" apart from "no-op save".
+ *
+ * Anti-leak invariant (plan §10): the payload is admin-audit only and
+ * MUST NOT carry the cutoff / cooldown values, the previous values,
+ * or any LLM- or chat-content derived data — those settings are
+ * tunable knobs but the bus event is a stable signal that something
+ * changed, not a settings replica.
+ */
+export const LAYER_PROPOSAL_SETTINGS_UPDATED_EVENT_TYPE =
+  'layer.proposal-settings.updated' as const;
+export type LayerProposalSettingsUpdatedEventType =
+  typeof LAYER_PROPOSAL_SETTINGS_UPDATED_EVENT_TYPE;
+
+export interface LayerProposalSettingsUpdatedPayload {
+  readonly layerId: string;
+  readonly updatedBy: string;
+  readonly changedFields: readonly string[];
+}

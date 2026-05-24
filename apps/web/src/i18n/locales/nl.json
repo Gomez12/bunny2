@@ -25,7 +25,10 @@
     "adminScheduledTasks": "Beheer · Geplande taken",
     "adminBusDlq": "Beheer · DLQ",
     "proposals": "Voorstellen",
-    "capabilities": "Capabilities"
+    "capabilities": "Capabilities",
+    "layerSettings": {
+      "proposals": "Voorstellen"
+    }
   },
   "layer": {
     "switcher": {
@@ -42,6 +45,29 @@
       "project": "Project",
       "group": "Groep",
       "everyone": "Iedereen"
+    },
+    "settings": {
+      "proposals": {
+        "title": "Voorstellen",
+        "pageDescription": "Stel in wanneer aangemaakte verbetervoorstellen automatisch geactiveerd mogen worden voor deze laag. Voorstellen die boven de drempel scoren doorlopen dezelfde activatieroute als beheerders gebruiken, dus de snapshot- en sandbox-checks blijven gelden.",
+        "tabLabel": "Voorstellen",
+        "enabledLabel": "Auto-activeren inschakelen voor deze laag",
+        "enabledDescription": "Als dit uit staat blijven voorstellen ‘nieuw’ totdat een beheerder ze goedkeurt. De auto-activeertaak slaat deze laag dan helemaal over.",
+        "thresholdCutoffLabel": "Drempelwaarde (0,00 – 1,00)",
+        "thresholdCutoffDescription": "Voorstellen met een drempel groter dan of gelijk aan deze waarde mogen auto-activeren. De standaardwaarde 1,00 betekent ‘nooit’.",
+        "cooldownHoursLabel": "Wachttijd (uren)",
+        "cooldownHoursDescription": "Wacht zoveel uur na het aanmaken van een voorstel voordat het automatisch geactiveerd mag worden. Gebruik dit venster om voorstellen handmatig op te pakken.",
+        "requireThumbsUpDeltaLabel": "Verschil in duim-omhoog moet positief zijn",
+        "maxTokensDeltaLabel": "Maximaal verschil in tokens",
+        "maxTokensDeltaCapLabel": "Verschil in tokens begrenzen",
+        "saveCta": "Opslaan",
+        "cancelCta": "Annuleren",
+        "savedToast": "Instellingen voor voorstellen opgeslagen.",
+        "errorOutOfRange": "Een of meer waarden vallen buiten het toegestane bereik.",
+        "errorNetwork": "Kon instellingen voor voorstellen niet opslaan.",
+        "sourceDefault": "Standaardwaarden — nog geen instellingen opgeslagen.",
+        "sourceSaved": "Opgeslagen op {{updatedAt}} door {{updatedBy}}."
+      }
     },
     "dashboard": {
       "title": "{{name}} · Dashboard",
@@ -923,6 +949,7 @@
       "problemHeader": "Probleem",
       "impactHeader": "Impact",
       "thresholdHeader": "Drempel",
+      "sourceHeader": "Bron",
       "statusHeader": "Status",
       "sortNewest": "Nieuwste",
       "sortImpact": "Hoogste impact",
@@ -981,6 +1008,30 @@
       "timeout": "Sandbox-herhaling overschreed de tijdslimiet.",
       "unknownHandlerKind": "Onbekend handler-soort in de voorstelspec.",
       "alreadyTerminal": "Dit voorstel kan niet meer worden goedgekeurd of afgewezen."
+    },
+    "source": {
+      "auto": "auto",
+      "manual": "handmatig"
+    },
+    "autoActivation": {
+      "badge": "Auto-geactiveerd",
+      "decisionTitle": "Beslissing voor auto-activering",
+      "decisionGateColumn": "Check",
+      "decisionResultColumn": "Resultaat",
+      "decisionDetailColumn": "Detail",
+      "decisionGatePassed": "ok",
+      "decisionGateFailed": "fout",
+      "decisionRejected": "Geweigerd omdat: {{reason}}",
+      "decisionMalformed": "De JSON van de auto-activeerbeslissing kon niet gelezen worden.",
+      "decisionGateName": {
+        "autoActivationDisabled": "Auto-activering staat uit voor deze laag",
+        "cooldownNotElapsed": "Wachttijd is nog niet verstreken",
+        "thresholdBelowCutoff": "Drempel is lager dan de laagdrempel",
+        "sandboxOutcomeNotOk": "Sandboxresultaat is niet OK",
+        "thumbsUpDeltaNonPositive": "Verschil in duim-omhoog is niet positief",
+        "tokensDeltaOverCap": "Verschil in tokens overschrijdt de laagcap",
+        "noSandboxEvidence": "Er is geen sandboxbewijs beschikbaar"
+      }
     }
   },
   "capabilities": {

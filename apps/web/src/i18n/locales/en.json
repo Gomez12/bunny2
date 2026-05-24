@@ -25,7 +25,10 @@
     "adminScheduledTasks": "Admin · Scheduled tasks",
     "adminBusDlq": "Admin · DLQ",
     "proposals": "Proposals",
-    "capabilities": "Capabilities"
+    "capabilities": "Capabilities",
+    "layerSettings": {
+      "proposals": "Proposals"
+    }
   },
   "auth": {
     "login": {
@@ -440,6 +443,29 @@
       "project": "Project",
       "group": "Group",
       "everyone": "Everyone"
+    },
+    "settings": {
+      "proposals": {
+        "title": "Proposals",
+        "pageDescription": "Configure when minted improvement proposals can auto-activate for this layer. Above-threshold proposals run the same activation path admins click, so the snapshot-diff and sandbox-evidence guarantees still hold.",
+        "tabLabel": "Proposals",
+        "enabledLabel": "Enable auto-activation for this layer",
+        "enabledDescription": "When off, proposals stay in ‘new’ until an admin approves them. The auto-activate job will skip this layer entirely.",
+        "thresholdCutoffLabel": "Threshold cutoff (0.00 – 1.00)",
+        "thresholdCutoffDescription": "Proposals with a threshold greater than or equal to this value can auto-activate. The default of 1.00 means ‘never’.",
+        "cooldownHoursLabel": "Cooldown (hours)",
+        "cooldownHoursDescription": "Wait this many hours after a proposal is minted before auto-activating it. Use this window to intercept anything you want to keep manual.",
+        "requireThumbsUpDeltaLabel": "Require thumbs-up delta to be positive",
+        "maxTokensDeltaLabel": "Max tokens delta",
+        "maxTokensDeltaCapLabel": "Cap tokens delta",
+        "saveCta": "Save changes",
+        "cancelCta": "Cancel",
+        "savedToast": "Proposal settings saved.",
+        "errorOutOfRange": "One or more values are out of range.",
+        "errorNetwork": "Could not save proposal settings.",
+        "sourceDefault": "Using default values — no settings saved yet.",
+        "sourceSaved": "Saved on {{updatedAt}} by {{updatedBy}}."
+      }
     },
     "dashboard": {
       "title": "{{name}} · Dashboard",
@@ -1141,6 +1167,7 @@
       "problemHeader": "Problem",
       "impactHeader": "Impact",
       "thresholdHeader": "Threshold",
+      "sourceHeader": "Source",
       "statusHeader": "Status",
       "sortNewest": "Newest",
       "sortImpact": "Highest impact",
@@ -1199,6 +1226,30 @@
       "timeout": "Sandbox replay timed out.",
       "unknownHandlerKind": "Unknown handler kind in the proposal spec.",
       "alreadyTerminal": "This proposal is no longer in a state that can be approved or rejected."
+    },
+    "source": {
+      "auto": "auto",
+      "manual": "manual"
+    },
+    "autoActivation": {
+      "badge": "Auto-activated",
+      "decisionTitle": "Auto-activation decision",
+      "decisionGateColumn": "Gate",
+      "decisionResultColumn": "Result",
+      "decisionDetailColumn": "Detail",
+      "decisionGatePassed": "pass",
+      "decisionGateFailed": "fail",
+      "decisionRejected": "Rejected because: {{reason}}",
+      "decisionMalformed": "The auto-activation decision JSON could not be parsed.",
+      "decisionGateName": {
+        "autoActivationDisabled": "Auto-activation is disabled for this layer",
+        "cooldownNotElapsed": "Cooldown has not elapsed",
+        "thresholdBelowCutoff": "Threshold is below the layer cutoff",
+        "sandboxOutcomeNotOk": "Sandbox outcome is not OK",
+        "thumbsUpDeltaNonPositive": "Thumbs-up delta is not positive",
+        "tokensDeltaOverCap": "Tokens delta is over the layer cap",
+        "noSandboxEvidence": "No sandbox evidence is available"
+      }
     }
   },
   "capabilities": {

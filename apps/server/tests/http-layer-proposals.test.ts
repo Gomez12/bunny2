@@ -87,6 +87,34 @@ describe('GET /l/:slug/proposals', () => {
     expect(body.items.length).toBe(1);
   });
 
+  it('list summary surfaces the phase-8.4 audit columns (autoActivatedBy/At) — null on a fresh row', async () => {
+    if (fx === null) throw new Error('no fx');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const everyone = createLayersRepo(fx.db).getLayerBySlug('everyone');
+    if (everyone === null) throw new Error('expected everyone layer');
+    seedSkillProposal(fx.db, everyone.id);
+    const res = await fx.app.fetch(
+      new Request('http://localhost/l/everyone/proposals', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{
+        id: string;
+        autoActivatedBy: 'system' | null;
+        autoActivatedAt: string | null;
+      }>;
+    };
+    expect(body.items[0]?.autoActivatedBy).toBeNull();
+    expect(body.items[0]?.autoActivatedAt).toBeNull();
+  });
+
   it('returns 400 on a malformed sort value', async () => {
     if (fx === null) throw new Error('no fx');
     const { token } = await loginSeededAdminRotated({
@@ -131,6 +159,41 @@ describe('GET /l/:slug/proposals/:id', () => {
     expect(body.proposal.id).toBe(proposalId);
     expect(Array.isArray(body.evidence)).toBe(true);
     expect(Array.isArray(body.artifacts)).toBe(true);
+  });
+
+  it('detail surfaces the six phase-8.4 audit columns (null on a fresh row)', async () => {
+    if (fx === null) throw new Error('no fx');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const everyone = createLayersRepo(fx.db).getLayerBySlug('everyone');
+    if (everyone === null) throw new Error('expected everyone layer');
+    const proposalId = seedSkillProposal(fx.db, everyone.id);
+    const res = await fx.app.fetch(
+      new Request(`http://localhost/l/everyone/proposals/${proposalId}`, {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      proposal: {
+        autoActivatedBy: 'system' | null;
+        autoActivatedAt: string | null;
+        autoActivationDecisionJson: string | null;
+        rolledBackAt: string | null;
+        rolledBackBy: string | null;
+        rolledBackReason: string | null;
+      };
+    };
+    expect(body.proposal.autoActivatedBy).toBeNull();
+    expect(body.proposal.autoActivatedAt).toBeNull();
+    expect(body.proposal.autoActivationDecisionJson).toBeNull();
+    expect(body.proposal.rolledBackAt).toBeNull();
+    expect(body.proposal.rolledBackBy).toBeNull();
+    expect(body.proposal.rolledBackReason).toBeNull();
   });
 
   it('returns 404 for a proposal id that does not exist', async () => {

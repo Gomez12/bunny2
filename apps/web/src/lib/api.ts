@@ -1254,6 +1254,14 @@ export interface ProposalSummary {
   readonly threshold: number;
   readonly mintedAt: string;
   readonly thumbsUpDelta: number;
+  /**
+   * Phase 8.4 — auto-activation audit (subset). The list page renders
+   * a Source chip from these; `autoActivatedBy` is the closed literal
+   * `'system'` per ADR 0026 §3, or `null` when the proposal was not
+   * auto-touched. The full audit set lives on the detail response.
+   */
+  readonly autoActivatedAt: string | null;
+  readonly autoActivatedBy: 'system' | null;
 }
 
 export interface ProposalEvidenceItem {
@@ -1298,6 +1306,17 @@ export interface ProposalDetailResponse {
     readonly rejectedAt: string | null;
     readonly rejectedReason: string | null;
     readonly activatedAt: string | null;
+    /**
+     * Phase 8.4 — six audit columns added in 8.1. The rollback fields
+     * stay `null` until 8.5 ships the rollback route — the shape is
+     * shipped now so 8.5 is a single-route patch.
+     */
+    readonly autoActivatedBy: 'system' | null;
+    readonly autoActivatedAt: string | null;
+    readonly autoActivationDecisionJson: string | null;
+    readonly rolledBackAt: string | null;
+    readonly rolledBackBy: string | null;
+    readonly rolledBackReason: string | null;
   };
   readonly evidence: readonly ProposalEvidenceItem[];
   readonly artifacts: readonly ProposalArtifactItem[];
@@ -1412,5 +1431,60 @@ export async function deactivateLayerCapability(
   return request<{ status: 'deactivated'; capabilityId: string }>(
     `/l/${encodeURIComponent(layerSlug)}/capabilities/${encodeURIComponent(capabilityId)}/deactivate`,
     { method: 'POST', body: JSON.stringify({}) },
+  );
+}
+
+// ---------- Phase 8.4 — per-layer proposal settings -----------------------
+//
+// Mirrors the server's zod (`LayerProposalSettingsInputSchema`) one-to-one
+// — keep these shapes in sync with `packages/shared/src/proposals.ts`.
+// The `AutoActivationDecision` re-export is consumed by the proposal
+// detail page's decision panel.
+
+export type {
+  AutoActivationDecision,
+  AutoActivationGateRecord,
+  AutoActivationRejection,
+} from '@bunny2/shared';
+
+export interface LayerProposalSettings {
+  readonly layerId: string;
+  readonly autoActivationEnabled: boolean;
+  readonly thresholdCutoff: number;
+  readonly cooldownHours: number;
+  readonly requireThumbsUpDeltaPositive: boolean;
+  readonly maxTokensDelta: number | null;
+  readonly updatedAt: string;
+  readonly updatedBy: string;
+}
+
+export interface LayerProposalSettingsResponse {
+  readonly source: 'default' | 'saved';
+  readonly settings: LayerProposalSettings;
+}
+
+export interface LayerProposalSettingsInput {
+  readonly autoActivationEnabled: boolean;
+  readonly thresholdCutoff: number;
+  readonly cooldownHours: number;
+  readonly requireThumbsUpDeltaPositive: boolean;
+  readonly maxTokensDelta: number | null;
+}
+
+export async function fetchLayerProposalSettings(
+  layerSlug: string,
+): Promise<LayerProposalSettingsResponse> {
+  return request<LayerProposalSettingsResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/settings/proposals`,
+  );
+}
+
+export async function saveLayerProposalSettings(
+  layerSlug: string,
+  input: LayerProposalSettingsInput,
+): Promise<LayerProposalSettingsResponse> {
+  return request<LayerProposalSettingsResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/settings/proposals`,
+    { method: 'PUT', body: JSON.stringify(input) },
   );
 }

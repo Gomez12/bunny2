@@ -119,6 +119,14 @@ interface ProposalSummary {
   readonly mintedAt: string;
   /** Pre-extracted `expectedImpact.thumbsUpDelta` (0 when missing). */
   readonly thumbsUpDelta: number;
+  /**
+   * Phase 8.4 — auto-activation audit (subset). The list page renders
+   * a Source chip from these two; the detail endpoint surfaces the
+   * full set of audit columns. `autoActivatedBy` is the closed literal
+   * `'system'` per ADR 0026 §3 (or `null`).
+   */
+  readonly autoActivatedAt: string | null;
+  readonly autoActivatedBy: 'system' | null;
 }
 
 function summarize(row: ImprovementProposalRow): ProposalSummary {
@@ -131,6 +139,10 @@ function summarize(row: ImprovementProposalRow): ProposalSummary {
   } catch {
     /* keep 0 */
   }
+  // The DB column is `TEXT` (the auto-activate job writes the literal
+  // `'system'` only); narrow defensively here so the response type
+  // stays honest.
+  const autoActivatedBy: 'system' | null = row.autoActivatedBy === 'system' ? 'system' : null;
   return {
     id: row.id,
     layerId: row.layerId,
@@ -140,6 +152,8 @@ function summarize(row: ImprovementProposalRow): ProposalSummary {
     threshold: row.threshold,
     mintedAt: row.mintedAt,
     thumbsUpDelta,
+    autoActivatedAt: row.autoActivatedAt,
+    autoActivatedBy,
   };
 }
 
@@ -262,6 +276,10 @@ export function registerLayerProposalsRoutes(
       evidence: evidence.length,
       artifacts: artifactRows.length,
     });
+    // Phase 8.4 — surface the six audit columns added in 8.1. The
+    // rollback columns stay `null` until 8.5 ships the rollback
+    // route; shipping the shape now keeps 8.5 a single-route patch.
+    const autoActivatedByOut: 'system' | null = row.autoActivatedBy === 'system' ? 'system' : null;
     return c.json({
       proposal: {
         id: row.id,
@@ -281,6 +299,12 @@ export function registerLayerProposalsRoutes(
         rejectedAt: row.rejectedAt,
         rejectedReason: row.rejectedReason,
         activatedAt: row.activatedAt,
+        autoActivatedBy: autoActivatedByOut,
+        autoActivatedAt: row.autoActivatedAt,
+        autoActivationDecisionJson: row.autoActivationDecisionJson,
+        rolledBackAt: row.rolledBackAt,
+        rolledBackBy: row.rolledBackBy,
+        rolledBackReason: row.rolledBackReason,
       },
       evidence,
       artifacts: artifactRows.map((a) => ({
