@@ -428,6 +428,15 @@
         "attendeeDuplicate": "Each attendee can only be added once.",
         "syncFailed": "Could not sync with Google Calendar. Please try again later."
       },
+      "todos": {
+        "loadFailed": "Could not load this todo. Please try again.",
+        "saveFailed": "Could not save the todo. Please check the input and try again.",
+        "validation": "The todo could not be saved. Please check the input and try again.",
+        "slugTaken": "A todo with this slug already exists in this layer.",
+        "linkedEntityNotFound": "The linked contact or company could not be found in this layer.",
+        "linkedEntityWrongLayer": "The linked contact or company lives in a different layer.",
+        "tagDuplicate": "Each tag can only be added once."
+      },
       "connectorIngestFailed": "Could not import the file. Please verify it and try again.",
       "connectorIngestUnavailable": "File import is not available for this item kind."
     },
@@ -669,6 +678,39 @@
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the title.",
       "originalLocale": "Original locale"
+    },
+    "todos": {
+      "listTitle": "{{name}} · Todos",
+      "listEmpty": "No todos in this layer yet. Create the first one to get started.",
+      "listLoading": "Loading todos…",
+      "listError": "Could not load todos.",
+      "createCta": "New todo",
+      "fieldTitle": "Title",
+      "fieldDescription": "Description",
+      "fieldStatus": "Status",
+      "fieldStatusOpen": "Open",
+      "fieldStatusInProgress": "In progress",
+      "fieldStatusBlocked": "Blocked",
+      "fieldStatusDone": "Done",
+      "fieldStatusCancelled": "Cancelled",
+      "fieldPriority": "Priority",
+      "fieldPriorityHighest": "Highest",
+      "fieldPriorityHigh": "High",
+      "fieldPriorityNormal": "Normal",
+      "fieldPriorityLow": "Low",
+      "fieldPriorityLowest": "Lowest",
+      "fieldDueAt": "Due",
+      "fieldLinkedEntity": "Linked to",
+      "fieldLinkedEntityNone": "No linked contact or company",
+      "fieldLinkedEntityCompany": "Company",
+      "fieldLinkedEntityContact": "Contact",
+      "fieldTags": "Tags",
+      "fieldTagAdd": "Add tag",
+      "fieldTagRemove": "Remove tag",
+      "fieldCompletedAt": "Completed at",
+      "save": "Save",
+      "cancel": "Cancel",
+      "deleteCta": "Delete todo"
     }
   },
   "connectors": {

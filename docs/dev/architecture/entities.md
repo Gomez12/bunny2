@@ -1192,6 +1192,114 @@ soft-delete extension.
 
 ---
 
+## 10i. Fourth consumer: todos (4d.1)
+
+The todos kind is the fourth concrete consumer on top of the §4.0
+foundation. It is the FIRST consumer with a **polymorphic cross-kind
+link**: `payload.linkedEntityRef` points at EITHER a contact OR a
+company (e.g. "Call AMI BV", "Send proposal to Alice"). Two design
+options were on the table — two separate optional fields
+(`linkedCompanyEntityId?`, `linkedContactEntityId?`) versus a single
+`{ kind, entityId }` object — and we picked **the object shape**
+because it keeps the polymorphic intent explicit at the data layer
+and a client can resolve without a separate lookup. The §4.0
+`indexedColumns` slot accepts the projection into TWO sparse-indexed
+SQL columns (`linked_entity_id`, `linked_entity_kind`) via two
+declarations. A SQL CHECK enforces "both set or both null" as a
+defensive backstop for the zod invariant.
+
+### What landed (4d.1)
+
+- Migration `0010_todos.sql` — `todos` per-kind table with the §5
+  shared columns plus five indexed projections (`status`, `priority`,
+  `due_at`, `linked_entity_id`, `linked_entity_kind`). The
+  `priority` column is the **second non-TEXT indexed column** the
+  foundation accepts (calendar's `all_day` was the first); the
+  `IndexedValue = string | number | null` type space already
+  accommodates both kinds of integer — zero foundation tweaks.
+- Shared zod schemas in `packages/shared/src/todos.ts`:
+  `TodoStatusSchema` (enum of `open` / `in_progress` / `blocked` /
+  `done` / `cancelled`), `TodoPrioritySchema` (int 1..5),
+  `TodoLinkedEntityKindSchema` (enum of `company` / `contact`),
+  `TodoLinkedEntityRefSchema`, `TodoPayloadSchema`,
+  `CreateTodoRequestSchema`, `UpdateTodoRequestSchema`.
+- `todoModule` in `apps/server/src/entities/todos/module.ts` with the
+  five-entry `indexedColumns` declaration, a subtitle that composes
+  `status · due <dueAt> · @<linkedEntityKind>`, and a lowercase
+  search digest.
+- Wire-up helper `apps/server/src/entities/todos/index.ts` exports
+  `registerTodoModule()` (idempotent — short-circuits when ANY todo
+  module is already registered, mirroring the 4a.6 / 4b / 4c
+  pattern) and `mountTodoRoutes`. Wired into the production app
+  from `apps/server/src/http/router.ts` alongside the existing
+  companies + contacts + calendar wiring.
+- Contract suite for the kind in
+  `apps/server/tests/entities/todos-contract.test.ts` — runs the
+  §4.0 reusable suite against `todoModule`, including the
+  PATCH-merge regression that landed with the post-4c router fix,
+  plus per-kind assertions for the five indexed-column projections
+  and the subtitle shape.
+
+### Cross-kind link validation — Option 2 (inline wrapper)
+
+`payload.linkedEntityRef.entityId` MUST resolve to a non-deleted
+entity of the matching kind in the SAME layer as the todo. The §4.0
+generic router is kind-agnostic and does NOT know about cross-kind
+links. Two options were considered:
+
+- **Option 1 — `EntityModule.validatePayload?` foundation slot.**
+  Adds a seventh extension slot. Reusable for future cross-kind
+  checks (e.g. the deferred calendar-attendee → contact validation).
+- **Option 2 — inline per-kind middleware.** A small Hono
+  middleware registered by `mountTodoRoutes` BEFORE
+  `mountEntityRoutes` on the `/l/:slug/todo` and
+  `/l/:slug/todo/:entitySlug` paths. The middleware reads
+  `c.req.json()` (Hono caches the parsed body so the downstream
+  POST/PATCH handler reads the same data), inspects
+  `payload.linkedEntityRef`, and rejects unknown / cross-layer
+  links with `errors.entity.todos.linkedEntityNotFound` (400).
+
+**We picked Option 2.** The brief mandates zero foundation tweaks if
+at all possible, and 4d.1 is the FIRST cross-kind link consumer —
+extracting a slot before a second consumer exists would be premature.
+The validator lives in
+`apps/server/src/entities/todos/validate-link.ts` as a pure synchronous
+function over `(payload, layerId, db)`. The middleware that calls it
+sits inside `apps/server/src/entities/todos/index.ts`. If a SECOND
+consumer arrives (e.g. the deferred calendar-attendee → contact
+write-time check), THAT is the trigger to extract a foundation slot
+(`EntityModule.validatePayload?`) — design-once-for-all-future-kinds,
+per the bar set by the prior six extension slots.
+
+### Automatic `completedAt` normalization — skipped in 4d.1
+
+The schema accepts `completedAt` as an optional ISO timestamp so a
+future client can write it on `status='done'`. The §4.0 lifecycle
+hooks (`onUpdate`) fire AFTER the row write and cannot mutate the
+persisted payload, so automatic server-side normalization would
+require adding a "transform before persist" lifecycle hook — a
+seventh foundation slot. Per the brief's "at most one" foundation
+tweak budget and the rule "extract once a second consumer asks for
+it", we skip the auto-normalization for 4d.1. The 4d.5 web UI will
+set `completedAt` explicitly when the user marks a todo done; the
+schema is forward-stable so flipping to server-side normalization
+later is a non-breaking change.
+
+### Foundation tweaks (4d.1)
+
+- **None.** The six §4.0 + 4a / 4b / 4c extension slots
+  (`indexedColumns`, `getConnector` + dispatcher + runner,
+  `enrichmentJobs`, `statsProvider`, `EntityConnector.ingest`,
+  `enrichmentOverwriteFields`) covered the fourth consumer cleanly.
+  The polymorphic link, the dual indexed-column projection
+  (`linked_entity_id` + `linked_entity_kind`), the mixed
+  TEXT/INTEGER projections, and the cross-kind validation all
+  composed additively over the existing slots. This is the
+  EMPIRICAL confirmation the contract is stable after four
+  consumers.
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit

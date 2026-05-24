@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0009_calendar_events');
+      expect(currentSchemaVersion(db)).toBe('0010_todos');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -50,6 +50,8 @@ describe('migrations', () => {
       expect(tables).toContain('contacts');
       // 0009 — third concrete entity kind (phase 4c.1).
       expect(tables).toContain('calendar_events');
+      // 0010 — fourth concrete entity kind (phase 4d.1).
+      expect(tables).toContain('todos');
 
       const indexes = db
         .query<{ name: string }, []>(
@@ -88,6 +90,13 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_calendar_events_deleted_at');
       expect(indexes).toContain('idx_calendar_events_starts_at');
       expect(indexes).toContain('idx_calendar_events_external_cal');
+      // 0010 indexes — todos.
+      expect(indexes).toContain('idx_todos_layer');
+      expect(indexes).toContain('idx_todos_deleted_at');
+      expect(indexes).toContain('idx_todos_status');
+      expect(indexes).toContain('idx_todos_due_at');
+      expect(indexes).toContain('idx_todos_priority');
+      expect(indexes).toContain('idx_todos_linked');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -105,6 +114,35 @@ describe('migrations', () => {
         .query<{ kind: string }, [string]>('SELECT kind FROM layer_attachments WHERE id = ?')
         .get('00000000-0000-0000-0000-0000000000aa');
       expect(stored?.kind).toBe('connector');
+
+      // 0010 — `todos` CHECK constraint: `linked_entity_id` and
+      // `linked_entity_kind` must be both null or both set. Probe
+      // both directions: a half-set row must fail; a both-null row
+      // must succeed; a both-set row must succeed.
+      const probeUserId = '00000000-0000-0000-0000-000000000003';
+      db.query<unknown, [string, string]>(
+        "INSERT INTO users (id, username, display_name, password_hash, must_change_password, created_at, updated_at) VALUES (?, ?, 'probe', 'h', 0, datetime('now'), datetime('now'))",
+      ).run(probeUserId, 'probe-user');
+      type FourArgs = [string, string, string, string];
+      const okBothNull = (): void => {
+        db.query<unknown, FourArgs>(
+          "INSERT INTO todos (id, layer_id, slug, title, searchable_text, original_locale, payload_json, created_at, created_by, updated_at, updated_by) VALUES (?, ?, 'p1', 't', 't', 'en', '{}', datetime('now'), ?, datetime('now'), ?)",
+        ).run('00000000-0000-0000-0000-0000000000b1', probeLayerId, probeUserId, probeUserId);
+      };
+      okBothNull();
+      const okBothSet = (): void => {
+        db.query<unknown, FourArgs>(
+          "INSERT INTO todos (id, layer_id, slug, title, searchable_text, original_locale, payload_json, created_at, created_by, updated_at, updated_by, linked_entity_id, linked_entity_kind) VALUES (?, ?, 'p2', 't', 't', 'en', '{}', datetime('now'), ?, datetime('now'), ?, '00000000-0000-0000-0000-000000000099', 'contact')",
+        ).run('00000000-0000-0000-0000-0000000000b2', probeLayerId, probeUserId, probeUserId);
+      };
+      okBothSet();
+      // Half-set row must violate the CHECK. `bun:sqlite` throws on
+      // constraint failure — wrap in `expect(...).toThrow()`.
+      expect(() => {
+        db.query<unknown, FourArgs>(
+          "INSERT INTO todos (id, layer_id, slug, title, searchable_text, original_locale, payload_json, created_at, created_by, updated_at, updated_by, linked_entity_id) VALUES (?, ?, 'p3', 't', 't', 'en', '{}', datetime('now'), ?, datetime('now'), ?, '00000000-0000-0000-0000-000000000099')",
+        ).run('00000000-0000-0000-0000-0000000000b3', probeLayerId, probeUserId, probeUserId);
+      }).toThrow();
     } finally {
       db.close();
     }
@@ -129,6 +167,7 @@ describe('migrations', () => {
         '0007_layer_attachments_connector_kind',
         '0008_contacts',
         '0009_calendar_events',
+        '0010_todos',
       ]);
     } finally {
       db2.close();

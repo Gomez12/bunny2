@@ -207,6 +207,15 @@
         "attendeeDuplicate": "Elke deelnemer kan maar één keer worden toegevoegd.",
         "syncFailed": "Synchroniseren met Google Calendar is niet gelukt. Probeer het later opnieuw."
       },
+      "todos": {
+        "loadFailed": "Kon deze taak niet laden. Probeer het opnieuw.",
+        "saveFailed": "Kon de taak niet opslaan. Controleer de invoer en probeer het opnieuw.",
+        "validation": "De taak kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
+        "slugTaken": "Er bestaat al een taak met deze slug in deze laag.",
+        "linkedEntityNotFound": "Het gekoppelde contact of bedrijf is niet gevonden in deze laag.",
+        "linkedEntityWrongLayer": "Het gekoppelde contact of bedrijf hoort bij een andere laag.",
+        "tagDuplicate": "Elke tag kan maar één keer worden toegevoegd."
+      },
       "connectorIngestFailed": "Kon het bestand niet importeren. Controleer het en probeer het opnieuw.",
       "connectorIngestUnavailable": "Bestandsimport is niet beschikbaar voor dit itemtype."
     },
@@ -448,6 +457,39 @@
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de titel.",
       "originalLocale": "Oorspronkelijke taal"
+    },
+    "todos": {
+      "listTitle": "{{name}} · Taken",
+      "listEmpty": "Nog geen taken in deze laag. Maak de eerste aan om te starten.",
+      "listLoading": "Taken laden…",
+      "listError": "Kon taken niet laden.",
+      "createCta": "Nieuwe taak",
+      "fieldTitle": "Titel",
+      "fieldDescription": "Beschrijving",
+      "fieldStatus": "Status",
+      "fieldStatusOpen": "Open",
+      "fieldStatusInProgress": "Bezig",
+      "fieldStatusBlocked": "Geblokkeerd",
+      "fieldStatusDone": "Klaar",
+      "fieldStatusCancelled": "Geannuleerd",
+      "fieldPriority": "Prioriteit",
+      "fieldPriorityHighest": "Hoogste",
+      "fieldPriorityHigh": "Hoog",
+      "fieldPriorityNormal": "Normaal",
+      "fieldPriorityLow": "Laag",
+      "fieldPriorityLowest": "Laagste",
+      "fieldDueAt": "Deadline",
+      "fieldLinkedEntity": "Gekoppeld aan",
+      "fieldLinkedEntityNone": "Geen gekoppeld contact of bedrijf",
+      "fieldLinkedEntityCompany": "Bedrijf",
+      "fieldLinkedEntityContact": "Contact",
+      "fieldTags": "Labels",
+      "fieldTagAdd": "Label toevoegen",
+      "fieldTagRemove": "Label verwijderen",
+      "fieldCompletedAt": "Afgerond op",
+      "save": "Opslaan",
+      "cancel": "Annuleren",
+      "deleteCta": "Taak verwijderen"
     }
   },
   "connectors": {

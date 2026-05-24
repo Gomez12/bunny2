@@ -3221,3 +3221,147 @@ extensions are stable; 4c.6 ran the existing contract end-to-end
 without earning a seventh slot, and the post-4c router fix above is
 contained inside the existing router behaviour — no new contract
 slot, no new foundation tweak.
+
+### 4d.1 shipped (2026-05-24)
+
+**What landed**
+
+- Migration `apps/server/src/storage/migrations/0010_todos.sql` —
+  the fourth per-kind table. Follows §5 shape exactly: shared
+  columns (`id`, `layer_id`, `slug`, `title`, `searchable_text`,
+  `original_locale`, `payload_json`, audit columns, `version`) plus
+  five todo-specific indexed columns: `status TEXT NOT NULL DEFAULT
+'open'`, `priority INTEGER NOT NULL DEFAULT 3`, `due_at TEXT`
+  (nullable; ISO timestamp or `YYYY-MM-DD`), `linked_entity_id TEXT`
+  (nullable; soft FK), `linked_entity_kind TEXT` (nullable). A
+  CHECK constraint enforces "both set or both null" between
+  `linked_entity_id` and `linked_entity_kind`. Indexes:
+  `idx_todos_layer`, `idx_todos_deleted_at`, `idx_todos_status`
+  (load-bearing for kanban grouping), `idx_todos_due_at`
+  (load-bearing for "due today / due this week" queries),
+  `idx_todos_priority`, `idx_todos_linked` (sparse; supports the
+  reverse "todos linked to this contact" lookup in 4d.5).
+  `apps/server/tests/migrations.test.ts` asserts the new schema
+  lands on a fresh DB, that the migration list ends at `0010_todos`,
+  and probes the CHECK with three INSERT cases (both null OK, both
+  set OK, half-set throws).
+- Cross-package zod schemas in `packages/shared/src/todos.ts`:
+  `TodoStatusSchema` (5-value enum), `TodoPrioritySchema`
+  (`z.number().int().min(1).max(5)`),
+  `TodoLinkedEntityKindSchema` (`'company' | 'contact'`),
+  `TodoLinkedEntityRefSchema` (`{ kind, entityId: z.uuid() }`),
+  `TodoPayloadSchema` (description ≤ 4000, status default `'open'`,
+  priority default 3, dueAt regex `YYYY-MM-DD | ISO-8601`,
+  linkedEntityRef, completedAt with the same regex, tags array ≤16
+  deduped case-insensitively), `CreateTodoRequestSchema`,
+  `UpdateTodoRequestSchema`. Slug rule matches the 4a / 4b / 4c
+  precedents. Re-exported from `packages/shared/src/index.ts`.
+- `todoModule` (`apps/server/src/entities/todos/module.ts`) with
+  `kind = 'todo'`, `tableName = 'todos'`, the five-entry
+  `indexedColumns` declaration (mixed TEXT + INTEGER projections),
+  a `toSummary` that composes `${status}${dueAtPart}${linkPart}`
+  capped at 120 chars, and a lowercase search digest. The factory
+  shape (`createTodoModule(opts)`) mirrors the 4a / 4b / 4c
+  precedents so 4d.2 (connector placeholder) and 4d.3 (enrichment)
+  stay additive.
+- Wire-up helper `apps/server/src/entities/todos/index.ts` exports
+  `registerTodoModule()` (idempotent — short-circuits when ANY
+  todo module is already registered) and `mountTodoRoutes`. Wired
+  into the production app from `apps/server/src/http/router.ts`
+  alongside the existing companies + contacts + calendar wiring.
+- Cross-kind link validator at
+  `apps/server/src/entities/todos/validate-link.ts` — pure
+  synchronous function over `(payload, layerId, db)`. Checks the
+  referenced entity exists, is non-deleted, and lives in the same
+  layer. The validator is invoked from a small Hono middleware
+  inside `mountTodoRoutes` that intercepts POST + PATCH on
+  `/l/:slug/todo` and `/l/:slug/todo/:entitySlug` BEFORE
+  `mountEntityRoutes` handles the request body. Hono caches
+  `c.req.json()` so the downstream handler reads the same parsed
+  object — no double-parse, no body re-clone needed.
+- Contract suite for the kind in
+  `apps/server/tests/entities/todos-contract.test.ts` runs the §4.0
+  reusable suite against `todoModule` (including the post-4c
+  PATCH-merge regression) and adds per-kind assertions for the
+  five indexed-column projections (`status`, `priority`, `due_at`,
+  `linked_entity_id`, `linked_entity_kind` round-trip on create +
+  clear on update) plus the subtitle shape.
+- i18n: new `entity.todos.*` block (~26 keys covering listTitle /
+  listEmpty / listLoading / listError / createCta / field\* /
+  save / cancel / deleteCta) and new `errors.entity.todos.*`
+  block (loadFailed / saveFailed / validation / slugTaken /
+  linkedEntityNotFound / linkedEntityWrongLayer / tagDuplicate)
+  in both `en.json` and `nl.json` with real Dutch translations.
+
+**Cross-kind link validation — Option 2 (inline wrapper)**
+
+The brief listed two options for cross-kind validation: a foundation
+slot (`EntityModule.validatePayload?`) or an inline per-kind
+middleware. **We picked the inline wrapper.** The validator lives
+in `apps/server/src/entities/todos/validate-link.ts`; the middleware
+that calls it sits in `apps/server/src/entities/todos/index.ts` and
+is registered BEFORE `mountEntityRoutes` on the kind's
+POST + PATCH paths. The rationale matches the per-prior-phase bar
+for foundation extensions: extract once a SECOND consumer asks for
+the same shape (e.g. the deferred calendar-attendee → contact
+write-time check). Until then, the cross-kind concern stays out of
+the §4.0 contract.
+
+**Automatic `completedAt` normalization — skipped in 4d.1**
+
+The §4.0 `onUpdate` lifecycle hook fires AFTER the row write and
+cannot mutate the persisted payload. Adding a "transform before
+persist" hook would be a seventh foundation slot. Per the brief's
+"at most one" foundation-tweak budget, we defer automatic
+`completedAt` normalization to the 4d.5 web UI (which writes
+`completedAt` explicitly when the user marks a todo done). The
+schema is forward-stable so server-side normalization can flip on
+later without a breaking change. The brief itself nominated this
+trade-off; nothing else in 4d.1 needs the hook.
+
+**Foundation tweaks**
+
+- **None.** The six extension slots (`indexedColumns`,
+  `getConnector` + dispatcher + runner, `enrichmentJobs`,
+  `statsProvider`, `EntityConnector.ingest`,
+  `enrichmentOverwriteFields`) introduced during the 4a / 4b / 4c
+  blocks were sufficient. 4d.1 declares `indexedColumns` only; the
+  connector / enrichment / stats slots stay empty and ship in
+  4d.2 / 4d.3 / 4d.4. The polymorphic cross-kind link composes
+  additively via two indexed-column declarations + an inline
+  middleware — no contract slot needed.
+
+**No new ADR** — 4d.1 consumes the foundation cleanly with zero
+contract changes. ADR 0011 already governs the entity contract.
+
+**Notable for 4d.2 (connector placeholder)**
+
+- The factory shape (`createTodoModule(opts)`) is in place; 4d.2
+  adds a `connectors?` field to `CreateTodoModuleOptions` and
+  passes a stub connector via the same mechanism the contacts +
+  calendar factories use. Production wiring stays connector-less
+  until a real connector lands (e.g. a future Trello import).
+
+**Notable for 4d.3 (auto-priority + auto-due enrichment)**
+
+- The `enrichmentJobs` slot is empty in 4d.1; 4d.3 will declare
+  jobs `todos.autoPriority` and `todos.autoDue` against
+  `CreateTodoModuleOptions.enrichmentJobs?`. The
+  `enrichmentOverwriteFields` slot (added in 4c.3) gives 4d.3 a
+  knob if a future enrichment job needs to overwrite a non-empty
+  field — today the runner's "fill the blank" default is the
+  right call (don't clobber user-set `priority` or `dueAt`).
+
+**Notable for 4d.6 (calendar projection bridge)**
+
+- The 4d.6 subscriber will listen for `entity.todo.{created,
+updated,deleted}` and emit a read-only `calendar.projection.todo`
+  row when `payload.dueAt` is non-null. The `due_at` indexed column
+  is the obvious back-fill query for migration / boot — populate
+  the projection by scanning the indexed column rather than
+  reading every payload JSON.
+- The polymorphic `linkedEntityRef` does NOT extend to calendar
+  events: per the brief, a todo's link target is a person /
+  business; the calendar projection is the read-only secondary
+  surface. The `TodoLinkedEntityKindSchema` enum is locked at
+  `'company' | 'contact'` for exactly this reason.

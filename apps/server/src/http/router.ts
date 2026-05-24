@@ -26,6 +26,7 @@ import {
   registerCalendarEventModule,
   buildProductionCalendarEventModule,
 } from '../entities/calendar';
+import { mountTodoRoutes, registerTodoModule } from '../entities/todos';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -197,6 +198,20 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     ...(deps.ingestDispatcher === undefined ? {} : { ingestDispatcher: deps.ingestDispatcher }),
     ...(deps.ingestMaxBytes === undefined ? {} : { ingestMaxBytes: deps.ingestMaxBytes }),
     defaultLocale: deps.locales.default,
+  });
+
+  // Phase 4d.1 — todos entity. Same idempotent registration pattern as
+  // companies / contacts / calendar. Cross-kind link validation (a
+  // `payload.linkedEntityRef` pointing at a contact or company in the
+  // same layer) is enforced by a small per-kind middleware mounted in
+  // `mountTodoRoutes` BEFORE `mountEntityRoutes` — keeps the §4.0
+  // generic router unaware of cross-kind concerns. See
+  // `apps/server/src/entities/todos/validate-link.ts`.
+  registerTodoModule();
+  mountTodoRoutes(app, {
+    db: deps.db,
+    bus: deps.bus,
+    llm: deps.llmClient,
   });
 
   return app;
