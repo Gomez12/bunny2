@@ -280,18 +280,28 @@ export function createEnrichmentRunner(deps: EnrichmentRunnerDeps): EnrichmentRu
     }
     const entity = store.getById(entry.entityId);
     if (entity === null) return 0;
+    // The runner iterates jobs sequentially and EACH job may patch the
+    // entity. Earlier code reused the load-once `entity` reference for
+    // every job, so the second job's `applyPatch` merged
+    // `{ ...entity.payload, ...filtered }` against the STALE pre-tick
+    // payload and silently reverted the first job's writes for any
+    // field the second job did not touch. We now refresh `current`
+    // after every successful patch so each job sees the latest payload.
+    // See the (now-resolved) follow-up
+    // `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md`.
+    let current = entity;
     let ran = 0;
     for (const job of jobs) {
       const overlap = job.runOn.some((t) => entry.triggers.has(t));
       if (!overlap) continue;
       const trigger = pickPrimaryTrigger(job.runOn, entry.triggers);
       // Rate limit
-      if (!checkAndRecordRateLimit(entry.kind === module.kind ? entity.layerId : entity.layerId)) {
+      if (!checkAndRecordRateLimit(current.layerId)) {
         const deferred: EntityEnrichmentDeferredPayload = {
           kind: entry.kind,
           entityId: entry.entityId,
           jobId: job.id,
-          layerId: entity.layerId,
+          layerId: current.layerId,
           reason: 'rate_limited',
         };
         await deps.bus.publish({
@@ -316,12 +326,13 @@ export function createEnrichmentRunner(deps: EnrichmentRunnerDeps): EnrichmentRu
         payload: started,
         ...(entry.correlationId === undefined ? {} : { correlationId: entry.correlationId }),
       });
+      let refreshedAfterPatch = false;
       try {
-        const result = await job.run(entity, {
+        const result = await job.run(current, {
           db: deps.db,
           bus: deps.bus,
           llm: deps.llm,
-          layerId: entity.layerId,
+          layerId: current.layerId,
           trigger,
           module,
           ...(entry.correlationId === undefined ? {} : { correlationId: entry.correlationId }),
@@ -330,15 +341,22 @@ export function createEnrichmentRunner(deps: EnrichmentRunnerDeps): EnrichmentRu
           result.patch !== undefined && Object.keys(result.patch as object).length > 0;
         let applied = false;
         if (hasPatch) {
-          applied = await applyPatch(module, store, entity, result.patch as Partial<unknown>);
+          applied = await applyPatch(module, store, current, result.patch as Partial<unknown>);
           if (applied) {
+            // Re-read the entity so the NEXT job in this tick sees the
+            // merged payload. If the row vanished (race with
+            // soft-delete) we still publish the succeeded event for
+            // the current job — the patch did land — and stop iterating
+            // because there is nothing further to enrich.
             const refreshed = store.getById(entry.entityId);
             if (refreshed !== null) {
-              recordLastEnriched(entry.entityId, module.kind, refreshed.meta.version, job.id);
+              current = refreshed;
+              refreshedAfterPatch = true;
+              recordLastEnriched(entry.entityId, module.kind, current.meta.version, job.id);
             }
           }
         } else {
-          recordLastEnriched(entry.entityId, module.kind, entity.meta.version, job.id);
+          recordLastEnriched(entry.entityId, module.kind, current.meta.version, job.id);
         }
         const tokensIn = result.tokensIn ?? 0;
         const tokensOut = result.tokensOut ?? 0;
@@ -359,6 +377,12 @@ export function createEnrichmentRunner(deps: EnrichmentRunnerDeps): EnrichmentRu
           ...(entry.correlationId === undefined ? {} : { correlationId: entry.correlationId }),
         });
         ran += 1;
+        if (applied && !refreshedAfterPatch) {
+          // applyPatch succeeded but the row is gone — bail out of the
+          // job loop entirely. Subsequent jobs would see a
+          // soft-deleted (or vanished) entity.
+          break;
+        }
       } catch (err) {
         const safe = sanitizeError(err);
         const failed: EntityEnrichmentFailedPayload = {

@@ -2913,21 +2913,24 @@ warnings: [] }`. Exactly one `entity.connector.ingest.completed`
   - Re-ingest with the same body → `{ created: 0, updated: 3,
 warnings: [] }`. Dedup via `entity_external_links` works once the
     back-fill is in place.
-  - `enrichmentRunner.tickOnce()` twice (workaround for the
-    in-tick clobber bug — see
-    `docs/dev/follow-ups/enrichment-runner-stale-payload.md`).
-    Asserts the kickoff event's first attendee carries
-    `contactEntityId === aliceCalId` (exact-email match,
-    deterministic path — no LLM call mentioning "Project kickoff")
-    and `payload.meetingSummaryNote` is set (summary job ran).
+  - `enrichmentRunner.tickOnce()` twice. With the post-4c runner
+    refresh fix (see
+    `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md`)
+    a single tick suffices for the in-tick writes; the second tick
+    drains the follow-up `entity.calendar_event.updated` event that
+    `store.update` re-publishes, so the §14.6 idempotence
+    assertion runs against a settled state. Asserts the kickoff
+    event's first attendee carries `contactEntityId === aliceCalId`
+    (exact-email match, deterministic path — no LLM call mentioning
+    "Project kickoff") and `payload.meetingSummaryNote` is set
+    (summary job ran).
   - Soul stamp assertion: `entity_souls.memory_json
 .lastEnrichedAtVersionByJob` carries numeric entries for both
     `calendar.attendeeContacts` and `calendar.summary`.
   - Idempotence sanity: a third tick does NOT add new
-    attendeeContacts LLM calls for the kickoff. (Summary may still
-    tick on other events as the clobber-induced ping-pong settles —
-    once the runner-stale-payload follow-up lands, the assertion
-    tightens.)
+    attendeeContacts LLM calls for the kickoff (the `needsWork`
+    short-circuit fires) and the summary job's idempotence guard
+    short-circuits too.
   - `GET /l/.../calendar_event/_stats` → `total: 4`,
     `withAttendeesLinked >= 1`, `recentlyEnriched: 4`. The lower
     bound on `withAttendeesLinked` accounts for the runner-bug
@@ -3032,11 +3035,13 @@ subtitle / updatedAt` triple Companies / Contacts use today.
     `entity_external_links` on create-from-ingest, so the
     documented externalId dedup contract requires the smoke to
     back-fill links manually.
-  - `docs/dev/follow-ups/enrichment-runner-stale-payload.md` —
-    the runner reuses the same in-memory entity reference across
-    jobs; the second job's `applyPatch` clobbers the first
-    job's writes for non-overlapping fields. Smoke runs two
-    ticks as a documented workaround.
+  - `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md` —
+    the runner reused the same in-memory entity reference across
+    jobs; the second job's `applyPatch` clobbered the first
+    job's writes for non-overlapping fields. Fixed in the
+    post-4c entry above; the smoke's reorder workaround was
+    removed and the production job order
+    `[attendeeContactsJob, summaryJob]` restored.
 
 **Foundation tweaks**
 
@@ -3065,6 +3070,36 @@ subtitle / updatedAt` triple Companies / Contacts use today.
 an ADR. ADRs 0011 / 0012 / 0013 / 0014 / 0015 / 0016 already govern
 the relevant contracts (entity contract, KvK connector, enrichment,
 connector ingest, secret encryption, Google Calendar connector).
+
+### Post-4c fix: enrichment runner refresh between jobs (2026-05-24)
+
+The 4c.6 close-out enumerated three open follow-ups; bug #3 — the
+enrichment runner clobbering earlier-job patches in the same tick —
+landed as a standalone fix on top of the 4c block.
+
+**What changed**
+
+- `apps/server/src/entities/enrichment-runner.ts` — `processEntry`
+  now keeps a mutable `current` reference and re-reads the entity
+  from the store after every successful `applyPatch` so the next
+  job in the tick sees the merged payload. Earlier code reused the
+  load-once reference, and `applyPatch`'s spread merged against the
+  STALE payload, silently reverting the previous job's writes for
+  any field the current job did not touch.
+- `apps/server/tests/entities/enrichment-runner.test.ts` — added two
+  regression tests under the "multi-job tick preserves earlier
+  writes" suite: one for non-overlapping fields, one for the same
+  field (last-write-wins, with an assertion that job B saw job A's
+  write).
+- `apps/server/tests/smoke.test.ts` step 14 — restored the calendar
+  module's `enrichmentJobs` to the production order
+  `[attendeeContactsJob, summaryJob]`. The reorder workaround
+  documented at 4c.6 is no longer needed.
+- `docs/dev/follow-ups/enrichment-runner-stale-payload.md` →
+  `docs/dev/follow-ups/done/`, status `done`.
+
+**No regressions** — companies (2 jobs), contacts (1 job) and
+calendar (2 jobs) enrichment tests stay green without modification.
 
 ---
 
@@ -3118,16 +3153,14 @@ Three new follow-ups added by 4c.6 itself:
   wholesale-replaces `payload`, wiping runner-owned fields.
 - `docs/dev/follow-ups/ingest-externalid-dedup.md` — dispatcher
   does not write `entity_external_links` on create-from-ingest.
-- `docs/dev/follow-ups/enrichment-runner-stale-payload.md` —
-  multi-job tick clobbers earlier writes via stale in-memory
-  entity reference.
+- `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md` —
+  multi-job tick clobbered earlier writes via stale in-memory
+  entity reference. Fixed in the post-4c entry above.
 
 **Next**
 
 The 4d block (Todos + Calendar bridge) opens on this foundation.
 The smoke template carries through one more time; the
-runner-stale-payload follow-up is the natural prerequisite for any
-future job-pair that touches overlapping payload fields, and the
 calendar-patch-payload-merge follow-up should land alongside the
 4d.5 todo detail page so the merge semantics ship cleanly together.
 The six foundation extensions are stable; 4c.6 ran the existing

@@ -587,6 +587,12 @@ exposes:
   Tests use this instead of fake timers for the debounce half; the
   fake clock is still needed for the rate-limit window.
 
+Within a single `processEntry` pass the runner re-reads the entity
+from the store after every successful `applyPatch` so the next job
+in the tick observes the merged payload. This was a behaviour fix
+on top of the 4c block (see
+`docs/dev/follow-ups/done/enrichment-runner-stale-payload.md`).
+
 Production wiring lives in `apps/server/src/index.ts` and respects
 `config.enrichment.runnerEnabled` (default `true`).
 

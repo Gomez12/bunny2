@@ -1,6 +1,18 @@
-# Follow-up — Enrichment runner clobbers earlier job patches in the same tick
+# Follow-up — Enrichment runner clobbers earlier job patches in the same tick (fixed)
 
-## What remains
+## Resolution (2026-05-24)
+
+The fix landed in commit
+`fix(enrichment): refresh entity between jobs in one tick (4c bug #3)`.
+`processEntry` now keeps a mutable `current` reference that is
+re-read from the store after every successful `applyPatch`. The
+calendar smoke step 14 was restored to the production job order
+`[attendeeContactsJob, summaryJob]` and a dedicated regression test
+(`apps/server/tests/entities/enrichment-runner.test.ts §multi-job
+tick preserves earlier writes`) covers both the "different fields"
+and "same field, last-write-wins" cases.
+
+## What remained (historical)
 
 `createEnrichmentRunner` in
 `apps/server/src/entities/enrichment-runner.ts` loads the entity once
@@ -94,4 +106,4 @@ calendar has two, todos will add more) and needs:
 
 ## Status
 
-open
+done

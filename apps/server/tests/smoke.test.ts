@@ -1745,18 +1745,15 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       fetch: stubGoogleFetch,
       secrets: calendarSecrets,
     });
-    // The enrichment runner today loads the entity once per tick and
-    // reuses the in-memory payload across jobs (see
-    // `docs/dev/follow-ups/enrichment-runner-stale-payload.md`). Two
-    // jobs that touch overlapping fields would race; the second job
-    // clobbers the first job's payload writes. Ordering the summary
-    // job FIRST lets the attendeeContacts job's `attendees` write win
-    // — that's the field the smoke asserts on. The production module
-    // ships `[attendeeContactsJob, summaryJob]`; we reorder here as
-    // a documented workaround for the runner bug.
+    // The runner now refreshes the in-memory entity between jobs in
+    // the same tick (see
+    // `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md`),
+    // so the production job order
+    // `[attendeeContactsJob, summaryJob]` works as declared in
+    // `apps/server/src/entities/calendar/enrichment.ts`.
     const stubCalendarModule = createCalendarEventModule({
       connectors: [stubGoogleConnector],
-      enrichmentJobs: [calendarSummaryJob, calendarAttendeeContactsJob],
+      enrichmentJobs: [calendarAttendeeContactsJob, calendarSummaryJob],
     });
     const stepContactModuleForCal = createContactModule();
     registerEntityModule(stubCalendarModule);
@@ -2041,16 +2038,17 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       //      We assert specifically on the kickoff event, which is the
       //      smoke's controlled fixture.
       //
-      //      We run two ticks: the in-tick-clobber bug (see
-      //      `docs/dev/follow-ups/enrichment-runner-stale-payload.md`)
-      //      lets one job's writes overwrite the other's on tick #1.
-      //      The applyPatch's `store.update` re-publishes
-      //      `entity.calendar_event.updated` which schedules the
-      //      entity for tick #2. Tick #2's read-of-truth sees the
-      //      surviving write from tick #1 and re-applies the loser's
-      //      field; the winner's job short-circuits (its work is
-      //      already done). Once the follow-up lands, drop the
-      //      second tick.
+      //      A single tick is sufficient: the runner now refreshes
+      //      the entity between jobs in the same tick (see
+      //      `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md`),
+      //      so the attendeeContacts job's `attendees` write and the
+      //      summary job's `meetingSummaryNote` write both land
+      //      together. The second tick remains because the first
+      //      tick's `store.update` re-publishes
+      //      `entity.calendar_event.updated`, scheduling the entity
+      //      for a follow-up tick; running that tick here drains the
+      //      pending queue so the §14.6 idempotence assertion below
+      //      runs against a settled state.
       await calendarEnrichmentRunner.tickOnce();
       await calendarEnrichmentRunner.tickOnce();
 
@@ -2114,18 +2112,13 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       expect(typeof soul.lastEnrichedAtVersionByJob?.['calendar.attendeeContacts']).toBe('number');
       expect(typeof soul.lastEnrichedAtVersionByJob?.['calendar.summary']).toBe('number');
 
-      // 14.6 Idempotence — capture the runner's settling. After two
-      //      pre-ticks (workaround for the runner-clobber bug) the
+      // 14.6 Idempotence — after the pre-ticks above settle, the
       //      kickoff event is stable: its attendees carry
       //      contactEntityId and its meetingSummaryNote is present.
-      //      Running additional ticks should not invoke the
+      //      Running another tick should not invoke the
       //      attendeeContacts LLM fallback for the kickoff (the
-      //      `needsWork` short-circuit fires); the summary job may
-      //      still tick on other events as the clobber-induced
-      //      ping-pong settles, but eventually the runner stops
-      //      calling the LLM at all. Once the stale-payload follow-
-      //      up lands, both assertions tighten back to "exactly zero
-      //      new LLM calls on a follow-up tick".
+      //      `needsWork` short-circuit fires) and the summary job
+      //      idempotence guard short-circuits too.
       const llmCallsBeforeIdem = calendarLlmCalls.length;
       await calendarEnrichmentRunner.tickOnce();
       const newAttendeeAboutKickoff = calendarLlmCalls

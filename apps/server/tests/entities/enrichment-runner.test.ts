@@ -557,3 +557,209 @@ describe('enrichment runner :: rate limit', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 4c bug #3 — multi-job stale-payload clobber (now fixed).
+//
+// The runner used to load the entity ONCE at the top of `processEntry` and
+// reuse the in-memory reference across every job. Because `applyPatch`
+// merges via `{ ...entity.payload, ...filtered }`, the second job's
+// merge silently reverted the first job's writes for fields the second
+// job's patch did not touch.
+//
+// Both tests below use a dedicated fixture module (`twojob-fixture`) so
+// they do not interact with the calendar / companies / contacts modules.
+// The follow-up that tracked this work moved to
+// `docs/dev/follow-ups/done/enrichment-runner-stale-payload.md`.
+// ---------------------------------------------------------------------------
+
+const TwoJobPayloadSchema = z.object({
+  title: z.string().min(1),
+  foo: z.string().nullable().optional(),
+  bar: z.string().nullable().optional(),
+});
+type TwoJobPayload = z.infer<typeof TwoJobPayloadSchema>;
+
+function buildTwoJobModule(
+  jobs: readonly EnrichmentJob<TwoJobPayload>[],
+): EntityModule<TwoJobPayload> {
+  return {
+    kind: 'twojob-fixture',
+    tableName: 'twojob_fixture_entities',
+    payloadSchema: TwoJobPayloadSchema,
+    enrichmentJobs: jobs,
+    // Declare both fields as overrideable so a second-pass clobber test
+    // (same field written by two jobs) is not blocked by the
+    // no-overwrite rule once the field becomes non-empty.
+    enrichmentOverwriteFields: ['foo', 'bar'],
+    toSummary({ ref, meta, payload, title }) {
+      return {
+        ...ref,
+        meta,
+        title,
+        subtitle: null,
+        searchableText: `${title}\n${payload.foo ?? ''}\n${payload.bar ?? ''}`,
+      };
+    },
+    searchableText(payload) {
+      return `${payload.title}\n${payload.foo ?? ''}\n${payload.bar ?? ''}`;
+    },
+  };
+}
+
+function createTwoJobTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS twojob_fixture_entities (
+      id              TEXT PRIMARY KEY,
+      layer_id        TEXT NOT NULL REFERENCES layers(id),
+      slug            TEXT NOT NULL,
+      title           TEXT NOT NULL,
+      searchable_text TEXT NOT NULL,
+      original_locale TEXT NOT NULL,
+      payload_json    TEXT NOT NULL,
+      created_at      TEXT NOT NULL,
+      created_by      TEXT NOT NULL REFERENCES users(id),
+      updated_at      TEXT NOT NULL,
+      updated_by      TEXT NOT NULL REFERENCES users(id),
+      deleted_at      TEXT,
+      deleted_by      TEXT REFERENCES users(id),
+      version         INTEGER NOT NULL DEFAULT 1,
+      UNIQUE (layer_id, slug)
+    );
+  `);
+}
+
+describe('enrichment runner :: multi-job tick preserves earlier writes (4c bug #3)', () => {
+  it('preserves earlier-job writes within a single tick when the two jobs touch different fields', async () => {
+    const fixture = f();
+    createTwoJobTable(fixture.db);
+
+    const jobA: EnrichmentJob<TwoJobPayload> = {
+      id: 'twojob.a',
+      runOn: ['created'],
+      async run() {
+        return { patch: { foo: 'from-a' } };
+      },
+    };
+    const jobB: EnrichmentJob<TwoJobPayload> = {
+      id: 'twojob.b',
+      runOn: ['created'],
+      async run(entity) {
+        // The job receives the entity as the runner sees it. The
+        // assertion that proves "B saw A's write" lives in the second
+        // test below; here we only need to confirm B's write also
+        // lands without clobbering A's `foo`.
+        void entity;
+        return { patch: { bar: 'from-b' } };
+      },
+    };
+
+    const module = buildTwoJobModule([jobA, jobB]);
+    registerEntityModule(module);
+    const store = createEntityStore<TwoJobPayload>({
+      module,
+      db: fixture.db,
+      bus: fixture.bus,
+      llm: fixture.llm,
+    });
+    const layerId = seedLayer(fixture.db, 'tj-diff');
+    const userId = seedUser(fixture.db, 'tj-diff-u');
+    const runner = createEnrichmentRunner({
+      db: fixture.db,
+      bus: fixture.bus,
+      llm: fixture.llm,
+      resolveStore: () => store as EntityStore<unknown>,
+    });
+    runner.start();
+    try {
+      const created = await store.create({
+        layerId,
+        slug: 'tj-diff-row',
+        title: 'Two-job row',
+        originalLocale: 'en',
+        payload: { title: 'Two-job row', foo: null, bar: null },
+        actorId: userId,
+      });
+      await runner.tickOnce();
+
+      const refreshed = store.getById(created.id);
+      // Both writes survive. Pre-fix, job B's applyPatch would merge
+      // `{ ...stalePayload, bar: 'from-b' }` and reset `foo` to null.
+      expect(refreshed?.payload.foo).toBe('from-a');
+      expect(refreshed?.payload.bar).toBe('from-b');
+
+      // Both succeeded events fired in order, both with hasPatch true.
+      const succeeded = fixture.events.filter((e) => e.type === 'entity.enrichment.succeeded');
+      expect(succeeded.length).toBe(2);
+      const ids = succeeded.map((e) => (e.payload as { jobId: string }).jobId);
+      expect(ids).toEqual(['twojob.a', 'twojob.b']);
+      for (const ev of succeeded) {
+        expect((ev.payload as { hasPatch: boolean }).hasPatch).toBe(true);
+      }
+    } finally {
+      runner.stop();
+    }
+  });
+
+  it('lets the second job overwrite the same field with its fresh view (last-write-wins)', async () => {
+    const fixture = f();
+    createTwoJobTable(fixture.db);
+
+    let seenByB: string | null | undefined = 'unset';
+    const jobA: EnrichmentJob<TwoJobPayload> = {
+      id: 'twojob.same.a',
+      runOn: ['created'],
+      async run() {
+        return { patch: { foo: 'from-a' } };
+      },
+    };
+    const jobB: EnrichmentJob<TwoJobPayload> = {
+      id: 'twojob.same.b',
+      runOn: ['created'],
+      async run(entity) {
+        // The runner MUST present job B with the post-A payload — that
+        // is the whole point of the in-tick refresh.
+        seenByB = entity.payload.foo;
+        return { patch: { foo: 'from-b' } };
+      },
+    };
+
+    const module = buildTwoJobModule([jobA, jobB]);
+    registerEntityModule(module);
+    const store = createEntityStore<TwoJobPayload>({
+      module,
+      db: fixture.db,
+      bus: fixture.bus,
+      llm: fixture.llm,
+    });
+    const layerId = seedLayer(fixture.db, 'tj-same');
+    const userId = seedUser(fixture.db, 'tj-same-u');
+    const runner = createEnrichmentRunner({
+      db: fixture.db,
+      bus: fixture.bus,
+      llm: fixture.llm,
+      resolveStore: () => store as EntityStore<unknown>,
+    });
+    runner.start();
+    try {
+      const created = await store.create({
+        layerId,
+        slug: 'tj-same-row',
+        title: 'Same-field row',
+        originalLocale: 'en',
+        payload: { title: 'Same-field row', foo: null, bar: null },
+        actorId: userId,
+      });
+      await runner.tickOnce();
+
+      // Job B saw the value job A just wrote (proves the refresh).
+      expect(seenByB).toBe('from-a');
+
+      // Last-write-wins on the same field.
+      const refreshed = store.getById(created.id);
+      expect(refreshed?.payload.foo).toBe('from-b');
+    } finally {
+      runner.stop();
+    }
+  });
+});
