@@ -319,6 +319,8 @@
       "description": "Recente assistent-berichten en waar ze in de pijplijn zijn. Kaarten vernieuwen elke paar seconden zolang dit tabblad zichtbaar is.",
       "cardEmpty": "Nog geen berichten in deze kolom.",
       "jumpToMessage": "Dit gesprek openen",
+      "openCta": "Pipeline-bord openen",
+      "backToChatCta": "Terug naar chat",
       "columns": {
         "queued": "In wachtrij",
         "intent": "Intentie",

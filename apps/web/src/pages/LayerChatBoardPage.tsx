@@ -103,8 +103,14 @@ export function LayerChatBoardPage(): JSX.Element {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
           <CardTitle>{t('chat.board.title')}</CardTitle>
+          <Link
+            to={`/l/${current.layer.slug}/chat`}
+            className="text-sm underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t('chat.board.backToChatCta')}
+          </Link>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>{t('chat.board.description')}</p>

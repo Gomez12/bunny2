@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { ConfirmDialog, Dialog } from '../components/ui/dialog';
@@ -468,7 +469,7 @@ export function LayerChatPage(): JSX.Element {
       {/* ---------- center pane: thread + composer --------------------- */}
       <section aria-label={t('chat.thread.label')} className="flex min-h-[60vh] flex-col gap-3">
         <Card className="flex flex-1 flex-col">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
             <CardTitle>
               {activeConversation !== null
                 ? activeConversation.title.length > 0
@@ -476,6 +477,9 @@ export function LayerChatPage(): JSX.Element {
                   : t('chat.conversation.untitled')
                 : t('chat.conversation.emptyTitle')}
             </CardTitle>
+            <Button asChild size="sm" variant="outline" type="button">
+              <Link to={`/l/${layerSlug ?? ''}/chat/board`}>{t('chat.board.openCta')}</Link>
+            </Button>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-3">
             <div

@@ -184,6 +184,8 @@
       "description": "Latest assistant messages and where they are in the pipeline. Cards refresh every few seconds while this tab is visible.",
       "cardEmpty": "No messages in this column yet.",
       "jumpToMessage": "Open this conversation",
+      "openCta": "Open pipeline board",
+      "backToChatCta": "Back to chat",
       "columns": {
         "queued": "Queued",
         "intent": "Intent",
