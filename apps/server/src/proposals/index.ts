@@ -75,7 +75,9 @@ export {
   PROPOSAL_SUPERSEDED_EVENT_TYPE,
   PROPOSAL_DEACTIVATED_EVENT_TYPE,
   PROPOSAL_REJECTED_EVENT_TYPE,
+  PROPOSAL_AUTO_ACTIVATED_EVENT_TYPE,
   type ProposalActivatedPayload,
+  type ProposalAutoActivatedPayload,
   type ProposalDeactivatedPayload,
   type ProposalEventType,
   type ProposalMintedPayload,
@@ -102,18 +104,34 @@ export {
   type ProposalsReplanStaleResult,
 } from './replan-stale-handler';
 
+// Phase 8.2 — pure auto-activation gate function consumed by the
+// hourly `proposals.auto-activate` job (lands in 8.3). Exported
+// BEFORE `./scheduled` so the kind constant is resolved on the
+// partial-exports object of this barrel by the time the
+// `seed.ts` cycle (which imports the kind from here) lands —
+// matches the pattern used for `PROPOSALS_EVIDENCE_PRUNE_KIND` +
+// `PROPOSALS_REPLAN_STALE_KIND` above.
+export {
+  evaluateAutoActivation,
+  AUTO_ACTIVATION_GATE_NAMES,
+  SYSTEM_ACTOR,
+  type EvaluateAutoActivationInput,
+} from './auto-activate';
+
+// Phase 8.3 — `proposals.auto-activate` scheduled-task handler.
+export {
+  PROPOSALS_AUTO_ACTIVATE_KIND,
+  buildProposalsAutoActivateHandler,
+  proposalsAutoActivateHandler,
+  runAutoActivate,
+  type AutoActivateLayersSeam,
+  type ProposalsAutoActivateDeps,
+} from './auto-activate-handler';
+
 export {
   registerProposalsScheduledTaskHandlers,
   type RegisterProposalsScheduledTaskHandlersDeps,
 } from './scheduled';
-
-// Phase 8.2 — pure auto-activation gate function consumed by the
-// hourly `proposals.auto-activate` job (lands in 8.3).
-export {
-  evaluateAutoActivation,
-  AUTO_ACTIVATION_GATE_NAMES,
-  type EvaluateAutoActivationInput,
-} from './auto-activate';
 
 // Phase 7.6 — repo factories surfaced for the HTTP routes.
 export {
@@ -136,3 +154,10 @@ export {
   type LayerCapabilitiesRepo,
   type LayerCapabilityRow,
 } from './repos/layer-capabilities-repo';
+// Phase 8.1 — layer-scoped proposal settings (auto-activation knobs).
+export {
+  LayerProposalSettingsRepo,
+  LAYER_PROPOSAL_SETTINGS_DEFAULTS,
+  type LayerProposalSettings,
+  type UpsertLayerProposalSettingsInput,
+} from './repos/layer-proposal-settings-repo';

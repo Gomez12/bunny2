@@ -22,7 +22,7 @@
 Phase 7 minted `improvement_proposals.threshold` (a 0..1 number the
 review-agent LLM emits per proposal) but never consumed it: every
 activation needed an explicit admin click. Phase 8's job is to
-turn the field into an activation signal, *safely*, and to do it
+turn the field into an activation signal, _safely_, and to do it
 without re-shaping the activation path or weakening the phase-7
 invariants ADRs 0023 / 0024 / 0025 set up.
 
@@ -69,7 +69,7 @@ ever loading the artifact row.
 
 **Why seven gates and not just `threshold >= cutoff`**: the
 threshold is an LLM self-rating, and the closed-enum handler-kind
-model of ADR 0024 does not constrain *how good* a proposal is —
+model of ADR 0024 does not constrain _how good_ a proposal is —
 only that it is shaped legally. The sandbox already produced
 ground-truth metrics; treating those as peer gates is the cheapest
 way to harden the auto-path against a confidently-wrong LLM.
@@ -93,11 +93,12 @@ outcome labels (`activated-asis`, `activated-replanned`,
 re-plan, it would re-introduce the staleness ADR 0025 was
 designed to prevent: a capability snapshot can drift between mint
 and auto-activation just as readily as between mint and human
-approval. The cooldown window in fact *encourages* drift — a
+approval. The cooldown window in fact _encourages_ drift — a
 24-hour wait is plenty of time for another proposal to activate a
 capability that supersedes the one being gated.
 
 Practical consequences:
+
 - The auto-path can therefore land any of the four outcome labels.
   `superseded` / `superseded-after-replan` are recorded but no
   capability is activated; the proposal moves to its terminal
@@ -134,11 +135,11 @@ users"), and (c) be load-bearing for a single literal string. The
 discriminator union is the lower-blast-radius choice and is
 trivially type-checked.
 
-### 4. Decision JSON is written *before* `replanOnApproval` is called
+### 4. Decision JSON is written _before_ `replanOnApproval` is called
 
 If `replanOnApproval` throws (LLM call fails during re-plan, DB
-hiccup), the proposal still carries the decision JSON that *would
-have* been auto-activated. This gives admins a forensic trail even
+hiccup), the proposal still carries the decision JSON that _would
+have_ been auto-activated. This gives admins a forensic trail even
 when the auto-path failed mid-flight, and prevents silent skips.
 
 The follow-up call `proposalsRepo.recordAutoActivation(...)` (sets

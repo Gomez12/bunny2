@@ -106,9 +106,9 @@ export class LayerProposalSettingsRepo {
    * default" apart via {@link find}, not this method.
    */
   getOrDefault(layerId: string): LayerProposalSettings {
-    const row = this.db.query<SqlRow, [string]>(
-      `SELECT ${COLS} FROM layer_proposal_settings WHERE layer_id = ?`,
-    ).get(layerId);
+    const row = this.db
+      .query<SqlRow, [string]>(`SELECT ${COLS} FROM layer_proposal_settings WHERE layer_id = ?`)
+      .get(layerId);
     if (row !== null) {
       return rowToSettings(row);
     }
@@ -117,8 +117,7 @@ export class LayerProposalSettingsRepo {
       autoActivationEnabled: LAYER_PROPOSAL_SETTINGS_DEFAULTS.autoActivationEnabled,
       thresholdCutoff: LAYER_PROPOSAL_SETTINGS_DEFAULTS.thresholdCutoff,
       cooldownHours: LAYER_PROPOSAL_SETTINGS_DEFAULTS.cooldownHours,
-      requireThumbsUpDeltaPositive:
-        LAYER_PROPOSAL_SETTINGS_DEFAULTS.requireThumbsUpDeltaPositive,
+      requireThumbsUpDeltaPositive: LAYER_PROPOSAL_SETTINGS_DEFAULTS.requireThumbsUpDeltaPositive,
       maxTokensDelta: LAYER_PROPOSAL_SETTINGS_DEFAULTS.maxTokensDelta,
       updatedAt: '',
       updatedBy: '',
@@ -133,9 +132,9 @@ export class LayerProposalSettingsRepo {
    * `updatedAt`.
    */
   find(layerId: string): LayerProposalSettings | null {
-    const row = this.db.query<SqlRow, [string]>(
-      `SELECT ${COLS} FROM layer_proposal_settings WHERE layer_id = ?`,
-    ).get(layerId);
+    const row = this.db
+      .query<SqlRow, [string]>(`SELECT ${COLS} FROM layer_proposal_settings WHERE layer_id = ?`)
+      .get(layerId);
     return row === null ? null : rowToSettings(row);
   }
 
@@ -176,9 +175,9 @@ export class LayerProposalSettingsRepo {
       input.now,
       input.updatedBy,
     );
-    const row = this.db.query<SqlRow, [string]>(
-      `SELECT ${COLS} FROM layer_proposal_settings WHERE layer_id = ?`,
-    ).get(input.layerId);
+    const row = this.db
+      .query<SqlRow, [string]>(`SELECT ${COLS} FROM layer_proposal_settings WHERE layer_id = ?`)
+      .get(input.layerId);
     if (row === null) {
       throw new Error(
         `layer-proposal-settings-repo: failed to read back settings for layer ${input.layerId} after upsert`,

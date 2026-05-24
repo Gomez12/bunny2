@@ -31,6 +31,11 @@ import {
   proposalsReplanStaleHandler,
   type ProposalsReplanStaleDeps,
 } from './replan-stale-handler';
+import {
+  buildProposalsAutoActivateHandler,
+  proposalsAutoActivateHandler,
+  type ProposalsAutoActivateDeps,
+} from './auto-activate-handler';
 
 export interface RegisterProposalsScheduledTaskHandlersDeps {
   /**
@@ -41,6 +46,13 @@ export interface RegisterProposalsScheduledTaskHandlersDeps {
    * registry sees the `kind` without booting the chat pipeline.
    */
   readonly replanStale?: ProposalsReplanStaleDeps;
+  /**
+   * Phase 8.3 — optional auto-activate dependencies. Same pattern as
+   * `replanStale`: when supplied, the helper registers a fully-wired
+   * `proposals.auto-activate` handler; when omitted (docs-check /
+   * smoke fixtures), it registers the placeholder shape.
+   */
+  readonly autoActivate?: ProposalsAutoActivateDeps;
 }
 
 export function registerProposalsScheduledTaskHandlers(
@@ -51,6 +63,9 @@ export function registerProposalsScheduledTaskHandlers(
     deps.replanStale !== undefined
       ? buildProposalsReplanStaleHandler(deps.replanStale)
       : proposalsReplanStaleHandler,
+    deps.autoActivate !== undefined
+      ? buildProposalsAutoActivateHandler(deps.autoActivate)
+      : proposalsAutoActivateHandler,
   ];
   for (const handler of handlers) {
     if (getScheduledTaskHandler(handler.kind) === null) {

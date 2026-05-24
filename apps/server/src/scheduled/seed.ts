@@ -14,7 +14,11 @@ import {
   SCHEDULED_RUNS_PRUNE_KIND,
   BUS_OUTBOX_PRUNE_KIND,
 } from './built-in';
-import { PROPOSALS_EVIDENCE_PRUNE_KIND, PROPOSALS_REPLAN_STALE_KIND } from '../proposals';
+import {
+  PROPOSALS_AUTO_ACTIVATE_KIND,
+  PROPOSALS_EVIDENCE_PRUNE_KIND,
+  PROPOSALS_REPLAN_STALE_KIND,
+} from '../proposals';
 import type { ScheduledTaskCreatedPayload } from './events';
 
 /**
@@ -79,6 +83,16 @@ const SYSTEM_TASKS: readonly SystemTaskSpec[] = [
     kind: PROPOSALS_REPLAN_STALE_KIND,
     slug: 'proposals-replan-stale',
     name: 'Proposal stale-evidence refresh',
+  },
+  // Phase 8.3 — hourly auto-activate of above-threshold proposals on
+  // layers where `auto_activation_enabled = true`. The handler
+  // iterates every layer; the seed row's `everyone`-layer placement
+  // is purely the admin-edit gate (admin-only edit via `canEditLayer`),
+  // not a layer scope on the work itself.
+  {
+    kind: PROPOSALS_AUTO_ACTIVATE_KIND,
+    slug: 'proposals-auto-activate',
+    name: 'Proposal auto-activation',
   },
 ];
 

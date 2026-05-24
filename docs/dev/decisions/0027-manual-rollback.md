@@ -52,7 +52,7 @@ capability row.
 **Why no previous-version restore**: `layer_capabilities` carries
 exactly one row per `(layer_id, kind, name)` (UNIQUE constraint
 from phase 7.2's migration `0015_proposals.sql`). There is no
-historical version chain to restore *from*. Adding one is a
+historical version chain to restore _from_. Adding one is a
 separate effort that would require its own ADR (capability
 versioning) and its own migration; it is explicitly out-of-scope
 for phase 8 (see plan §2).
@@ -106,6 +106,7 @@ in through the human path or the auto path. The mental model is
 origin is a separate audit signal, not a rollback gate.
 
 The rollback HTTP endpoint enforces two preconditions:
+
 - `proposal.status === 'activated'` (409 otherwise; rejecting a
   rejected / superseded / new / already-rolled-back proposal is
   pointless).
@@ -160,7 +161,7 @@ in phase 9 rather than guessed at.
   soft-deactivate model deliberately eliminated.
 - Telemetry dimension `artifact_kind` on
   `proposal.rolled-back_count` is the only label; the proposal id
-  and the reason text are *not* dimensioned.
+  and the reason text are _not_ dimensioned.
 
 ---
 
@@ -176,7 +177,7 @@ in phase 9 rather than guessed at.
 3. **Audit table `improvement_proposal_rollbacks`.** Rejected:
    one rollback per proposal makes a separate table strictly more
    complex without adding capability (decision 2). A future
-   version chain *would* warrant its own table, but that is a
+   version chain _would_ warrant its own table, but that is a
    different feature.
 4. **Only auto-activated proposals are rollbackable.** Rejected:
    complicates the admin mental model for no safety gain (decision

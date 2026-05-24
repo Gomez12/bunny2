@@ -446,6 +446,93 @@ describe('phase 7.4 — replan on approval', () => {
     expect(capRows.length).toBe(1);
     expect(capRows[0]?.id).toBe(driftCapId);
   });
+
+  // -----------------------------------------------------------------------
+  // Phase 8.3 — actorKind: 'system' branch.
+  //
+  // Pins the §1 plumbing: when the auto-activate handler calls
+  // `replanOnApproval(id, SYSTEM_ACTOR, { ...deps, actorKind: 'system' })`,
+  // `activateProposal` must NOT write `approved_by` / `approved_at`,
+  // even though the proposal lands `activated`. The audit columns
+  // (`auto_activated_*`) are stamped by the handler post-call via
+  // `recordAutoActivation(...)`; this test verifies the replan path's
+  // own side of that contract.
+  // -----------------------------------------------------------------------
+  it("actorKind 'system' on activated-asis leaves approved_by NULL and stamps activated_at", async () => {
+    const ev = seedEvidenceMessage(fx);
+    const llm = createProgrammableLlm();
+    enqueueOneReplay(llm);
+    enqueueOneReplay(llm);
+
+    const proposalId = insertProposal({
+      fx,
+      spec: skillSpec('asis-system'),
+      capabilitySnapshot: { capabilities: [], builtins: [] },
+    });
+    const repos = buildRepos(fx);
+    repos.evidenceRepo.insertMany([
+      {
+        id: crypto.randomUUID(),
+        proposalId,
+        messageId: ev.messageId,
+        clusterReason: 'zero-hit-retrieval',
+      },
+    ]);
+
+    const capabilityRegistry = createCapabilityRegistry({
+      repo: repos.layerCapabilitiesRepo,
+      bus: fx.bus,
+    });
+
+    const result = await replanOnApproval(proposalId, 'system', {
+      llm,
+      db: fx.db,
+      bus: fx.bus,
+      capabilityRegistry,
+      artifactsRepo: repos.artifactsRepo,
+      conversationsRepo: repos.conversationsRepo,
+      messagesRepo: repos.messagesRepo,
+      getEntityStore: () => null,
+      logger: noopLogger,
+      proposalsRepo: repos.proposalsRepo,
+      evidenceRepo: repos.evidenceRepo,
+      layerCapabilitiesRepo: repos.layerCapabilitiesRepo,
+      // The discriminator under test.
+      actorKind: 'system',
+    });
+    expect(result.outcome).toBe('activated-asis');
+
+    const row = repos.proposalsRepo.getProposalById(proposalId);
+    if (row === null) throw new Error('expected proposal to exist');
+    expect(row.status).toBe('activated');
+    // ADR 0026 §3 — `approved_by` stays NULL on the system path.
+    expect(row.approvedBy).toBeNull();
+    expect(row.approvedAt).toBeNull();
+    // `activated_at` is still stamped — the capability is live.
+    expect(row.activatedAt).not.toBeNull();
+    // The auto_activated_* columns are stamped by the handler, not
+    // by the replan path; the row should still carry them NULL here
+    // because this test does not call `recordAutoActivation(...)`.
+    expect(row.autoActivatedBy).toBeNull();
+    expect(row.autoActivatedAt).toBeNull();
+  });
+
+  // Pin the `actorKind: 'user' | 'system'` union shape so a future
+  // refactor that loses one of the literals trips this assertion at
+  // compile time (plan §11 mitigation row).
+  it('typechecks the actorKind discriminator union on ReplanDeps', () => {
+    type CheckDeps = Pick<Parameters<typeof replanOnApproval>[2], 'actorKind'>;
+    const userish: CheckDeps = { actorKind: 'user' };
+    const systemish: CheckDeps = { actorKind: 'system' };
+    // The default-undefined assignment must compile too (phase-7
+    // callsites omit the field).
+    const omit: CheckDeps = {};
+    // Reference all three so TS doesn't elide them.
+    void userish;
+    void systemish;
+    void omit;
+    expect(true).toBe(true);
+  });
 });
 
 // Sanity: prove the snapshot diff is pure (importable + deterministic).

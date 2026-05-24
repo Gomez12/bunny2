@@ -32,6 +32,7 @@ export const PROPOSAL_EVENT_TYPES = [
   'proposal.superseded',
   'proposal.deactivated',
   'proposal.rejected',
+  'proposal.auto-activated',
 ] as const;
 
 export type ProposalEventType = (typeof PROPOSAL_EVENT_TYPES)[number];
@@ -118,3 +119,31 @@ export interface ProposalRejectedPayload {
 }
 
 export const PROPOSAL_REJECTED_EVENT_TYPE: ProposalEventType = 'proposal.rejected';
+
+/**
+ * Phase 8.3 — fired by the `proposals.auto-activate` scheduled-task
+ * handler on every proposal that passes all seven gates (ADR 0026 §1)
+ * and lands one of the four `replanOnApproval` outcome labels. The
+ * `outcome` carries the four-outcome verdict so subscribers can
+ * distinguish "system activated this skill" from "system tried but
+ * was superseded by drift" without re-reading the proposal row.
+ *
+ * Anti-leak: IDs + closed enums only. The `auto_activation_decision_json`
+ * is NOT carried on the wire — it lives on the proposal row behind
+ * the authenticated detail route (the UI fetches it there).
+ * `threshold` is the LLM-minted 0..1 number (already public via
+ * `proposal.minted`); no new sensitive surface.
+ */
+export interface ProposalAutoActivatedPayload {
+  readonly proposalId: string;
+  readonly layerId: string;
+  readonly artifactKind: ArtifactKind;
+  readonly outcome:
+    | 'activated-asis'
+    | 'activated-replanned'
+    | 'superseded'
+    | 'superseded-after-replan';
+  readonly threshold: number;
+}
+
+export const PROPOSAL_AUTO_ACTIVATED_EVENT_TYPE: ProposalEventType = 'proposal.auto-activated';

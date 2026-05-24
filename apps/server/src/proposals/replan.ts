@@ -68,6 +68,18 @@ export interface ReplanDeps extends SandboxDeps {
    * failure (mapped to `superseded`).
    */
   readonly replanProposalViaLlm?: ReplanLlmFn;
+  /**
+   * Phase 8.3 — discriminates the human-approve path (phase-7
+   * default) from the auto-activate path (8.3). `'user'` (default)
+   * writes `approved_by = approvedBy` + `approved_at` on activation,
+   * matching phase-7 behaviour exactly so existing callsites are
+   * untouched. `'system'` leaves `approved_by`/`approved_at` NULL —
+   * the caller (the `proposals.auto-activate` handler) follows up
+   * with `proposalsRepo.recordAutoActivation(id, now)` so the audit
+   * columns (`auto_activated_by = 'system'`, `auto_activated_at`)
+   * carry the system actor instead. See ADR 0026 decisions 2 + 3.
+   */
+  readonly actorKind?: 'user' | 'system';
 }
 
 export type ReplanLlmFn = (input: ReplanLlmInput) => Promise<ProposalSpec | null>;
@@ -157,6 +169,7 @@ export async function replanOnApproval(
       clock(),
       flowId,
       correlationId,
+      deps.actorKind ?? 'user',
     );
     logOutcome(deps, proposalId, approvedBy, 'activated-asis', startedAtMs, clock());
     return { outcome: 'activated-asis' };
@@ -251,7 +264,16 @@ export async function replanOnApproval(
   }
 
   writeReplannedArtifact(deps, proposalId, replannedSandbox.ok, clock());
-  activateProposal(deps, proposal, replannedSpec, approvedBy, clock(), flowId, correlationId);
+  activateProposal(
+    deps,
+    proposal,
+    replannedSpec,
+    approvedBy,
+    clock(),
+    flowId,
+    correlationId,
+    deps.actorKind ?? 'user',
+  );
   logOutcome(deps, proposalId, approvedBy, 'activated-replanned', startedAtMs, clock());
   return { outcome: 'activated-replanned' };
 }
@@ -319,6 +341,7 @@ function activateProposal(
   now: Date,
   flowId: string,
   correlationId: string,
+  actorKind: 'user' | 'system',
 ): void {
   const nowIso = now.toISOString();
   deps.capabilityRegistry.activate({
@@ -332,13 +355,26 @@ function activateProposal(
     flowId,
     proposalId: proposal.id,
   });
-  // updateStatus accepts the whole patch in one call (reviewer feedback).
-  deps.proposalsRepo.updateStatus(proposal.id, {
-    status: 'activated',
-    approvedBy,
-    approvedAt: nowIso,
-    activatedAt: nowIso,
-  });
+  // Phase 8.3 — branch on actor. The 'user' path is unchanged from
+  // phase 7: write approved_by + approved_at + activated_at + status.
+  // The 'system' path leaves approved_by / approved_at untouched so
+  // the `users(id)` FK on `approved_by` stays clean — the
+  // `auto_activated_*` audit columns are stamped by the auto-activate
+  // handler (8.3) via `proposalsRepo.recordAutoActivation` after this
+  // function returns. See ADR 0026 decisions 3 + 4.
+  if (actorKind === 'system') {
+    deps.proposalsRepo.updateStatus(proposal.id, {
+      status: 'activated',
+      activatedAt: nowIso,
+    });
+  } else {
+    deps.proposalsRepo.updateStatus(proposal.id, {
+      status: 'activated',
+      approvedBy,
+      approvedAt: nowIso,
+      activatedAt: nowIso,
+    });
+  }
 }
 
 function markSuperseded(

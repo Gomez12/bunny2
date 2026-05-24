@@ -77,9 +77,7 @@ const GATE_NAMES: readonly GateName[] = [
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 
-export function evaluateAutoActivation(
-  input: EvaluateAutoActivationInput,
-): AutoActivationDecision {
+export function evaluateAutoActivation(input: EvaluateAutoActivationInput): AutoActivationDecision {
   const { proposal, proposedMetrics, currentMetrics, settings, now } = input;
   const gates: AutoActivationGateRecord[] = [];
 
@@ -250,3 +248,13 @@ function rejected(
 
 /** Public for tests / 8.3 wiring; mirrors the closed enum order. */
 export const AUTO_ACTIVATION_GATE_NAMES = GATE_NAMES;
+
+/**
+ * Phase 8.3 — the fixed literal string the auto-activate path passes
+ * as `approvedBy` to `replanOnApproval(...)`. The replan path branches
+ * on `actorKind: 'system'` and never writes this value to the
+ * `users(id)`-backed `approved_by` column; it lands in
+ * `improvement_proposals.auto_activated_by` instead via
+ * `proposalsRepo.recordAutoActivation(...)`. See ADR 0026 decision 3.
+ */
+export const SYSTEM_ACTOR = 'system' as const;

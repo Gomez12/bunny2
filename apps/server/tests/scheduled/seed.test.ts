@@ -76,13 +76,14 @@ describe('seedSystemScheduledTasksIfNeeded', () => {
       const bus = new InMemoryMessageBus();
       const res = await seedSystemScheduledTasksIfNeeded({ db, bus, repo });
       expect(res.seeded).toBe(true);
-      expect(res.created).toBe(6);
+      expect(res.created).toBe(7);
 
       const tasks = repo.listTasks({ layerId: everyoneLayerId });
       const kinds = tasks.map((t) => t.kind).sort();
       expect(kinds).toEqual([
         'bus.outbox.prune',
         'llm.calls.prune',
+        'proposals.auto-activate',
         'proposals.evidence.prune',
         'proposals.replan-stale',
         'scheduled.runs.prune',
@@ -112,7 +113,7 @@ describe('seedSystemScheduledTasksIfNeeded', () => {
       expect(second.seeded).toBe(false);
       expect(second.created).toBe(0);
       // Still exactly 4 rows.
-      expect(repo.listTasks().length).toBe(6);
+      expect(repo.listTasks().length).toBe(7);
     } finally {
       db.close();
     }
@@ -176,7 +177,7 @@ describe('seedSystemScheduledTasksIfNeeded', () => {
       );
       const again = await seedSystemScheduledTasksIfNeeded({ db, bus, repo });
       expect(again.created).toBe(0);
-      expect(repo.listTasks().length).toBe(6);
+      expect(repo.listTasks().length).toBe(7);
     } finally {
       db.close();
     }

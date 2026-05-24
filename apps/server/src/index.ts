@@ -51,8 +51,16 @@ import {
   attachAgentSubscriber,
   createCapabilityRegistry,
   registerProposalsScheduledTaskHandlers,
+  replanOnApproval,
 } from './proposals';
 import { createLayerCapabilitiesRepo } from './proposals/repos/layer-capabilities-repo';
+import { createImprovementProposalsRepo } from './proposals/repos/improvement-proposals-repo';
+import { createImprovementProposalEvidenceRepo } from './proposals/repos/improvement-proposal-evidence-repo';
+import { createImprovementProposalArtifactsRepo } from './proposals/repos/improvement-proposal-artifacts-repo';
+import { LayerProposalSettingsRepo } from './proposals/repos/layer-proposal-settings-repo';
+import { createChatConversationsRepo } from './chat/repos/chat-conversations-repo';
+import { createChatMessagesRepo } from './chat/repos/chat-messages-repo';
+import { createLayersRepo } from './repos/layers-repo';
 
 // Phase 5.2 — process role split. `parseRole` accepts the CLI flag
 // (`--role=web|worker|all`) and falls back to the `BUNNY2_ROLE` env
@@ -434,6 +442,47 @@ registerChatScheduledTaskHandlers({ embedder, writer: lanceWriter });
 // below; this call only wires the runtime handlers. The replan-stale
 // handler needs LLM + bus + registry + per-kind entity-store resolver
 // so its sandbox replays can run against the live retrieval path.
+//
+// Phase 8.3 — `proposals.auto-activate` joins the registration. It
+// needs the same set of repos `replanOnApproval` consumes (proposals
+// repo, artifacts repo, capability registry, chat repos for the
+// sandbox replay) plus the new `LayerProposalSettingsRepo` from 8.1
+// and a `LayersRepo` to iterate enabled layers. The `replan` closure
+// threads `actorKind: 'system'` so the approve path leaves the
+// `approved_by` FK NULL — the auto-path stamps `auto_activated_*`
+// instead (ADR 0026 §3).
+const proposalsRepoForAutoActivate = createImprovementProposalsRepo(db);
+const proposalsEvidenceRepoForAutoActivate = createImprovementProposalEvidenceRepo(db);
+const proposalsArtifactsRepoForAutoActivate = createImprovementProposalArtifactsRepo(db);
+const layerCapabilitiesRepoForAutoActivate = createLayerCapabilitiesRepo(db);
+const proposalSettingsRepoForAutoActivate = new LayerProposalSettingsRepo(db);
+const layersRepoForAutoActivate = createLayersRepo(db);
+const chatConversationsRepoForAutoActivate = createChatConversationsRepo(db);
+const chatMessagesRepoForAutoActivate = createChatMessagesRepo(db);
+const proposalsAutoActivateEntityStore = (
+  kind: Parameters<typeof resolveStoreForModule>[0]['kind'],
+) => {
+  const module = listEntityModules().find((m) => m.kind === kind);
+  if (module === undefined) return null;
+  const store = resolveStoreForModule(module);
+  return {
+    async searchSummaries(
+      layerIds: readonly string[],
+      query: string,
+      opts: Parameters<typeof store.searchSummaries>[2],
+    ) {
+      const rows = store.searchSummaries(layerIds, query, opts);
+      return rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        layerId: r.layerId,
+        slug: r.slug,
+        title: r.title,
+        searchableText: r.searchableText,
+      }));
+    },
+  };
+};
 registerProposalsScheduledTaskHandlers({
   replanStale: {
     llm: llmClient,
@@ -457,6 +506,35 @@ registerProposalsScheduledTaskHandlers({
         },
       };
     },
+  },
+  autoActivate: {
+    layersRepo: {
+      listAllNonDeleted: () => layersRepoForAutoActivate.listLayers(),
+    },
+    settingsRepo: proposalSettingsRepoForAutoActivate,
+    proposalsRepo: proposalsRepoForAutoActivate,
+    artifactsRepo: proposalsArtifactsRepoForAutoActivate,
+    replan: (proposalId, approvedBy) =>
+      replanOnApproval(proposalId, approvedBy, {
+        llm: llmClient,
+        db,
+        bus,
+        capabilityRegistry,
+        proposalsRepo: proposalsRepoForAutoActivate,
+        evidenceRepo: proposalsEvidenceRepoForAutoActivate,
+        artifactsRepo: proposalsArtifactsRepoForAutoActivate,
+        layerCapabilitiesRepo: layerCapabilitiesRepoForAutoActivate,
+        conversationsRepo: chatConversationsRepoForAutoActivate,
+        messagesRepo: chatMessagesRepoForAutoActivate,
+        getEntityStore: proposalsAutoActivateEntityStore,
+        logger: {
+          info: (msg, fields) => console.log(`[${msg}]`, fields ?? {}),
+          warn: (msg, fields) => console.warn(`[${msg}]`, fields ?? {}),
+          error: (msg, fields) => console.error(`[${msg}]`, fields ?? {}),
+        },
+        actorKind: 'system',
+      }),
+    bus,
   },
 });
 
