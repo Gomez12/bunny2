@@ -119,8 +119,17 @@ start('server', 'bun', ['run', '--filter', '@bunny2/server', 'dev']);
 // console output is cleaner this way.
 await new Promise((resolve) => setTimeout(resolve, 1_500));
 
+// `BUNNY2_API_BASE` deliberately uses `localhost`, not `127.0.0.1`:
+// Vite serves the renderer from `http://localhost:5173`, and the
+// session cookie is `SameSite=Lax`. Chromium treats `localhost` and
+// `127.0.0.1` as different sites, so a Lax cookie set by the server
+// would not be sent back on subsequent fetches from the renderer. Both
+// hostnames resolve to the same `127.0.0.1` interface the server binds
+// to (`apps/server/src/config/schema.ts`), so connectivity is identical
+// — only the SameSite computation changes.
 start('electron', 'bun', ['run', '--filter', '@bunny2/desktop', 'electron:dev'], {
   BUNNY2_DEV: '1',
   BUNNY2_DEV_URL: 'http://localhost:5173',
   BUNNY2_SKIP_SIDECAR: '1',
+  BUNNY2_API_BASE: 'http://localhost:4317',
 });

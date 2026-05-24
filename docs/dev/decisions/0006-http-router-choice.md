@@ -97,13 +97,24 @@ Electron renderer loads from `file://` and the server is on
   Allow `Origin: null` (Electron `file://` becomes `null`).
 - Allow methods `GET, POST, OPTIONS`.
 - Allow `Content-Type` request header.
+- Emit `Access-Control-Allow-Credentials: true` for allowed non-null
+  origins (added 2026-05-24 after the phase-2.6 cookie-auth client
+  started failing with "Could not reach the server" — see
+  `docs/dev/troubleshooting/login-could-not-reach-server.md`). The
+  `null` origin is excluded on purpose: per Fetch + Chromium rules
+  the combination is rejected and is also unsafe (any sandboxed
+  iframe can present `null`). Packaged Electron consequences are
+  tracked in
+  `docs/dev/follow-ups/packaged-electron-cookie-transport.md`.
 - Reject everything else: do not set `Access-Control-Allow-Origin`.
 
 Implemented as a small middleware in `apps/server/src/http/cors.ts` and
-mounted on every route in `createApp(deps)`. We do **not** use a
-generic `cors: *` because phase 1 is local-only and we want the
-explicit allowlist documented; phase 2 (users/auth) will revisit when
-remote origins enter the picture.
+mounted on every route in `createApp(deps)`. Regression-pinned by
+`apps/server/tests/http-cors.test.ts`. We do **not** use a generic
+`cors: *` because phase 1 is local-only and we want the explicit
+allowlist documented; phase 2 (users/auth) revisited the credentials
+header but not the allowlist itself, and remote origins still belong
+to a later phase.
 
 The CORS rationale belongs in this ADR rather than `i18n.md` (the spec
 hint to put it in i18n was wrong); it is a router decision, not a

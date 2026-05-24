@@ -9,8 +9,19 @@ import type { MiddlewareHandler } from 'hono';
  *  - `Origin: null` — Electron renderer loading from `file://`.
  *
  * Reflects the request `Origin` back rather than `*` so credentials-style
- * requests work later without policy changes. Pre-flight (`OPTIONS`) is
+ * requests work without policy changes. Pre-flight (`OPTIONS`) is
  * answered with the same allowlist.
+ *
+ * `Access-Control-Allow-Credentials: true` is emitted for non-null
+ * allowed origins. The web client sends every fetch with
+ * `credentials: 'include'` so the `bunny2_session` cookie flows; without
+ * the header the browser drops the response and the renderer reports
+ * `errors.network` ("Could not reach the server"). `Origin: null` is
+ * deliberately excluded — per Fetch spec, `Allow-Origin: null` together
+ * with `Allow-Credentials: true` is rejected by Chromium and would also
+ * be unsafe (any sandboxed iframe can present `null`). Packaged Electron
+ * needs a different transport for `file://`; see the follow-up doc
+ * `docs/dev/follow-ups/packaged-electron-cookie-transport.md`.
  */
 export function createDevCors(): MiddlewareHandler {
   return async (c, next) => {
@@ -26,6 +37,9 @@ export function createDevCors(): MiddlewareHandler {
       c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       c.header('Access-Control-Allow-Headers', 'Content-Type');
       c.header('Access-Control-Max-Age', '600');
+      if (origin !== 'null') {
+        c.header('Access-Control-Allow-Credentials', 'true');
+      }
     }
 
     if (c.req.method === 'OPTIONS') {
