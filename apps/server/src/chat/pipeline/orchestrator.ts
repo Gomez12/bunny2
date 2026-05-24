@@ -31,6 +31,7 @@ import type { MessageBus } from '@bunny2/bus';
 import type { LlmCallLog } from '../../llm/call-log';
 import type { LlmClient } from '../../llm/types';
 import { withTelemetry } from '../../llm/telemetry';
+import type { CapabilityRegistry } from '../../proposals/capability-registry';
 import type { ChatConversationsRepo } from '../repos/chat-conversations-repo';
 import type { ChatMessage, ChatMessagesRepo } from '../repos/chat-messages-repo';
 import type { ChatPipelineRunsRepo } from '../repos/chat-pipeline-runs-repo';
@@ -138,6 +139,16 @@ export interface RunPipelineDeps {
    * the bus event carries.
    */
   readonly onStepEvent?: PipelineStepEventSink;
+  /**
+   * Phase 7.5 — per-layer capability registry. Threaded into every
+   * step's `PipelineDeps`; the answer step reads activated `skill`
+   * rows via this surface. The sandbox runner passes a
+   * `withOverlay(...)` view so the proposed variant sees the
+   * proposal's spec WITHOUT touching the live registry. Tests that
+   * don't care about capabilities omit it; the answer step then
+   * skips the fragment-injection step and behaves exactly like 6.x.
+   */
+  readonly capabilityRegistry?: CapabilityRegistry;
 }
 
 export interface RunPipelineResult {
@@ -507,6 +518,13 @@ async function runStepWithPersistence<TIn, TOut>(
         ? { chunkSink: deps.chunkSink }
         : {}),
       ...(deps.abortSignal !== undefined ? { abortSignal: deps.abortSignal } : {}),
+      // Phase 7.5 — only the answer step consults the registry
+      // (skill prompt-fragment injection). Threading it through
+      // every step's deps keeps the shape uniform; the absent case
+      // (legacy 6.x callers) is a no-op.
+      ...(deps.capabilityRegistry !== undefined
+        ? { capabilityRegistry: deps.capabilityRegistry }
+        : {}),
     };
 
     try {

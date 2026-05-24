@@ -41,8 +41,19 @@ import {
   type LayerCapability,
   type ProposalSpec,
 } from '@bunny2/shared';
+import type { LlmClient } from '../llm';
 import type { LayerCapabilitiesRepo } from './repos/layer-capabilities-repo';
-import { PROPOSAL_ACTIVATED_EVENT_TYPE, type ProposalActivatedPayload } from './events';
+import {
+  PROPOSAL_ACTIVATED_EVENT_TYPE,
+  PROPOSAL_DEACTIVATED_EVENT_TYPE,
+  type ProposalActivatedPayload,
+  type ProposalDeactivatedPayload,
+} from './events';
+import {
+  attachAgentSubscriber,
+  detachAgentSubscriber,
+  type AgentSubscriberLogger,
+} from './agents/subscribe';
 
 /**
  * Minimal logger surface mirroring `ScheduledTaskHandlerLogger` /
@@ -78,6 +89,16 @@ export interface ActivateInput {
   readonly proposalId?: string;
 }
 
+export interface DeactivateInput {
+  readonly layerId: string;
+  readonly kind: ArtifactKind;
+  readonly name: string;
+  readonly deactivatedBy: string;
+  readonly now?: string;
+  readonly correlationId?: string;
+  readonly flowId?: string;
+}
+
 export interface CapabilityRegistry {
   /**
    * Active rows (`deactivated_at IS NULL`) for a layer. The order
@@ -104,11 +125,33 @@ export interface CapabilityRegistry {
 
   /**
    * Insert into `layer_capabilities` (or revive a soft-deactivated
-   * row) and publish `proposal.activated`. Per-kind activation hooks
-   * are NOT wired here — phase 7.5 lands the answerer / bus / tool
-   * registry consumers.
+   * row) and publish `proposal.activated`. Phase 7.5 wires the per-
+   * kind activation hooks:
+   *  - `skill`: no extra work — the answerer reads via
+   *    `loadSkillFragments` on demand.
+   *  - `tool` : no extra work — the registry surface reads on demand.
+   *  - `agent`: subscribes the handler to the bus via
+   *    `attachAgentSubscriber(...)`. Requires `agentSubscriber` in
+   *    the registry's construction deps; without it agents activate
+   *    as DATA-ONLY rows (no live bus subscription) and the call
+   *    logs a `phase 7.5 wiring missing` warning. Sandbox replays
+   *    intentionally use this DATA-ONLY mode (no LlmClient is
+   *    threaded into the overlay path) — the bus events the live
+   *    capability handler would react to don't fire inside a
+   *    scratch-DB replay anyway.
    */
   activate(input: ActivateInput): LayerCapability;
+
+  /**
+   * Phase 7.5 — admin deactivation. Soft-deactivates the row
+   * (`deactivated_at = now`), detaches the agent subscriber when
+   * `kind=agent`, and publishes `proposal.deactivated`. No-op when
+   * the row is already deactivated or doesn't exist (idempotent).
+   *
+   * Returns the capability row's id when a row was deactivated,
+   * `null` when the call was a no-op.
+   */
+  deactivate(input: DeactivateInput): string | null;
 }
 
 export interface CapabilityRegistryDeps {
@@ -117,6 +160,18 @@ export interface CapabilityRegistryDeps {
   readonly logger?: CapabilityRegistryLogger;
   readonly idFactory?: () => string;
   readonly clock?: () => Date;
+  /**
+   * Phase 7.5 — agent-subscriber wiring. When present, activating an
+   * `agent` capability calls `attachAgentSubscriber(...)` against
+   * this client. When absent (e.g. the sandbox path, or a test that
+   * only exercises skill / tool kinds), agent activations are
+   * data-only and the registry logs a `wiring missing` warning so
+   * the gap is visible in CI.
+   */
+  readonly agentSubscriber?: {
+    readonly llm: LlmClient;
+    readonly logger?: AgentSubscriberLogger;
+  };
 }
 
 /**
@@ -201,10 +256,29 @@ function buildView(
       });
       const capability = repoRowToCapability(inserted);
 
-      // phase 7.5: per-kind activation hooks attach here.
-      // - kind='skill' → load fragment into answerer's per-layer cache
-      // - kind='agent' → subscribe handler to durable bus per `subscribesTo`
-      // - kind='tool'  → register into per-layer tool registry surface
+      // Phase 7.5 — per-kind activation hooks.
+      //   - skill: no extra work (answerer reads via `loadSkillFragments`)
+      //   - tool : no extra work (registry surface reads via `listTools`)
+      //   - agent: attach handler to the durable bus (per `subscribesTo`)
+      if (input.kind === 'agent') {
+        if (deps.agentSubscriber !== undefined) {
+          attachAgentSubscriber(capability, {
+            bus: deps.bus,
+            llm: deps.agentSubscriber.llm,
+            ...(deps.agentSubscriber.logger !== undefined
+              ? { logger: deps.agentSubscriber.logger }
+              : {}),
+            ...(deps.clock !== undefined ? { clock: deps.clock } : {}),
+          });
+        } else {
+          logger.warn('proposal.capability.activate.agent-wiring-missing', {
+            event: 'proposal.capability.activate.agent-wiring-missing',
+            capabilityId: capability.id,
+            layerId: input.layerId,
+            name: input.name,
+          });
+        }
+      }
 
       const payload: ProposalActivatedPayload = {
         layerId: input.layerId,
@@ -240,6 +314,69 @@ function buildView(
         'proposal.capability.activated_count': 1,
       });
       return capability;
+    },
+
+    deactivate(input: DeactivateInput): string | null {
+      const row = deps.repo.getByName(input.layerId, input.kind, input.name);
+      if (row === null) {
+        logger.warn('proposal.capability.deactivate.not-found', {
+          event: 'proposal.capability.deactivate.not-found',
+          layerId: input.layerId,
+          kind: input.kind,
+          name: input.name,
+        });
+        return null;
+      }
+      if (row.deactivatedAt !== null) {
+        // Already deactivated — idempotent no-op.
+        return null;
+      }
+      const nowIso = input.now ?? clock().toISOString();
+      deps.repo.deactivate(row.id, nowIso);
+
+      // Per-kind deactivation hooks. `agent` is the only kind with
+      // live runtime state (a bus subscription); skill and tool are
+      // pure data so their detachment is the row update itself.
+      if (input.kind === 'agent') {
+        detachAgentSubscriber(row.id, {
+          ...(deps.agentSubscriber?.logger !== undefined
+            ? { logger: deps.agentSubscriber.logger }
+            : {}),
+        });
+      }
+
+      const payload: ProposalDeactivatedPayload = {
+        layerId: input.layerId,
+        artifactKind: input.kind,
+        capabilityId: row.id,
+        name: input.name,
+        deactivatedBy: input.deactivatedBy,
+      };
+      void deps.bus
+        .publish<ProposalDeactivatedPayload>({
+          type: PROPOSAL_DEACTIVATED_EVENT_TYPE,
+          payload,
+          ...(input.correlationId !== undefined ? { correlationId: input.correlationId } : {}),
+          ...(input.flowId !== undefined ? { flowId: input.flowId } : {}),
+        })
+        .catch((err) => {
+          logger.warn('proposal.deactivated.publish-failed', {
+            event: 'proposal.deactivated.publish-failed',
+            capabilityId: row.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+
+      logger.info('proposal.capability.deactivated', {
+        event: 'proposal.capability.deactivated',
+        capabilityId: row.id,
+        layerId: input.layerId,
+        kind: input.kind,
+        name: input.name,
+        deactivatedBy: input.deactivatedBy,
+      });
+
+      return row.id;
     },
   };
 }

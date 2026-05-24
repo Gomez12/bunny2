@@ -124,6 +124,14 @@ export interface LayerChatRouteDeps {
    * shared `counters` instance once a telemetry module ships.
    */
   readonly counters?: LayerChatCounters;
+  /**
+   * Phase 7.5 — per-layer capability registry. Threaded into
+   * `runPipeline` so the answerer can inject activated skill
+   * prompt-fragments. Optional: tests that don't care about
+   * capabilities omit it and the answerer's prompt is byte-identical
+   * to the phase-6 shape.
+   */
+  readonly capabilityRegistry?: import('../../proposals').CapabilityRegistry;
 }
 
 export interface LayerChatCounters {
@@ -372,6 +380,9 @@ export function registerLayerChatRoutes(
               abortSignal: abortController.signal,
               onStepEvent: writeStep,
               ...(deps.now !== undefined ? { clock: deps.now } : {}),
+              ...(deps.capabilityRegistry !== undefined
+                ? { capabilityRegistry: deps.capabilityRegistry }
+                : {}),
             },
           );
         } catch (err) {

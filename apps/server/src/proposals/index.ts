@@ -13,7 +13,17 @@ export {
   type CapabilityRegistry,
   type CapabilityRegistryDeps,
   type CapabilityRegistryLogger,
+  type DeactivateInput,
 } from './capability-registry';
+
+export {
+  attachAgentSubscriber,
+  detachAgentSubscriber,
+  isAgentAttached,
+  resetAttachedAgentsForTest,
+  type AgentSubscriberDeps,
+  type AgentSubscriberLogger,
+} from './agents/subscribe';
 
 export {
   runSandbox,
@@ -39,7 +49,7 @@ export {
   buildTranscript,
   computeDelta,
   summarizeVariant,
-  COVERAGE_BONUS_PER_EVIDENCE,
+  PROMPT_GROWTH_BONUS_PER_MESSAGE,
   type DeltaMetrics,
   type ReplayMetricsInput,
   type VariantMetrics,
@@ -63,7 +73,9 @@ export {
   PROPOSAL_MINTED_EVENT_TYPE,
   PROPOSAL_ACTIVATED_EVENT_TYPE,
   PROPOSAL_SUPERSEDED_EVENT_TYPE,
+  PROPOSAL_DEACTIVATED_EVENT_TYPE,
   type ProposalActivatedPayload,
+  type ProposalDeactivatedPayload,
   type ProposalEventType,
   type ProposalMintedPayload,
   type ProposalSupersededPayload,

@@ -18,6 +18,9 @@ import { z } from 'zod';
 import { ChatIntentSchema, type ChatIntent } from '@bunny2/shared';
 import type { ChatMessage } from '../repos/chat-messages-repo';
 import { ENTITY_KIND_TO_LANCE_TABLE } from '../embeddings/lance-tables';
+// Type-only import — keeps the pipeline → proposals edge purely
+// structural so the JS module graph stays acyclic.
+import type { CapabilityRegistry } from '../../proposals/capability-registry';
 
 // ---------- step kind/status (mirror shared zod 1:1) ------------------
 
@@ -189,6 +192,18 @@ export interface PipelineDeps {
    * the partial assistant content, and marks the message `failed`.
    */
   readonly abortSignal?: AbortSignal;
+  /**
+   * Phase 7.5 — per-layer capability registry. Optional so the
+   * existing pipeline tests (which don't care about capabilities)
+   * keep working unchanged. When present, the answer step reads
+   * activated `skill` rows via `loadSkillFragments(registry, layerId,
+   * intent)` and injects their prompt fragments AFTER the hard
+   * grounding system prompt + BEFORE the user/history turns. Sandbox
+   * replays pass a `withOverlay(...)` view here so the proposed
+   * variant sees the proposal's spec without touching the live
+   * registry.
+   */
+  readonly capabilityRegistry?: CapabilityRegistry;
 }
 
 /**

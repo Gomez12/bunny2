@@ -253,6 +253,11 @@ export async function runSandbox(
     variant: 'proposed',
     proposedSpec: spec,
     sandboxOutcome: proposedReplays.aggregateOutcome,
+    // Phase 7.5 — feed the proposed variant the current variant's
+    // per-message `tokensIn` so the score formula can derive prompt
+    // growth from the real transcript field (no more synthetic
+    // tag-coverage heuristic).
+    baselineTokensIn: currentReplays.results.map((r) => r.tokensIn),
   });
   const delta = computeDelta(currentMetrics, proposedMetrics);
 

@@ -55,6 +55,13 @@ export interface LayerCapabilitiesRepo {
   listActiveByLayer(layerId: string): LayerCapabilityRow[];
   /** All rows for a layer, including deactivated ones. */
   listAllByLayer(layerId: string): LayerCapabilityRow[];
+  /**
+   * Phase 7.5 — active rows of a specific kind across every layer,
+   * ordered by `(layer_id, name)` for boot re-attach determinism.
+   * Used by `apps/server/src/index.ts` to re-subscribe every active
+   * `agent` capability after restart.
+   */
+  listAllActiveByKind(kind: ArtifactKind): LayerCapabilityRow[];
   getByName(layerId: string, kind: ArtifactKind, name: string): LayerCapabilityRow | null;
   deactivate(id: string, now: string): void;
 }
@@ -102,6 +109,12 @@ export function createLayerCapabilitiesRepo(db: Database): LayerCapabilitiesRepo
        WHERE layer_id = ? AND kind = ? AND name = ?`,
   );
 
+  const listActiveByKindStmt = db.query<SqlRow, [ArtifactKind]>(
+    `SELECT ${COLS} FROM layer_capabilities
+       WHERE kind = ? AND deactivated_at IS NULL
+       ORDER BY layer_id ASC, name ASC`,
+  );
+
   const deactivateStmt = db.query<unknown, [string, string]>(
     `UPDATE layer_capabilities
         SET deactivated_at = ?
@@ -134,6 +147,10 @@ export function createLayerCapabilitiesRepo(db: Database): LayerCapabilitiesRepo
 
     listAllByLayer(layerId) {
       return listAll.all(layerId).map(rowToCapability);
+    },
+
+    listAllActiveByKind(kind) {
+      return listActiveByKindStmt.all(kind).map(rowToCapability);
     },
 
     getByName(layerId, kind, name) {

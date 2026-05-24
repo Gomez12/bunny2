@@ -71,3 +71,19 @@ export {
   type ChatRunsPruneResult,
 } from './runs-prune-handler';
 export { CHAT_REVIEW_LAYER_KIND, chatReviewLayerHandler } from './review-layer-handler';
+export { loadSkillFragments, type LoadedSkillFragment } from './skills/load-fragments';
+export { listTools, type RegisteredTool } from './tools/list-tools';
+export {
+  buildSearchSummariesAliasedHandler,
+  SearchSummariesAliasedConfigSchema,
+  type SearchSummariesAliasedCallable,
+  type SearchSummariesAliasedConfig,
+  type SearchSummariesAliasedDeps,
+} from './tools/handlers/search-summaries-aliased';
+export {
+  buildProjectionLookupHandler,
+  ProjectionLookupConfigSchema,
+  type ProjectionLookupCallable,
+  type ProjectionLookupConfig,
+  type ProjectionLookupDeps,
+} from './tools/handlers/projection-lookup';

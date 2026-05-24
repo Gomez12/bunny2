@@ -47,7 +47,7 @@ import {
   createVectorSearch,
   type Embedder,
 } from './chat';
-import { createCapabilityRegistry } from './proposals';
+import { attachAgentSubscriber, createCapabilityRegistry } from './proposals';
 import { createLayerCapabilitiesRepo } from './proposals/repos/layer-capabilities-repo';
 
 // Phase 5.2 — process role split. `parseRole` accepts the CLI flag
@@ -274,6 +274,23 @@ const embedder = buildEmbedder();
 const lanceWriter = createLanceDbWriter(lance);
 const vectorSearch = createVectorSearch({ embedder, reader: lanceWriter });
 
+// Phase 7.5 — per-process capability registry. Constructed BEFORE
+// `createApp` so the chat route can thread it into `runPipeline`
+// (the answerer reads activated skills via the registry on every
+// answer). Wires `agentSubscriber` so an activation of an `agent`
+// capability attaches its handler to the durable bus immediately.
+//
+// The `web` role intentionally wires the same registry: the answerer
+// reads skill / tool rows from the same `layer_capabilities` table
+// the `worker` role's activation writes to, so a worker-driven
+// `replanOnApproval` is visible to the next chat answer on web.
+const layerCapabilitiesRepo = createLayerCapabilitiesRepo(db);
+const capabilityRegistry = createCapabilityRegistry({
+  repo: layerCapabilitiesRepo,
+  bus,
+  agentSubscriber: { llm: llmClient },
+});
+
 const app = createApp({
   bus,
   llmClient,
@@ -295,6 +312,8 @@ const app = createApp({
   // per-kind SQLite LIKE primitive (no embedder, mock embedder, cold
   // corpus, error → LIKE).
   vectorSearch,
+  // Phase 7.5 — capability registry threaded into the chat pipeline.
+  capabilityRegistry,
 });
 // Phase 5.2 — the periodic connector poll runner is background work,
 // so the `web` role skips `start()`. The runner is still constructed
@@ -405,18 +424,41 @@ registerBuiltInScheduledTaskHandlers({
 // registry has its full set before subscribers attach.
 registerChatScheduledTaskHandlers({ embedder, writer: lanceWriter });
 
-// Phase 7.4 — per-process capability registry. Reads + writes
-// `layer_capabilities`; consulted by the sandbox runner during replay
-// (via in-memory overlay) and by the approval re-plan path. Per-kind
-// activation consumers (answerer skill-fragment load; bus subscriber
-// for `agent` kind; tool registry surface) attach in phase 7.5; 7.4
-// only needs the registry surface itself + the activate(...) write
-// path so the route handlers landing in 7.6 have it ready.
-const capabilityRegistry = createCapabilityRegistry({
-  repo: createLayerCapabilitiesRepo(db),
-  bus,
-});
-void capabilityRegistry;
+// Phase 7.5 — boot re-attach of every active `agent` capability. The
+// per-process subscriber wrapper is in-memory only, so a restart
+// would otherwise leave activated agents inert until the next
+// activate-flow re-attached them. Iteration order is deterministic
+// (`(layer_id, name)` ascending) so logs + telemetry from boot are
+// stable. Each attach is best-effort; a malformed row (which would
+// fail the zod re-check inside `attachAgentSubscriber`) is logged +
+// skipped so a single bad row can't block the rest of the registry.
+//
+// The `web` role re-attaches too: the answerer doesn't need agent
+// subscribers, but every role shares the same durable bus and the
+// outbox claim is atomic, so duplicate subscriptions across roles
+// don't double-execute. A future role-isolation pass may strip this
+// to worker-only.
+{
+  const activeAgents = layerCapabilitiesRepo.listAllActiveByKind('agent');
+  let attachedCount = 0;
+  for (const row of activeAgents) {
+    const attached = attachAgentSubscriber(
+      {
+        id: row.id,
+        layerId: row.layerId,
+        kind: row.kind,
+        name: row.name,
+        specJson: row.specJson,
+        origin: row.origin,
+        activatedAt: row.activatedAt,
+        deactivatedAt: row.deactivatedAt,
+      },
+      { bus, llm: llmClient },
+    );
+    if (attached !== null) attachedCount += 1;
+  }
+  console.log(`[${appName}] capability.agents: ${attachedCount} re-attached`);
+}
 
 const embeddingSubscriber = createEmbeddingSubscriber({
   bus,

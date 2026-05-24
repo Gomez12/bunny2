@@ -30,6 +30,7 @@ export const PROPOSAL_EVENT_TYPES = [
   'proposal.minted',
   'proposal.activated',
   'proposal.superseded',
+  'proposal.deactivated',
 ] as const;
 
 export type ProposalEventType = (typeof PROPOSAL_EVENT_TYPES)[number];
@@ -82,3 +83,22 @@ export interface ProposalSupersededPayload {
 }
 
 export const PROPOSAL_SUPERSEDED_EVENT_TYPE: ProposalEventType = 'proposal.superseded';
+
+/**
+ * Fired when an active capability is admin-deactivated (phase 7.5
+ * `capabilityRegistry.deactivate(...)`). Carries the capability's id
+ * + the actor's user id so subscribers (Kanban badge cleanup, the
+ * future audit-log surface) can react without re-reading the row.
+ *
+ * `capabilityId` references `layer_capabilities.id`; for proposal-
+ * backed capabilities the origin string carries the proposal id.
+ */
+export interface ProposalDeactivatedPayload {
+  readonly layerId: string;
+  readonly artifactKind: ArtifactKind;
+  readonly capabilityId: string;
+  readonly name: string;
+  readonly deactivatedBy: string;
+}
+
+export const PROPOSAL_DEACTIVATED_EVENT_TYPE: ProposalEventType = 'proposal.deactivated';

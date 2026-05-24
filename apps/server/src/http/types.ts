@@ -161,6 +161,15 @@ export interface AppDeps {
    * `apps/server/src/chat/embeddings/vector-search.ts`.
    */
   readonly vectorSearch?: import('../chat/embeddings').VectorSearchHelper;
+  /**
+   * Phase 7.5 — per-process capability registry. When provided, the
+   * chat route threads it into `runPipeline` so the answerer can
+   * inject activated skill prompt-fragments + the future tool-calling
+   * answerer can consult the per-layer tool list. Optional: the
+   * existing test fixtures don't wire it, and the answerer falls
+   * back to the phase-6 byte-identical prompt path.
+   */
+  readonly capabilityRegistry?: import('../proposals').CapabilityRegistry;
 }
 
 /**

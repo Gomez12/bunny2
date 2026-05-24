@@ -408,13 +408,23 @@ describe('phase 7.4 — replan on approval', () => {
       bus: fx.bus,
     });
 
-    // Custom replan LLM that returns a syntactically valid spec whose
-    // `addressesTags` does NOT overlap the evidence's cluster reason
-    // (`zero-hit-retrieval`). The sandbox heuristic in metrics.ts
-    // therefore scores `proposed.thumbsScore = baseline` (no coverage
-    // bonus) → `thumbsUpDelta = 0` → `superseded-after-replan`. This
+    // Phase 7.5 — the metrics-rewrite derives `thumbsUpDelta` from
+    // transcript prompt-growth instead of `addressesTags` coverage.
+    // To trigger the non-positive-delta branch we hand back a spec
+    // whose intent (`question.summary`) does NOT match the replay's
+    // resolved intent (`question.entity_lookup` — see `enqueueOneReplay`).
+    // The answerer therefore filters the overlay skill OUT for both
+    // variants, so prompt growth is 0 and `thumbsUpDelta = 0`. This
     // exercises the real non-positive-delta branch, not the
     // null-mapped-to-supersede shortcut.
+    const nonHelpfulSpec: ProposalSpec = {
+      artifactKind: 'skill',
+      name: 'wrong-intent',
+      description: 'desc',
+      intent: 'question.summary',
+      promptFragment: 'frag',
+      addressesTags: ['zero-hit-retrieval'],
+    };
     const result = await replanOnApproval(proposalId, USER_ID, {
       llm,
       db: fx.db,
@@ -428,7 +438,7 @@ describe('phase 7.4 — replan on approval', () => {
       proposalsRepo: repos.proposalsRepo,
       evidenceRepo: repos.evidenceRepo,
       layerCapabilitiesRepo: repos.layerCapabilitiesRepo,
-      replanProposalViaLlm: async () => skillSpec('non-covering', ['thumbs-down']),
+      replanProposalViaLlm: async () => nonHelpfulSpec,
     });
     expect(result.outcome).toBe('superseded-after-replan');
     const capRows = repos.layerCapabilitiesRepo.listActiveByLayer(LAYER_X);

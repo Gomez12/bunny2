@@ -38,6 +38,7 @@ import {
   type PipelineStepResult,
   type RetrievalOutput,
 } from './types';
+import { loadSkillFragments } from '../skills/load-fragments';
 
 export const ANSWER_TIMEOUT_MS = 60_000;
 
@@ -111,11 +112,25 @@ export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> 
         };
       }
 
+      // Phase 7.5 — load activated skill prompt-fragments for this
+      // `(layerId, intent)`. The list is deterministic (ordered by
+      // `activatedAt` ascending) and empty when no skills match —
+      // which keeps the phase-6 byte-identical prompt path alive for
+      // every test that doesn't wire a registry.
+      const skillFragments =
+        deps.capabilityRegistry !== undefined
+          ? loadSkillFragments(deps.capabilityRegistry, ctx.layerId, intent)
+          : [];
+
       const messages: {
         readonly role: 'system' | 'user' | 'assistant';
         readonly content: string;
       }[] = [
         { role: 'system', content: SYSTEM_PROMPT },
+        // Skill fragments slot AFTER the hard grounding system prompt
+        // and BEFORE the conversation history + retrieval JSON. Order
+        // is `activatedAt` ascending so re-runs are stable.
+        ...skillFragments.map((s) => ({ role: 'system' as const, content: s.promptFragment })),
         ...ctx.history.map((h) => ({ role: h.role, content: h.content })),
         {
           role: 'system',
@@ -128,6 +143,14 @@ export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> 
         },
         { role: 'user', content: ctx.userContent },
       ];
+
+      // TODO(phase-7.6): write `chat_pipeline_steps.attribution_json`
+      // listing every `skillFragments[].capabilityId` that contributed
+      // to this answer (the column lands in 7.6 alongside the Kanban
+      // chip that consumes it). For 7.5 the value is computed locally
+      // and dropped on the floor; the column doesn't exist yet, so any
+      // write would be a no-op.
+      void skillFragments;
 
       const metadata = {
         correlationId: ctx.correlationId,

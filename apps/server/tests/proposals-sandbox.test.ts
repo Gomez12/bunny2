@@ -454,6 +454,97 @@ describe('phase 7.4 — sandbox runner', () => {
     expect(result.ok.proposed.messages.length).toBe(5);
   });
 
+  it('phase 7.5: proposed-variant prompt contains the skill fragment (real delta)', async () => {
+    // The orchestrator's answer-step now consults the registry's
+    // overlay view and injects `promptFragment` as an extra system
+    // message. The mock LLM captures every prompt, so we can assert
+    // the proposed-variant answerer saw the fragment while the
+    // current-variant didn't. This pins the "real delta" contract
+    // that replaces the phase-7.4 synthetic thumbs-score heuristic.
+    const llm = createProgrammableLlm();
+    enqueueReplay(llm, 2); // 1 evidence × 2 variants × 3 steps = 6
+
+    const ev = seedEvidenceMessage(fx, {
+      layerId: LAYER_X,
+      userContent: 'when do I meet Acmé?',
+    });
+    const proposalsRepo = createImprovementProposalsRepo(fx.db);
+    const evidenceRepo = createImprovementProposalEvidenceRepo(fx.db);
+    const distinctiveFragment = 'PHASE-7-5-MARKER: expand Acmé alias to Acme';
+    const proposal = buildProposal({
+      layerId: LAYER_X,
+      spec: {
+        artifactKind: 'skill',
+        name: 'expand-acme-marker',
+        description: 'expand acme alias',
+        intent: 'question.entity_lookup',
+        promptFragment: distinctiveFragment,
+        addressesTags: ['zero-hit-retrieval'],
+      },
+    });
+    proposalsRepo.insertProposal({
+      id: proposal.id,
+      layerId: proposal.layerId,
+      status: 'new',
+      artifactKind: proposal.artifactKind,
+      problemSummary: proposal.problemSummary,
+      proposedSpecJson: JSON.stringify(proposal.proposedSpec),
+      expectedImpactJson: JSON.stringify(proposal.expectedImpact),
+      threshold: proposal.threshold,
+      capabilitySnapshotJson: JSON.stringify(proposal.capabilitySnapshot),
+      mintedByRunId: proposal.mintedByRunId,
+      mintedAt: proposal.mintedAt,
+    });
+    evidenceRepo.insertMany([
+      {
+        id: crypto.randomUUID(),
+        proposalId: proposal.id,
+        messageId: ev.messageId,
+        clusterReason: 'zero-hit-retrieval',
+      },
+    ]);
+    const deps = buildSandboxDeps(fx);
+    const result = await runSandbox(
+      proposal,
+      [{ id: crypto.randomUUID(), messageId: ev.messageId, clusterReason: 'zero-hit-retrieval' }],
+      {
+        llm,
+        db: fx.db,
+        bus: fx.bus,
+        capabilityRegistry: deps.capabilityRegistry,
+        artifactsRepo: deps.artifactsRepo,
+        conversationsRepo: deps.conversationsRepo,
+        messagesRepo: deps.messagesRepo,
+        getEntityStore: () => null,
+        logger: noopLogger,
+      },
+    );
+
+    expect('ok' in result).toBe(true);
+    if (!('ok' in result)) return;
+
+    // The orchestrator drove 3 LLM calls per replay × 2 variants.
+    // Only the `answer` step receives the system-prompt fragment.
+    // The proposed-variant `answer` calls are the second half (LLM
+    // calls are FIFO; current runs first).
+    const answerCalls = llm.calls.filter((c) => c.step === 'answer');
+    expect(answerCalls.length).toBe(2);
+    const [currentAnswer, proposedAnswer] = answerCalls;
+    const currentPrompt = currentAnswer?.messages.map((m) => m.content).join('\n') ?? '';
+    const proposedPrompt = proposedAnswer?.messages.map((m) => m.content).join('\n') ?? '';
+    expect(currentPrompt).not.toContain(distinctiveFragment);
+    expect(proposedPrompt).toContain(distinctiveFragment);
+
+    // Metrics must derive from the real transcript (synthetic
+    // thumbs-score heuristic removed in 7.5): the proposed variant's
+    // `tokensIn` is strictly greater than the current variant's
+    // because the answer step's prompt now carries an extra system
+    // message. The runner's per-message comparison gives +1 per
+    // grown message; here we have 1 message.
+    expect(result.ok.metrics.proposed.tokensIn).toBeGreaterThan(result.ok.metrics.current.tokensIn);
+    expect(result.ok.metrics.thumbsUpDelta).toBeGreaterThan(0);
+  });
+
   it('cross-layer evidence guard: layer-X proposal + layer-Y evidence → err, no rows', async () => {
     const ev = seedEvidenceMessage(fx, {
       layerId: LAYER_Y, // belongs to layer Y

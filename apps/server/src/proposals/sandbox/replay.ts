@@ -28,13 +28,14 @@
  *      from the scratch DB to assemble a `MessageReplayResult`.
  *   6. Drop the scratch DB.
  *
- * The 7.4 brief mandates a `capabilityRegistry?` seam on
- * `RunPipelineDeps`. The orchestrator does NOT consult it yet (the
- * answerer / retrieval consumers land in 7.5) — so the runner passes
- * it but both `current` and `proposed` variants produce identical
- * transcripts under the same scripted LLM. The synthetic thumbs-score
- * heuristic in `metrics.ts` is the deterministic bridge until 7.5
- * lands.
+ * Phase 7.5 — the orchestrator now consults the `capabilityRegistry`
+ * inside the answer step (`loadSkillFragments(...)` injects skill
+ * prompt-fragments into the system prompt). The runner passes the
+ * registry through here so the proposed-variant replay sees the
+ * overlay's spec — and the resulting transcript carries a real
+ * delta (additional system message bytes → larger `tokensIn` on the
+ * proposed variant). The synthetic `addressesTags` heuristic in
+ * `metrics.ts` is gone; deltas are derived from the transcripts.
  */
 
 import { Database } from 'bun:sqlite';
@@ -168,6 +169,13 @@ export async function replayMessage(
               stepsRepo,
               getEntityStore: deps.getEntityStore,
               ...(deps.clock !== undefined ? { clock: deps.clock } : {}),
+              // Phase 7.5 — thread the registry view (live or overlay)
+              // into the orchestrator so the answer step's
+              // `loadSkillFragments(...)` can see the proposed spec
+              // for the proposed variant.
+              ...(deps.capabilityRegistry !== undefined
+                ? { capabilityRegistry: deps.capabilityRegistry }
+                : {}),
             },
           ),
         REPLAY_TIMEOUT_MS,

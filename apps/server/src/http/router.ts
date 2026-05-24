@@ -368,6 +368,9 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     llmCallLog,
     locales: deps.locales,
     getEntityStore: getEntityStoreForChat,
+    ...(deps.capabilityRegistry !== undefined
+      ? { capabilityRegistry: deps.capabilityRegistry }
+      : {}),
   });
 
   // Phase 4d.6 — todo → calendar projection bridge. The READ side is
