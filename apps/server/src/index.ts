@@ -36,6 +36,12 @@ import {
   type EntityStore,
 } from './entities';
 import { createTodoCalendarProjection } from './entities/todos';
+import {
+  createScheduledTasksRepo,
+  createScheduler,
+  createScheduledRunSubscriber,
+  registerBuiltInScheduledTaskHandlers,
+} from './scheduled';
 
 // Phase 5.2 — process role split. `parseRole` accepts the CLI flag
 // (`--role=web|worker|all`) and falls back to the `BUNNY2_ROLE` env
@@ -277,14 +283,43 @@ if (config.enrichment.runnerEnabled && role !== 'web') {
 // on the worker / `all` roles only. The web role serves the read side
 // (`mountTodoCalendarProjectionRoutes` in `createApp`) from the
 // already-projected table the worker maintains.
-//
-// Phase 5.3 will add the scheduler tick here (also worker / `all`
-// only) — placeholder reserved.
 const todoCalendarProjection = createTodoCalendarProjection({ db, bus });
 if (role !== 'web') {
   todoCalendarProjection.start();
   todoCalendarProjection.rebuild();
 }
+
+// Phase 5.3 — scheduled-tasks runtime.
+//   - `registerBuiltInScheduledTaskHandlers()` is idempotent and runs
+//     on every role so a `web` process can list the registered
+//     handler set if a future admin route needs it.
+//   - The run subscriber listens on every role: the worker actually
+//     executes the handler, but a `web` process owning the
+//     subscription is correctness-safe because the durable outbox
+//     claim is atomic (the same logic the connector dispatcher
+//     comment in this file explains). A future phase may strip the
+//     subscription from `web` once we have a sharper isolation
+//     boundary.
+//   - `scheduler.start()` only arms its tick on `worker` / `all` —
+//     `start()` itself checks `role` and no-ops on `web`. The web
+//     role keeps the scheduler object around so the same shape ships
+//     across every role (review-clarity).
+registerBuiltInScheduledTaskHandlers();
+const scheduledRepo = createScheduledTasksRepo(db);
+const scheduledRunSubscriber = createScheduledRunSubscriber({
+  db,
+  bus,
+  repo: scheduledRepo,
+  llm: llmClient,
+});
+scheduledRunSubscriber.start();
+const scheduler = createScheduler({
+  db,
+  bus,
+  repo: scheduledRepo,
+  role,
+});
+scheduler.start();
 
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);
@@ -295,6 +330,7 @@ console.log(`[${appName}] bus:         ${busAdapterName} (events=${eventLog.coun
 console.log(
   `[${appName}] llm:         ${llmClient.endpoint} (default=${llmClient.defaultModel}, calls=${llmCallLog.count()})`,
 );
+console.log(`[${appName}] scheduler:   ${role === 'web' ? 'disabled, role=web' : 'enabled'}`);
 
 // Keep the prune handle reachable so the GC does not collect its interval.
 void llmPrune;
@@ -305,6 +341,8 @@ void connectorDispatcher;
 void connectorRunner;
 void enrichmentRunner;
 void todoCalendarProjection;
+void scheduler;
+void scheduledRunSubscriber;
 
 // Phase 5.2 — the `worker` role does background work only and binds
 // no TCP port. The `web` and `all` roles serve HTTP as before. The
