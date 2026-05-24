@@ -639,7 +639,11 @@ Three artifact kinds, three activation paths:
   proposals, click-through to detail.
 - `/l/:slug/chat/board` extension: a small `[skill:…]` /
   `[tool:…]` / `[agent:…]` chip on every card whose pipeline
-  consulted an activated capability. Source field is `chat_pipeline_steps.attribution_json` (one new nullable column added in 7.2).
+  consulted an activated capability. Source field is
+  `chat_pipeline_steps.attribution_json` — one new nullable
+  column shipped as part of 7.6 alongside the Kanban badge that
+  consumes it (the answerer step in 7.5 starts writing the
+  field once the column exists).
 
 ### 4.7 Telemetry, logging, analytics
 
@@ -687,8 +691,10 @@ proposal.mint:<runId>` / `flow_id = proposal.replan:<proposalId>`
   `apps/server/src/scheduled/built-in/proposals-replan-stale.ts`.
 - **Migrated / extended**:
   `apps/server/src/storage/migrations/0015_proposals.sql` (new),
-  `apps/server/src/entities/store.ts` (vector read path; LIKE
-  fallback unchanged),
+  `apps/server/src/chat/embeddings/vector-search.ts` +
+  `apps/server/src/http/router.ts` retrieval adapter (vector read
+  path shipped in 7.1 as Option B — `EntityStore.searchSummaries`
+  stayed sync + SQLite-only),
   `apps/server/src/chat/review-layer-handler.ts` (placeholder
   body replaced with real implementation; **kind unchanged**),
   `apps/server/src/chat/pipeline/orchestrator.ts` +
