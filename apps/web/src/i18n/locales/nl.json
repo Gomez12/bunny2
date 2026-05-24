@@ -182,9 +182,7 @@
         "loadFailed": "Kon dit contact niet laden. Probeer het opnieuw.",
         "saveFailed": "Kon het contact niet opslaan. Controleer de invoer en probeer het opnieuw.",
         "validation": "Het contact kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
-        "slugTaken": "Er bestaat al een contact met deze slug in deze laag.",
-        "emailDuplicate": "Elk e-mailadres kan maar één keer worden toegevoegd.",
-        "companyNotFound": "Het gekoppelde bedrijf bestaat niet in deze laag."
+        "emailDuplicate": "Elk e-mailadres kan maar één keer worden toegevoegd."
       },
       "connectorIngestFailed": "Kon het bestand niet importeren. Controleer het en probeer het opnieuw.",
       "connectorIngestUnavailable": "Bestandsimport is niet beschikbaar voor dit itemtype."
@@ -322,7 +320,6 @@
       "fieldCompanyUnknown": "Onbekend bedrijf ({{id}})",
       "fieldNotes": "Notities",
       "fieldBirthday": "Geboortedatum",
-      "originalLocale": "Oorspronkelijke taal",
       "save": "Opslaan",
       "cancel": "Annuleren",
       "saved": "Contact opgeslagen.",
@@ -339,29 +336,17 @@
       "linkSyncError": "Synchronisatie mislukt",
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de naam."
-    },
-    "enrichment": {
-      "contacts": {
-        "suggestCompany": {
-          "running": "Bezig met voorstellen van een bedrijfskoppeling…",
-          "appliedCompany": "{{contact}} gekoppeld aan {{company}}.",
-          "noMatch": "Nog geen passend bedrijf gevonden voor dit contact."
-        }
-      }
     }
   },
   "connectors": {
     "vcard": {
-      "label": "vCard-import",
       "description": "Importeer contacten uit een .vcf-bestand dat door je adresboek is geëxporteerd.",
-      "fields": {},
       "importTitle": "Contacten importeren uit vCard",
       "importChooseFile": "Kies een .vcf-bestand",
       "importSubmit": "Contacten importeren",
       "importSubmitting": "Bezig met importeren…",
       "importSuccess": "{{created}} nieuwe contacten geïmporteerd en {{updated}} bestaande bijgewerkt.",
       "importWarningsTitle": "Waarschuwingen",
-      "importEmpty": "Er zijn geen contacten in dit bestand gevonden.",
       "importNoFile": "Kies eerst een .vcf-bestand."
     }
   }

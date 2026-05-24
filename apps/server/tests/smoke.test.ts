@@ -81,9 +81,10 @@ import {
   type EntityStore,
 } from '../src/entities';
 import { createCompanyModule, createKvkConnector } from '../src/entities/companies';
+import { createContactModule } from '../src/entities/contacts';
 import type { ChatRequest, ChatResponse, LlmClient } from '../src/llm';
 import type { EntityExternalLink } from '@bunny2/shared';
-import type { CompanyPayload } from '@bunny2/shared';
+import type { CompanyPayload, ContactPayload } from '@bunny2/shared';
 import type { BusEvent } from '@bunny2/bus';
 
 interface ChatSuccessBody {
@@ -253,6 +254,16 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     // chain so any wiring drift between dev/test/production breaks
     // here first.
     const layerResolver = createLayerResolver({ db: database, transitiveGroups: resolver });
+    // Phase 4b.2 — wire the ingest dispatcher so the contacts router
+    // mounts `POST /l/:slug/contact/_ingest/:connectorId` (used by the
+    // phase 4b.6 vCard step). The dispatcher is NOT started — the smoke
+    // drives `ingest(...)` synchronously and never publishes
+    // `sync.requested` for vCard (it has no `pull`).
+    const ingestDispatcher = createConnectorDispatcher({
+      db: database,
+      bus,
+      llm: llmClient,
+    });
     const app = createApp({
       bus,
       llmClient,
@@ -262,6 +273,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       resolver,
       layerResolver,
       locales: loaded.config.locales,
+      ingestDispatcher,
     });
 
     // 6-pre. Phase 2.2 invariant — every non-public route requires a
@@ -1164,6 +1176,423 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       // Restore the default-registered company module so later test
       // files in the same `bun test` run that expect the production
       // module are unaffected.
+      __resetEntityRegistryForTests();
+    }
+
+    // -----------------------------------------------------------------
+    // 13. Phase 4b.6 — canonical Contacts entity flow. Mirrors step 12
+    //     for the second entity kind. Covers:
+    //       - create / patch / list (CRUD via the generic router)
+    //       - vCard ingest (`POST /l/:slug/contact/_ingest/vcard`)
+    //       - dedup-by-email re-ingest (idempotent matchKey path)
+    //       - enrichment runner: deterministic-first (domain match +
+    //         ORG-hint match) populates `companyEntityId` without any
+    //         contacts-suggestCompany LLM call
+    //       - stats endpoint independently observable
+    //       - soft-delete via DELETE
+    //       - cross-layer isolation: same slug in a second layer 201s
+    //
+    //     The step uses an isolated stub LLM whose calls go onto its
+    //     OWN ledger (separate from the step-12 `llmCalls`). The fake
+    //     LLM returns a non-empty summary for the companies enrichment
+    //     job (AMI BV is created here too), but the contacts
+    //     `suggestCompany` job runs the deterministic path only — we
+    //     assert no LLM call carried the `enrichment:contacts.*`
+    //     flowId.
+    // -----------------------------------------------------------------
+
+    // 13a. Build a contacts-and-companies module pair that share the
+    //      same fake LLM. We construct an enrichment runner that knows
+    //      both kinds (the contacts job calls `getEntityModule('company')`
+    //      under the hood, so the company module must also be in the
+    //      registry).
+    const contactsLlmCalls: { messages: string; flowId: string | undefined }[] = [];
+    const contactsFakeLlm: LlmClient = {
+      endpoint: 'mock://smoke-contacts',
+      defaultModel: 'mock-default',
+      async chat(req: ChatRequest): Promise<ChatResponse> {
+        const flowId = typeof req.metadata?.flowId === 'string' ? req.metadata.flowId : undefined;
+        contactsLlmCalls.push({
+          messages: req.messages.map((m) => m.content).join('\n'),
+          flowId,
+        });
+        // The companies summary / fillFields jobs may run when AMI BV
+        // lands; return something cheap so applyPatch is a no-op (the
+        // `description` field is allowed to be overwritten, but the
+        // smoke does not assert on it for this step).
+        const content =
+          flowId === 'enrichment:companies.fillFields'
+            ? JSON.stringify({ legalName: 'AMI BV' })
+            : 'AMI BV.';
+        return {
+          id: crypto.randomUUID(),
+          model: 'mock-default',
+          content,
+          tokensIn: 4,
+          tokensOut: 2,
+          raw: null,
+        };
+      },
+    };
+    // Fresh registry: both kinds with empty connector / enrichment-job
+    // lists where appropriate. Contacts ships the production
+    // suggestCompany job; companies ship empty lists because the
+    // smoke only needs companies for the layer-scoped candidate
+    // lookup, not for KvK / enrichment.
+    const stepCompanyModule = createCompanyModule({ connectors: [], enrichmentJobs: [] });
+    // The contacts module ships the production vCard connector — step
+    // 13.3/13.4 drive `_ingest/vcard` end-to-end through the dispatcher
+    // which resolves the connector by id off the registered module.
+    const stepContactModule = createContactModule();
+    registerEntityModule(stepCompanyModule);
+    registerEntityModule(stepContactModule);
+    const contactStore = createEntityStore<ContactPayload>({
+      module: stepContactModule,
+      db: database,
+      bus,
+      llm: contactsFakeLlm,
+    });
+    const companyStoreForContacts = createEntityStore<CompanyPayload>({
+      module: stepCompanyModule,
+      db: database,
+      bus,
+      llm: contactsFakeLlm,
+    });
+    const contactsRunner = createEnrichmentRunner({
+      db: database,
+      bus,
+      llm: contactsFakeLlm,
+      pricing: loaded.config.llm.pricing,
+      resolveStore: (mod) => {
+        if (mod.kind === 'contact') return contactStore as EntityStore<unknown>;
+        if (mod.kind === 'company') return companyStoreForContacts as EntityStore<unknown>;
+        return null;
+      },
+    });
+
+    // Subscribe to ingest events so we can prove the ingest path
+    // published the right markers without bytes / filenames leaking.
+    const contactsBusEvents: BusEvent[] = [];
+    const unsubIngestRequested = bus.subscribe('entity.connector.ingest.requested', (ev) => {
+      contactsBusEvents.push(ev);
+    });
+    const unsubIngestCompleted = bus.subscribe('entity.connector.ingest.completed', (ev) => {
+      contactsBusEvents.push(ev);
+    });
+
+    contactsRunner.start();
+    try {
+      // 13b. Create AMI BV directly via the store so the deterministic
+      //      enrichment paths (domain match on `cs@ami.nl`; ORG-hint
+      //      match on `ORG: AMI BV`) have a target. Using
+      //      `payload.email = 'cs@ami.nl'` gives the domain matcher a
+      //      hit on the company's email field.
+      const amiLayerCreate = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/company`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'AMI BV',
+            slug: 'ami-bv-2',
+            originalLocale: 'en',
+            payload: { email: 'cs@ami.nl' },
+          }),
+        }),
+      );
+      expect(amiLayerCreate.status).toBe(201);
+      const amiCreated = (await amiLayerCreate.json()) as {
+        entity: { id: string; slug: string };
+      };
+      const amiId = amiCreated.entity.id;
+
+      // 13.1 POST /l/:slug/contact — create Alice.
+      const aliceCreate = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'Alice',
+            slug: 'alice',
+            originalLocale: 'en',
+            payload: {
+              givenName: 'Alice',
+              emails: [{ value: 'alice@ami.nl', isPrimary: true }],
+            },
+          }),
+        }),
+      );
+      expect(aliceCreate.status).toBe(201);
+      const aliceBody = (await aliceCreate.json()) as {
+        entity: { id: string; slug: string; meta: { version: number; updatedAt: string } };
+      };
+      expect(aliceBody.entity.slug).toBe('alice');
+      expect(aliceBody.entity.meta.version).toBe(1);
+      const aliceUpdatedAtV1 = aliceBody.entity.meta.updatedAt;
+
+      // Sanity: Alice appears in the list.
+      const listAfterCreate = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const listAfterCreateBody = (await listAfterCreate.json()) as {
+        entities: ReadonlyArray<{ slug: string }>;
+      };
+      expect(listAfterCreateBody.entities.some((e) => e.slug === 'alice')).toBe(true);
+
+      // 13.2 PATCH — set the job title. Version must advance, updatedAt
+      //      must strictly exceed the v1 timestamp.
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      const alicePatch = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact/alice`, {
+          method: 'PATCH',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            payload: {
+              givenName: 'Alice',
+              emails: [{ value: 'alice@ami.nl', isPrimary: true }],
+              jobTitle: 'Engineer',
+            },
+          }),
+        }),
+      );
+      expect(alicePatch.status).toBe(200);
+      const alicePatchBody = (await alicePatch.json()) as {
+        entity: { meta: { version: number; updatedAt: string } };
+      };
+      expect(alicePatchBody.entity.meta.version).toBe(2);
+      expect(alicePatchBody.entity.meta.updatedAt > aliceUpdatedAtV1).toBe(true);
+
+      // 13.3 vCard import — POST a small multipart vCard 3.0 entry for
+      //      Bob. Body intentionally contains an ORG hint so the
+      //      deterministic ORG matcher can pick AMI BV for Bob too.
+      const bobVcard = [
+        'BEGIN:VCARD',
+        'VERSION:3.0',
+        'FN:Bob',
+        'EMAIL:bob@ami.nl',
+        'ORG:AMI BV',
+        'END:VCARD',
+        '',
+      ].join('\r\n');
+
+      function vcardMultipartRequest(body: string): Request {
+        const form = new FormData();
+        form.append('file', new File([body], 'bob.vcf', { type: 'text/vcard' }));
+        return new Request(`http://localhost/l/${personalSlug}/contact/_ingest/vcard`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${adminToken2}` },
+          body: form,
+        });
+      }
+
+      const ingestRes = await app.fetch(vcardMultipartRequest(bobVcard));
+      expect(ingestRes.status).toBe(200);
+      const ingestBody = (await ingestRes.json()) as {
+        created: number;
+        updated: number;
+        warnings: readonly string[];
+      };
+      expect(ingestBody).toEqual({ created: 1, updated: 0, warnings: [] });
+      // The dispatcher published exactly one ingest.completed event for
+      // this run, and the payload carries the summary (no bytes / no
+      // filename) — see ADR 0014.
+      const completedEvents = contactsBusEvents.filter(
+        (e) => e.type === 'entity.connector.ingest.completed',
+      );
+      expect(completedEvents.length).toBeGreaterThanOrEqual(1);
+      const lastCompleted = completedEvents[completedEvents.length - 1];
+      const lastCompletedPayload = (lastCompleted?.payload ?? {}) as Record<string, unknown>;
+      expect(lastCompletedPayload.created).toBe(1);
+      expect(lastCompletedPayload.updated).toBe(0);
+      // Bob now appears in the list.
+      const listAfterIngest = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const listAfterIngestBody = (await listAfterIngest.json()) as {
+        entities: ReadonlyArray<{ slug: string; title: string }>;
+      };
+      expect(listAfterIngestBody.entities.some((e) => e.title === 'Bob')).toBe(true);
+
+      // 13.4 Dedup-by-email — re-POST the same vCard. The dispatcher's
+      //      `matchKey = { kind: 'email', value: 'bob@ami.nl' }` resolves
+      //      to the existing row and the path becomes update, not
+      //      create. Bob's version bumps from 1 → 2.
+      const ingestAgain = await app.fetch(vcardMultipartRequest(bobVcard));
+      expect(ingestAgain.status).toBe(200);
+      const ingestAgainBody = (await ingestAgain.json()) as {
+        created: number;
+        updated: number;
+        warnings: readonly string[];
+      };
+      expect(ingestAgainBody).toEqual({ created: 0, updated: 1, warnings: [] });
+      // Confirm Bob's version is now 2 by fetching the entity. We
+      // resolve the slug from the list (the vCard parser slugifies
+      // `Bob` → `bob`).
+      const bobRow = listAfterIngestBody.entities.find((e) => e.title === 'Bob');
+      expect(bobRow).toBeDefined();
+      const bobSlug = bobRow!.slug;
+      const bobGetAfterDedup = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact/${bobSlug}`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(bobGetAfterDedup.status).toBe(200);
+      const bobBody = (await bobGetAfterDedup.json()) as {
+        entity: { id: string; meta: { version: number }; payload: ContactPayload };
+      };
+      expect(bobBody.entity.meta.version).toBe(2);
+
+      // 13.5 Enrichment — drive the runner once. Alice's domain match
+      //      and Bob's ORG-hint match are both deterministic; neither
+      //      should invoke the contacts.suggestCompany LLM job.
+      await contactsRunner.tickOnce();
+
+      const aliceAfterEnrich = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact/alice`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const aliceAfterEnrichBody = (await aliceAfterEnrich.json()) as {
+        entity: { payload: ContactPayload };
+      };
+      expect(aliceAfterEnrichBody.entity.payload.companyEntityId).toBe(amiId);
+
+      const bobAfterEnrich = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact/${bobSlug}`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const bobAfterEnrichBody = (await bobAfterEnrich.json()) as {
+        entity: { payload: ContactPayload };
+      };
+      expect(bobAfterEnrichBody.entity.payload.companyEntityId).toBe(amiId);
+
+      // No `enrichment:contacts.suggestCompany` LLM call: the
+      // deterministic-first paths covered both contacts. The companies
+      // enrichment jobs may have called the fake LLM, but that's a
+      // different flowId.
+      const contactsLlmFlowIds = contactsLlmCalls.map((c) => c.flowId);
+      expect(contactsLlmFlowIds).not.toContain('enrichment:contacts.suggestCompany');
+
+      // 13.6 Stats — `_stats` returns the four counters independently.
+      //      total=2 (Alice + Bob), withCompanyLink=2 (enrichment
+      //      linked both), missingEmail=0 (both have a primary email),
+      //      recentlyEnriched=2 (enrichment runner stamped both
+      //      entity_souls rows within the 24h window).
+      const statsRes2 = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact/_stats`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(statsRes2.status).toBe(200);
+      const statsRes2Body = (await statsRes2.json()) as {
+        stats: {
+          total: number;
+          withCompanyLink: number;
+          missingEmail: number;
+          recentlyEnriched: number;
+        };
+      };
+      expect(statsRes2Body.stats).toEqual({
+        total: 2,
+        withCompanyLink: 2,
+        missingEmail: 0,
+        recentlyEnriched: 2,
+      });
+
+      // 13.7 DELETE Alice — soft-delete. List omits her; Bob stays.
+      //      The §4.0 contract keeps the detail-GET reachable by slug
+      //      with `meta.deletedAt` set (same as the Companies flow at
+      //      step 12.9), so we assert the soft-delete shape here too.
+      const deleteAlice = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact/alice`, {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(deleteAlice.status).toBe(200);
+      const listAfterDelete2 = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      const listAfterDelete2Body = (await listAfterDelete2.json()) as {
+        entities: ReadonlyArray<{ slug: string }>;
+      };
+      expect(listAfterDelete2Body.entities.some((e) => e.slug === 'alice')).toBe(false);
+      expect(listAfterDelete2Body.entities.some((e) => e.slug === bobSlug)).toBe(true);
+      const aliceAfterDelete = await app.fetch(
+        new Request(`http://localhost/l/${personalSlug}/contact/alice`, {
+          headers: { authorization: `Bearer ${adminToken2}` },
+        }),
+      );
+      expect(aliceAfterDelete.status).toBe(200);
+      const aliceAfterDeleteBody = (await aliceAfterDelete.json()) as {
+        entity: { meta: { deletedAt: string | null } };
+      };
+      expect(aliceAfterDeleteBody.entity.meta.deletedAt).not.toBeNull();
+
+      // 13.8 Cross-layer isolation — create a fresh project layer and
+      //      create a contact with the SAME `alice` slug in it. The
+      //      §4.0 slug uniqueness rule is per-layer, so this must
+      //      succeed (201) without colliding with the personal-layer
+      //      Alice we just soft-deleted.
+      const otherLayerRes = await app.fetch(
+        new Request('http://localhost/layers', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            type: 'project',
+            slug: 'contact-isolation',
+            name: 'Contact isolation',
+          }),
+        }),
+      );
+      expect(otherLayerRes.status).toBe(201);
+      const aliceInOther = await app.fetch(
+        new Request('http://localhost/l/contact-isolation/contact', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${adminToken2}`,
+          },
+          body: JSON.stringify({
+            title: 'Alice',
+            slug: 'alice',
+            originalLocale: 'en',
+            payload: { givenName: 'Alice' },
+          }),
+        }),
+      );
+      expect(aliceInOther.status).toBe(201);
+
+      // 13.9 Secret-strip invariant — no ingest event carries bytes or
+      //      the original filename. The router and dispatcher strip
+      //      both before publishing (ADR 0014 §7).
+      const ingestEventHaystack = JSON.stringify(
+        contactsBusEvents.map((e) => ({ type: e.type, payload: e.payload })),
+      );
+      expect(ingestEventHaystack).not.toContain('BEGIN:VCARD');
+      expect(ingestEventHaystack).not.toContain('bob.vcf');
+    } finally {
+      contactsRunner.stop();
+      unsubIngestRequested();
+      unsubIngestCompleted();
       __resetEntityRegistryForTests();
     }
   });

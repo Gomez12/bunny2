@@ -402,9 +402,7 @@
         "loadFailed": "Could not load this contact. Please try again.",
         "saveFailed": "Could not save the contact. Please check the input and try again.",
         "validation": "The contact could not be saved. Please check the input and try again.",
-        "slugTaken": "A contact with this slug already exists in this layer.",
-        "emailDuplicate": "Each email address can only be added once.",
-        "companyNotFound": "The linked company does not exist in this layer."
+        "emailDuplicate": "Each email address can only be added once."
       },
       "connectorIngestFailed": "Could not import the file. Please verify it and try again.",
       "connectorIngestUnavailable": "File import is not available for this item kind."
@@ -542,7 +540,6 @@
       "fieldCompanyUnknown": "Unknown company ({{id}})",
       "fieldNotes": "Notes",
       "fieldBirthday": "Birthday",
-      "originalLocale": "Original language",
       "save": "Save",
       "cancel": "Cancel",
       "saved": "Contact saved.",
@@ -559,29 +556,17 @@
       "linkSyncError": "Sync failed",
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the name."
-    },
-    "enrichment": {
-      "contacts": {
-        "suggestCompany": {
-          "running": "Suggesting a company link…",
-          "appliedCompany": "Linked {{contact}} to {{company}}.",
-          "noMatch": "No matching company found for this contact yet."
-        }
-      }
     }
   },
   "connectors": {
     "vcard": {
-      "label": "vCard import",
       "description": "Import contacts from a .vcf file exported by your address book.",
-      "fields": {},
       "importTitle": "Import contacts from vCard",
       "importChooseFile": "Choose a .vcf file",
       "importSubmit": "Import contacts",
       "importSubmitting": "Importing…",
       "importSuccess": "Imported {{created}} new and updated {{updated}} existing contacts.",
       "importWarningsTitle": "Warnings",
-      "importEmpty": "No contacts were found in this file.",
       "importNoFile": "Please choose a .vcf file first."
     }
   }

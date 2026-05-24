@@ -1929,3 +1929,222 @@ unchanged.
   exist on the generic entity router.
 - The smoke test is **not** extended in this commit — 4b.6
   owns that.
+
+### 4b.6 shipped (2026-05-24)
+
+**What landed**
+
+- `apps/server/tests/smoke.test.ts` extended with the canonical
+  Contacts entity flow (step 13). Reuses the existing seeded admin
+  session and personal layer from step 12, then walks the full
+  Contacts vertical mirroring the 4a.6 Companies template:
+  - `POST /l/personal-admin/company` — seeds a second AMI BV
+    (`slug: 'ami-bv-2'`, `payload.email: 'cs@ami.nl'`) so the
+    contacts enrichment paths have a layer-scoped target that the
+    soft-deleted step-12 row does not occupy.
+  - `POST /l/personal-admin/contact` — creates "Alice" with
+    `payload.givenName='Alice'`, `payload.emails=[{value:'alice@ami.nl',
+isPrimary:true}]`. Asserts 201, version=1, slug=alice; list reflects
+    the new row.
+  - `PATCH /l/.../contact/alice` — sets `payload.jobTitle='Engineer'`.
+    Asserts version=2 and `updatedAt` strictly advances.
+  - `POST /l/.../contact/_ingest/vcard` — multipart vCard 3.0 upload
+    for "Bob bob@ami.nl ORG:AMI BV". Asserts `{ created: 1, updated: 0,
+warnings: [] }` and that exactly one
+    `entity.connector.ingest.completed` event lands on the bus with
+    `{ created: 1, updated: 0 }` in the payload (no `bytes` / no
+    filename — ADR 0014 §7).
+  - Re-POST the same vCard → `{ created: 0, updated: 1, warnings: [] }`.
+    Asserts Bob's version is now 2 (dedup-by-email matchKey resolved
+    to the existing row).
+  - `enrichmentRunner.tickOnce()` — the deterministic-first paths
+    cover both contacts: Alice's primary-email domain matches the
+    company's `payload.email` domain; Bob's vCard ORG hint matches
+    AMI BV's title. Both gain `payload.companyEntityId === amiId`.
+    Critically, the fake LLM ledger contains NO call with
+    `metadata.flowId === 'enrichment:contacts.suggestCompany'` —
+    proof the deterministic paths exclusively handled the contacts
+    case.
+  - `GET /l/.../contact/_stats` — asserts the independently
+    observable counters `{ total: 2, withCompanyLink: 2,
+missingEmail: 0, recentlyEnriched: 2 }` (Alice + Bob, both linked,
+    both with a primary email, both stamped within the 24h window).
+  - `DELETE /l/.../contact/alice` → 200; list omits her; detail-GET
+    keeps returning 200 with `meta.deletedAt !== null` (the §4.0
+    contract — same as the Companies flow at step 12.9). Bob stays
+    in the list.
+  - Cross-layer isolation: a fresh `contact-isolation` project layer
+    plus a `slug='alice'` contact in it returns 201 — the §4.0 slug
+    uniqueness rule is per-layer; the soft-deleted Alice in the
+    personal layer does not block a sibling-layer namesake.
+  - Secret-strip invariant for ingest: no event payload across the
+    contacts step contains the literal `BEGIN:VCARD` sentinel or the
+    `bob.vcf` filename. ADR 0014 §7 explicitly forbids both on
+    `entity.connector.ingest.*`.
+- The smoke construction pattern matches 4a.6 exactly: pre-register
+  fresh `companyModule` (`connectors: []`, `enrichmentJobs: []`) +
+  `contactModule` (default — ships the production vCard connector
+  and the production suggestCompany job) via
+  `__resetEntityRegistryForTests()` + `registerEntityModule(...)`,
+  build a fake `LlmClient` whose calls land on a per-step ledger,
+  construct a multi-kind `enrichmentRunner` that resolves per-kind
+  stores via `resolveStore`. The step's `finally` block stops the
+  runner, drops the bus subscriptions, and clears the registry.
+- One wiring change in the smoke `createApp` setup: an
+  `ingestDispatcher = createConnectorDispatcher({ db, bus, llm })`
+  is hoisted BEFORE `createApp(...)` so the contacts router mounts
+  `POST /l/:slug/contact/_ingest/:connectorId`. The dispatcher is
+  not `start()`-ed (it would do nothing useful — the vCard
+  connector has no `pull`, so `sync.requested` is irrelevant; the
+  step drives `ingest(...)` synchronously through the HTTP route).
+  The 4a.6 Companies step's per-step dispatcher coexists fine: they
+  share the same bus + db but neither subscribes.
+- i18n sweep (English primary, Dutch parity in scope namespaces):
+  - All in-scope keys under `entity.contacts.*`,
+    `errors.entity.contacts.*`, `connectors.vcard.*`,
+    `errors.connectors.vcard.*`,
+    `layer.dashboard.widgets.contacts.*` are present in BOTH
+    `en.json` and `nl.json`. Every Dutch value is a real
+    translation, not an English placeholder.
+  - Removed truly-orphan UI label keys with zero references anywhere
+    in `apps/server/src`, `apps/web/src`, or `packages/`: - `errors.entity.contacts.slugTaken` — server emits the generic
+    `errors.entity.slugTaken` from `mountEntityRoutes`; the
+    contacts-specific override is never thrown and never consumed. - `errors.entity.contacts.companyNotFound` — defined but never
+    emitted by the server's contact routes and never referenced by
+    the web. The company-link picker silently keeps unknown ids in
+    the payload (the `fieldCompanyUnknown` label handles render). - `entity.contacts.originalLocale` — the locale picker doesn't
+    render this label; the create dialog reads the active i18n
+    language directly. Mirrors the 4a.6 removal of
+    `entity.companies.originalLocale`. - `entity.enrichment.contacts.suggestCompany.{running,
+appliedCompany, noMatch}` — surface labels for a future enrichment
+    UI that doesn't exist yet. Re-add alongside the surface that
+    consumes them. Mirrors the 4a.6 removal of
+    `entity.enrichment.{running, idle, deferred, …}`. - `connectors.vcard.label` — admin connectors picker metadata
+    for a UI that doesn't exist yet. Re-add when 4c.2 (Google
+    Calendar) motivates a picker. Mirrors the 4a.6 removal of
+    `connectors.kvk.label`. - `connectors.vcard.importEmpty` — the import page never reads
+    this; the page surfaces `connectors.vcard.importSuccess` with
+    `{{created}}=0` instead.
+  - Kept the four `errors.connectors.vcard.*` keys because they ARE
+    server-emitted (the router / the connector throw these as
+    response-body error codes; the web doesn't render them through
+    `t()` today, but the server contract requires their presence).
+    Same pattern as the 4a.6 close-out for the
+    `errors.connectors.kvk.*` keys.
+  - `bun run i18n:check` ends green; the 162 remaining warnings are
+    out-of-scope (`status.*`, `chat.*`, `auth.*`, generic
+    `entity.*` cross-cutting keys — see 4a.6 close-out for the
+    cleanup rationale).
+- Widget namespace normalization (Scope C). Both
+  `dashboard.widgets.companies.*` and
+  `dashboard.widgets.contacts.*` are present in en+nl under the
+  canonical `layer.dashboard.widgets.*` namespace already — the
+  task instructions cited a possible divergence between
+  `dashboard.widgets.companies.*` (4a) and
+  `layer.dashboard.widgets.contacts.*` (4b). A direct read of both
+  locale files shows BOTH kinds live under
+  `layer.dashboard.widgets.*` since 4a.4 — no divergence, no
+  migration needed.
+- Follow-up triage:
+  - `docs/dev/follow-ups/companies-list-columns.md` stays open. The
+    `summaryColumns?` discussion the 4b.5 close-out raised
+    explicitly applies — Contacts also wants richer list columns,
+    but adding the slot now would chain a foundation extension into
+    4b.6 and the task constraints forbid that.
+  - `docs/dev/follow-ups/web-component-tests.md` stays open. DOM-
+    driven render tests for `ContactsWidget` and the 4b.5 pages
+    pair naturally with the Companies pages — same harness day.
+  - All other open follow-ups (`auth-rate-limit`,
+    `bun-compile-server`, `bun-runtime-hashes`,
+    `desktop-dev-restart`, `electron-signing`,
+    `group-layer-admin-role`, `lancedb-windows`,
+    `layer-attachments-on-get`, `layer-members-picker`,
+    `layer-visibility-list`, `windows-bun-sqlite-ebusy`) describe
+    work still relevant outside the 4b block; none has been
+    silently superseded by 4b.1..4b.6.
+
+**Foundation tweaks**
+
+- **None.** The five foundation extensions
+  (`indexedColumns`, `getConnector` + dispatcher + runner,
+  `enrichmentJobs`, `statsProvider`, `EntityConnector.ingest`) all
+  pre-date 4b.6. The smoke step exercises them end-to-end as a
+  cohort; no contract change was needed.
+
+**Tests**
+
+- `apps/server/tests/smoke.test.ts` step 13 added (32 new
+  `expect()` calls; full file: 1 test, 160 expect calls).
+- All prior tests stay green: 525 pass, 0 fail, 77 files,
+  1592 expect calls.
+
+**Docs**
+
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out
+  and the 4b-block recap section below.
+- `docs/dev/tasklist.md` 4b.6 row → `done`.
+
+**No new ADR** — translation + smoke + close-out work doesn't earn
+an ADR. ADRs 0011 / 0012 / 0013 / 0014 already govern the relevant
+contracts (entity contract, KvK connector, enrichment, connector
+ingest).
+
+**Follow-ups noted**
+
+- Symmetry follow-up: the 4a.6 close-out documented a "tiny
+  contributor gotcha" about driving the dispatcher synchronously
+  vs. starting it. The same applies to the 4b.6 dispatcher hoist —
+  document both at the next touch of
+  `apps/server/src/entities/connector-dispatcher.ts`.
+
+---
+
+## 4b — Contacts block: shipped
+
+The 4b PR block (4b.1 → 4b.6) completes the second concrete entity
+on top of the §4.0 foundation + the 4a-block extension slots. The
+six sub-phases land additively:
+
+| Sub-phase | What shipped                                                                                                                            | Foundation extension                                                         |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 4b.1      | `0008_contacts.sql`, `contactModule`, `packages/shared/src/contacts.ts` payload (givenName, emails[], phones[], companyEntityId, …)     | None — first empirical confirmation of the 4a-block extension slots          |
+| 4b.2      | vCard 3.0/4.0 parser + `vcardConnector` (ingest-only) + `POST /l/:slug/<kind>/_ingest/:connectorId` route + ADR 0014                    | `EntityConnector.ingest` + `ConnectorDispatcher.ingest(...)` + ingest events |
+| 4b.3      | `contacts.suggestCompany` enrichment job (deterministic-first / LLM-fallback pattern; second consumer of the `enrichmentJobs` slot)     | None — second consumer of the 4a.3 slot                                      |
+| 4b.4      | `contactStatsProvider` + `ContactsWidget` (second consumer of the `statsProvider` slot + the client-side `widget-registry`)             | None — second consumer of the 4a.4 slot                                      |
+| 4b.5      | Web UI: list, detail, create, email/phone array editors, company-link picker, read-only external-links card; soft-delete confirm dialog | None — singular↔plural seam stays client-side                                |
+| 4b.6      | Smoke step (canonical create → patch → vCard ingest → dedup → enrichment → stats → soft-delete → cross-layer isolation), i18n sweep     | None — purely test + docs + i18n polish                                      |
+
+**ADRs landed in the 4b block**
+
+- `docs/dev/decisions/0014-connector-ingest.md` — payload-bearing
+  connector dispatch: where the second method (`ingest`) lands on
+  the `EntityConnector` interface, sync vs. async HTTP dispatch,
+  how `matchKey` dedup resolves against the per-kind table, the
+  event taxonomy split between `sync.*` and `ingest.*`, and the
+  secret-strip discipline that keeps file bytes off the bus.
+
+**Open follow-ups remaining**
+
+- `docs/dev/follow-ups/companies-list-columns.md` — extend
+  `EntityModule.summaryColumns?` (or change the list contract) so
+  the list pages can surface richer per-row data. Triggered by
+  Companies (4a.5) and re-validated by Contacts (4b.5).
+- `docs/dev/follow-ups/web-component-tests.md` — DOM-driven render
+  tests for `CompaniesWidget` / `ContactsWidget` and the 4a.5 /
+  4b.5 pages. Separate harness day.
+
+**Next**
+
+The 4c block (Calendar) opens on this foundation with **no further
+contract changes expected**: 4c.1 lands the calendar per-kind
+table + `calendarModule`; 4c.2 adds the Google Calendar connector
+on top of the `EntityConnector` interface (pull-based, like KvK —
+unlike vCard, no `ingest`); 4c.3 declares the meeting-summary +
+attendee-link enrichment jobs on the same `enrichmentJobs` slot;
+4c.4 attaches a `CalendarWidget`; 4c.5 mounts the UI (likely
+`react-big-calendar`); 4c.6 reuses the 4a.6 / 4b.6 smoke template.
+The 4b block proved the per-kind adoption costs ZERO foundation
+tweaks once the slots exist — the 4b.2 `ingest` extension was a
+one-time addition for the second connector style (payload-bearing
+vs. external-id-bearing); Calendar's OAuth-pull connector reuses
+the 4a.2 pattern verbatim.
