@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0013_durable_bus');
+      expect(currentSchemaVersion(db)).toBe('0014_chat');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -121,6 +121,16 @@ describe('migrations', () => {
       // 0013 indexes — durable bus.
       expect(indexes).toContain('idx_bus_outbox_pending');
       expect(indexes).toContain('idx_bus_dlq_subscriber');
+      // 0014 — chat tables (phase 6.1).
+      expect(tables).toContain('chat_conversations');
+      expect(tables).toContain('chat_messages');
+      expect(tables).toContain('chat_pipeline_runs');
+      expect(tables).toContain('chat_pipeline_steps');
+      expect(tables).toContain('chat_message_feedback');
+      // 0014 indexes — chat.
+      expect(indexes).toContain('idx_chat_conversations_layer_user');
+      expect(indexes).toContain('idx_chat_messages_conv_created');
+      expect(indexes).toContain('idx_chat_pipeline_steps_run_kind');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -237,6 +247,7 @@ describe('migrations', () => {
         '0011_calendar_projection_todos',
         '0012_scheduled_tasks',
         '0013_durable_bus',
+        '0014_chat',
       ]);
     } finally {
       db2.close();
