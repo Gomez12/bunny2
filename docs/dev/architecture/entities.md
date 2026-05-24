@@ -898,6 +898,24 @@ than a `LIKE '%contactEntityId%'` approximation while remaining
 read-only against the existing `payload_json` column. Stats remain
 pure SQL, layer-scoped, and clock-injectable.
 
+Phase 4d.4 added the fourth consumer: `todoStatsProvider`
+(`apps/server/src/entities/todos/stats.ts`) returns
+`{ totalOpen, dueToday, overdue, highPriorityOpen }` for the Todos
+dashboard widget. Same slot, same shape, same zero contract changes —
+a fourth empirical validation of the §4a.4 foundation. Every counter
+reads the indexed `status`, `priority`, and `due_at` columns the 4d.1
+migration added, so the four queries are one-line single-table scans
+against indexes. Both date-based counters use a `date(due_at)` projection
+against an injected UTC `YYYY-MM-DD` so date-only and full-ISO `dueAt`
+shapes compare identically: `dueToday` uses `date(due_at) = ?` and
+`overdue` uses `date(due_at) < ?`. Date-only comparison is what makes
+the two counters disjoint — a raw lexicographic `due_at < nowIso` would
+mis-classify a date-only `dueAt = today` as overdue because
+`'YYYY-MM-DD' < 'YYYY-MM-DDT...'`. Phase-4 timezone behaviour is "v1
+local-to-user" per the 4c.5 follow-up — the cutoff is currently UTC
+at the SQL layer; a timezone-aware variant (and an hour-aware "overdue"
+inside today) lands once per-user timezone preferences ship.
+
 The dashboard widget lives in `apps/web/src/dashboard/`. A minimal
 client-side registry (`widget-registry.ts`) lets each per-kind
 sub-phase add a widget by importing `CompaniesWidget`-style modules

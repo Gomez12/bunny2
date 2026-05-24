@@ -3592,3 +3592,129 @@ applied, noMatch}`) are the minimum surface the UI needs;
   applying the auto-due patch (via `store.update`), the bridge
   picks the new date up on the very next tick without any
   special-casing.
+
+### 4d.4 shipped (2026-05-24)
+
+**What landed**
+
+- `apps/server/src/entities/todos/stats.ts` — `todoStatsProvider`
+  returns `{ totalOpen, dueToday, overdue, highPriorityOpen }` for
+  the todos dashboard widget. Pure SQL, no event-bus subscription,
+  no live state. Reads the indexed `status`, `priority`, and
+  `due_at` columns the 4d.1 migration added so each counter is a
+  one-line single-table scan against an index:
+  - `totalOpen` — `status NOT IN ('done', 'cancelled')` over
+    non-soft-deleted rows.
+  - `dueToday` — same status filter PLUS
+    `date(due_at) = ?` against an injected UTC `YYYY-MM-DD`. SQLite's
+    `date(...)` strip applies to both date-only (`YYYY-MM-DD`) and
+    full ISO-8601 `dueAt` shapes, so the counter agrees with both
+    accepted schema forms. Phase-4 timezone behaviour is "v1
+    local-to-user" per the 4c.5 follow-up; UTC is the documented v1
+    cutoff and a timezone-aware variant is a phase-5 follow-up.
+  - `overdue` — same status filter PLUS `date(due_at) < ?` against
+    the same injected `YYYY-MM-DD`. Date-only comparison so a
+    date-only `dueAt = today` is NOT mis-counted as overdue (raw
+    lexicographic `due_at < nowIso` would, because
+    `'YYYY-MM-DD' < 'YYYY-MM-DDT...'`). The cost is that a
+    timestamped `dueAt = 08:00 today, now is 13:00` stays in
+    `dueToday`, not `overdue` — the documented v1 behaviour; an
+    hour-aware variant is a phase-5 follow-up.
+  - `highPriorityOpen` — same status filter PLUS `priority <= 2`.
+    The 1..5 priority range puts "needs attention now" at 1 and 2
+    (default `3` is normal).
+- `statsProvider: todoStatsProvider` slotted directly onto the
+  module returned by `createTodoModule(...)` — same spot as
+  contacts (4b.4) and calendar (4c.4). No `CreateTodoModuleOptions`
+  extension was needed; the default singleton and the
+  production-built variant (`buildProductionTodoModule`) both
+  inherit it.
+- The endpoint surface is automatic: `GET /l/:slug/todo/_stats`
+  exists once the slot is set, per the 4a.4 router wiring.
+- `apps/web/src/dashboard/TodosWidget.tsx` + `todos-widget-state.ts`
+  — pure reducer + shadcn `<Card>` mirroring `CalendarWidget`.
+  Side-effect-registers itself at `order: 400` (Companies = 100,
+  Contacts = 200, Calendar = 300). The barrel `widgets.ts` imports
+  it once for the registration side effect. "View todos" links to
+  `/l/:slug/todos`; "New todo" links to `/l/:slug/todos/new`. Both
+  routes are placeholders until 4d.5 mounts the list + simple
+  kanban.
+- `apps/web/src/lib/api.ts` — `getTodoStats(layerSlug)` helper +
+  `TodoStatsResponse` type. Targets the singular server URL
+  `/l/:slug/todo/_stats`; the widget's CTAs use the friendlier
+  plural `/l/:slug/todos` web route 4d.5 will mount.
+
+**Foundation tweaks**
+
+- **ZERO.** The §4a.4 `statsProvider` slot designed for the
+  Companies widget absorbed the fourth consumer with no contract
+  change — fourth empirical validation in a row (after contacts in
+  4b.4 and calendar in 4c.4). The slot's additive shape
+  (`compute(ctx): Record<string, unknown>`) keeps the per-kind
+  shape opaque to the router; the widget on the web side knows
+  what to expect via the typed client.
+
+**Tests**
+
+- `apps/server/tests/entities/todos-stats.test.ts` — three
+  scenarios:
+  1. Empty layer returns zero counts.
+  2. Six todos covering every counter combination (1 open + due
+     today; 1 open + due tomorrow to prove `totalOpen > dueToday`;
+     1 open + overdue; 1 open + priority 1 + no due date; 1 done;
+     1 cancelled) — counts come out
+     `{ totalOpen: 4, dueToday: 1, overdue: 1, highPriorityOpen: 1 }`.
+     The done / cancelled decoys also carry `dueAt` and
+     `priority: 1` to prove the status gate dominates the date /
+     priority filters.
+  3. Cross-layer isolation: todos in a sibling layer do not
+     contribute to the requesting layer's counts.
+- `apps/web/tests/todos-widget.test.ts` — reducer matrix
+  (loading / error / empty / ready / single-row ready) plus the
+  registry contract test (registration shape + four-widget
+  ordering after Companies, Contacts, and Calendar).
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10d gained a paragraph
+  noting todos as the fourth `statsProvider` consumer and
+  documenting the open-ish status gate + the date-extraction path
+  the `dueToday` counter uses.
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this
+  close-out.
+- `docs/dev/tasklist.md` 4d.4 row → `done`.
+
+**No new ADR** — 4d.4 consumes the §4a.4 slot cleanly with zero
+contract changes.
+
+**Notable for 4d.5 (web UI — list + simple kanban)**
+
+- The widget's "View todos" CTA already targets `/l/:slug/todos`;
+  4d.5 needs to mount that route. The singular↔plural seam
+  (`/todo` server URL ↔ `/todos` web URL) follows the same pattern
+  Companies / Contacts / Calendar established — see
+  `apps/web/src/lib/companies-routes.ts`,
+  `apps/web/src/lib/contacts-routes.ts`, and
+  `apps/web/src/lib/calendar-routes.ts` for the precedent.
+- The widget's "New todo" CTA assumes `/l/:slug/todos/new` will
+  mount the create form. 4d.5 should land the route to make the
+  CTA live; until then it routes through the App router's 404 (the
+  widget's empty-state CTA path already accepts that — empty
+  layers also have nothing to project to the calendar bridge yet).
+- The 4d.3 close-out flagged an "auto-priority / auto-due patches
+  applied today" subscriber as a future bus-driven counter. 4d.4
+  intentionally stayed pure SQL; the bus-driven counter is the
+  natural home for that follow-up if dashboard interest ever
+  appears.
+
+**Notable for 4d.6 (calendar projection bridge)**
+
+- The widget's `dueToday` / `overdue` counters surface the same
+  `due_at` SQL column the projection bridge will read. If the
+  bridge ever caches a derived "todos due today on the calendar"
+  count, the counter and the projection MUST agree on the
+  date-extraction rule (UTC `date(due_at) = date('now')`) — both
+  reference 4d.1's indexed `due_at` column for consistency. The
+  bridge can subscribe to `entity.todo.{created,updated,deleted}`
+  and project read-only events without needing to coordinate with
+  the stats provider.

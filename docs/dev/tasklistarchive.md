@@ -7,3 +7,4 @@ and rules. Newest archived rows are appended at the bottom.
 | Status | Related document          | Estimated work | Description                               |
 | ------ | ------------------------- | -------------: | ----------------------------------------- |
 | done   | docs/dev/plans/overall.md |             2h | Write overall plan from `originalplan.md` |
+| done   | docs/dev/plans/overall.md |           0.5h | Answer open questions in overall plan §10 |

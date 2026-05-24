@@ -25,6 +25,8 @@ export { validateTodoLinkedEntity, type ValidateLinkedEntityResult } from './val
 
 export { todoAutoPriorityJob, todoAutoDueJob, todoEnrichmentJobs } from './enrichment';
 
+export { todoStatsProvider, type TodoStats } from './stats';
+
 /**
  * Phase 4d.1 — wire-up helper for the todos module.
  *

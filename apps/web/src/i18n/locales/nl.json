@@ -82,6 +82,18 @@
           "statUpcoming": "Komende 7 dagen",
           "statWithAttendeesLinked": "Met aan contacten gekoppelde deelnemers",
           "statRecentlyEnriched": "Verrijkt in laatste 24 uur"
+        },
+        "todos": {
+          "title": "Taken",
+          "loading": "Taken laden…",
+          "error": "Kon taakstatistieken niet laden.",
+          "empty": "Geen open taken in deze laag. Maak de eerste aan om te beginnen.",
+          "viewAllCta": "Taken bekijken",
+          "newTodoCta": "Nieuwe taak",
+          "statTotalOpen": "Open taken",
+          "statDueToday": "Vandaag te doen",
+          "statOverdue": "Te laat",
+          "statHighPriorityOpen": "Hoge prioriteit"
         }
       }
     }

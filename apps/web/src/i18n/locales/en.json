@@ -323,6 +323,18 @@
           "statUpcoming": "Upcoming in next 7 days",
           "statWithAttendeesLinked": "With attendees linked to contacts",
           "statRecentlyEnriched": "Enriched in last 24h"
+        },
+        "todos": {
+          "title": "Todos",
+          "loading": "Loading todos…",
+          "error": "Could not load todo stats.",
+          "empty": "No open todos in this layer. Create the first one to get started.",
+          "viewAllCta": "View todos",
+          "newTodoCta": "New todo",
+          "statTotalOpen": "Open todos",
+          "statDueToday": "Due today",
+          "statOverdue": "Overdue",
+          "statHighPriorityOpen": "High priority"
         }
       }
     },

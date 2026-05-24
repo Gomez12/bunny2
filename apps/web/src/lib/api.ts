@@ -548,6 +548,31 @@ export async function getCalendarEventStats(slug: string): Promise<CalendarEvent
   return res.stats;
 }
 
+/**
+ * Todos aggregate stats — shape mirrors the server-side `TodoStats`
+ * type in `apps/server/src/entities/todos/stats.ts`. Fourth consumer
+ * of the §4a.4 stats route (`GET /l/:slug/<kind>/_stats`) — empirical
+ * validation that the entity-foundation slot generalises cleanly with
+ * zero contract changes.
+ *
+ * The URL uses the singular `/todo` segment per the §4.0 router
+ * naming; the 4d.5 web UI will surface a friendlier `/l/:slug/todos`
+ * page that calls this URL underneath.
+ */
+export interface TodoStatsResponse {
+  readonly totalOpen: number;
+  readonly dueToday: number;
+  readonly overdue: number;
+  readonly highPriorityOpen: number;
+}
+
+export async function getTodoStats(slug: string): Promise<TodoStatsResponse> {
+  const res = await request<{ stats: TodoStatsResponse }>(
+    `/l/${encodeURIComponent(slug)}/todo/_stats`,
+  );
+  return res.stats;
+}
+
 // ---------- companies CRUD (phase 4a.5) ------------------------------------
 //
 // Web URLs use the plural `/l/:slug/companies` segment (see

@@ -2,6 +2,7 @@ import type { ZodType } from 'zod';
 import { TodoPayloadSchema, type TodoPayload } from '@bunny2/shared';
 import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
+import { todoStatsProvider } from './stats';
 
 /**
  * Phase 4d.1 — fourth concrete `EntityModule`.
@@ -128,6 +129,12 @@ export function createTodoModule(opts: CreateTodoModuleOptions = {}): EntityModu
     // schema and out of the module surface. Calendar's 4c.1 module
     // does the same for `allDay`'s `default(false)`.
     payloadSchema: TodoPayloadSchema as unknown as ZodType<TodoPayload>,
+    // Phase 4d.4 — fourth consumer of the §4a.4 `statsProvider` slot.
+    // Wired directly onto the returned module (no `CreateOptions`
+    // extension needed) — mirrors contacts (4b.4) and calendar (4c.4).
+    // The endpoint `GET /l/:slug/todo/_stats` becomes available
+    // automatically via the §4.0 router.
+    statsProvider: todoStatsProvider,
     indexedColumns: [
       {
         name: 'status',
