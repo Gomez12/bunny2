@@ -1,7 +1,7 @@
 # ADR 0026 — Auto-activation gating contract
 
-- Status: proposed
-- Date: 2026-05-24
+- Status: accepted
+- Date: 2026-05-25
 - Phase: 8 (sub-phases 8.0, 8.2, 8.3)
 - Related: [`docs/dev/plans/phase-08-threshold-automation.md`](../plans/phase-08-threshold-automation.md)
   §1, §2, §4.2, §4.3, §11;

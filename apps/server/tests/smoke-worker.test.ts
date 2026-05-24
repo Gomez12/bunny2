@@ -187,6 +187,7 @@ describe('phase 5.7 — smoke-worker (role=worker against DurableSqliteMessageBu
         'chat.runs.prune',
         'proposals.evidence.prune',
         'proposals.replan-stale',
+        'proposals.auto-activate',
       ] as const) {
         expect(getScheduledTaskHandler(kind)).not.toBeNull();
       }
@@ -362,6 +363,31 @@ describe('phase 7.7 — proposals-domain scheduled-task handlers (--role=worker)
       expect(replanStale).not.toBeNull();
       expect(evidence?.kind).toBe('proposals.evidence.prune');
       expect(replanStale?.kind).toBe('proposals.replan-stale');
+    } finally {
+      __resetScheduledTaskRegistryForTests();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------
+// Phase 8.6 — `proposals.auto-activate` registers under `--role=worker`.
+// The handler kind ships in phase 8.3; this smoke pins that
+// `registerProposalsScheduledTaskHandlers()` (the one boot helper
+// `apps/server/src/index.ts` calls on every role) leaves it
+// resolvable so the seeded `scheduled_tasks` row finds a handler.
+// Mirrors the phase-7.7 block above; matches the row in
+// `docs/dev/architecture/job-inventory.md` + the assertion in
+// `tests/docs/job-inventory.test.ts`.
+// ---------------------------------------------------------------------
+
+describe('phase 8.6 — proposals.auto-activate handler registers (--role=worker)', () => {
+  it('registers proposals.auto-activate', () => {
+    __resetScheduledTaskRegistryForTests();
+    try {
+      registerProposalsScheduledTaskHandlers();
+      const autoActivate = getScheduledTaskHandler('proposals.auto-activate');
+      expect(autoActivate).not.toBeNull();
+      expect(autoActivate?.kind).toBe('proposals.auto-activate');
     } finally {
       __resetScheduledTaskRegistryForTests();
     }

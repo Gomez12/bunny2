@@ -278,25 +278,166 @@ rows on first boot.
 
 ---
 
-## 8. Forward note for phase 8
+## 8. Threshold automation (phase 8)
 
-The `threshold` field on every proposal is the **seam phase 8
-consumes**. Phase 7 records it (the mint LLM emits it; the UI
-shows it as informational) but the activation path always
-requires an explicit admin click. Phase 8 will flip a single
-gate — "if `threshold >= configured cutoff`, skip the approval
-click and run the re-plan + activation path" — without
-re-shaping any data, any HTTP route, or any UI page. The
-audit-trail tables (`improvement_proposal_artifacts`,
-`layer_capabilities.origin`) are designed to support phase 8's
-rollback UI without further migrations.
+Phase 8 turns the `threshold` field the review agent already
+emitted in phase 7 into an opt-in **auto-activation** path,
+without re-shaping any data, any HTTP route, or any phase-7 UI
+page. Activation always re-uses `replanOnApproval(...)`, so the
+snapshot-diff guarantees + four outcome labels of phase 7 remain
+the single source of truth.
 
-Other deferred work has dedicated follow-ups (see
-`docs/dev/follow-ups/`): tool-calling answerer that consumes
-the registered tool kinds (`chat-tool-calling-answerer.md`),
-conversation auto-summary (`chat-conversation-auto-summary.md`),
-the chat page's `?message=:id` deep-link
-(`chat-page-message-deep-link.md`).
+### 8.1 Seven-gate function
+
+`apps/server/src/proposals/auto-activate.ts` ships a **pure**
+`evaluateAutoActivation(...)` function (no clock, no I/O —
+`now` is injected). It evaluates seven gates in cheapest-first
+order and short-circuits on the first failure:
+
+1. `auto-activation-disabled` — per-layer toggle.
+2. `cooldown-not-elapsed` — `now − minted_at ≥ cooldownHours`.
+3. `threshold-below-cutoff` — proposal's LLM self-rating
+   vs the layer's `thresholdCutoff`.
+4. `no-sandbox-evidence` — the `current` + `proposed` artifact
+   pair exists.
+5. `sandbox-outcome-not-ok` — the `proposed` variant's
+   `sandboxOutcome === 'ok'`.
+6. `thumbs-up-delta-non-positive` — when the layer requires it,
+   `proposed.thumbsScore − current.thumbsScore > 0`.
+7. `tokens-delta-over-cap` — when the layer caps tokens,
+   `proposed.tokens − current.tokens ≤ maxTokensDelta`.
+
+Each gate emits a `{ name, passed, detail }` record; the full
+record list is written verbatim to
+`improvement_proposals.auto_activation_decision_json` so both
+the UI ("Auto-activation decision" panel on the detail page)
+and telemetry (closed-enum `rejectionReason`) reveal the
+evaluation in order. The seven gates form a public contract
+surface — ADR [`0026`](../decisions/0026-auto-activation-gating.md)
+decision 1 records the rationale.
+
+### 8.2 Scheduled task `proposals.auto-activate`
+
+`apps/server/src/proposals/auto-activate-handler.ts` ships the
+hourly handler. Default cadence is 60 min; `--role=worker`
+register-time. Per run, per **enabled** layer, per `status='new'`
+proposal:
+
+1. Resolve the artifact pair via `artifactsRepo.listByProposal`.
+2. Call the pure gate with `now = ctx.now()`.
+3. **Always** persist the decision JSON
+   (`recordAutoActivationDecision`) BEFORE any side effect —
+   ADR 0026 decision 4: a mid-flight replan throw still leaves
+   a forensic trail.
+4. On `eligible`: call
+   `replanOnApproval(id, SYSTEM_ACTOR, { …, actorKind: 'system' })`.
+   The closure passed by boot wiring threads `actorKind: 'system'`
+   so the approve path leaves `approved_by` NULL and the
+   `auto_activated_*` columns get stamped by the handler instead.
+5. Stamp `auto_activated_by = 'system'` + `auto_activated_at`
+   (regardless of which of the four outcome labels the replan
+   landed; `superseded` / `superseded-after-replan` still count
+   as "the system made a decision").
+6. Publish `proposal.auto-activated` with the closed-enum
+   `outcome` payload.
+
+`SYSTEM_ACTOR` is a fixed literal string (`'system'`), never a
+real `users.id` (ADR 0026 decision 3). User FKs
+(`approved_by`, `rolled_back_by`) stay valid; no fake user row
+is ever inserted.
+
+### 8.3 Audit trail
+
+Migration `0017_proposals_phase8.sql` adds six columns on
+`improvement_proposals` (all `NULL` for phase-7 rows; populated
+only when the auto-path or the manual rollback touches a row):
+
+```
+auto_activated_by              TEXT  -- literal 'system' when set
+auto_activated_at              TEXT
+auto_activation_decision_json  TEXT
+rolled_back_at                 TEXT
+rolled_back_by                 TEXT REFERENCES users(id)
+rolled_back_reason             TEXT
+```
+
+Plus a new 1:1 table `layer_proposal_settings` keyed by
+`layer_id` carrying the five admin-tunable knobs
+(`auto_activation_enabled`, `threshold_cutoff`, `cooldown_hours`,
+`require_thumbs_up_delta_positive`, `max_tokens_delta`). Absent
+row = "auto-activation disabled, cutoff 1.0, cooldown 24h,
+thumbs-up-delta required, no token cap" — phase-7 behavior
+verbatim. `LayerProposalSettingsRepo.getOrDefault(...)` resolves
+those defaults so callers never branch on NULL.
+
+### 8.4 Manual rollback
+
+`POST /l/:slug/proposals/:id/rollback` (admin-only, body
+`{ reason: string (≥ 5 chars) }`) calls the **existing**
+`capabilityRegistry.deactivate(...)` and then stamps the three
+rollback columns on the proposal row in the same transaction.
+No previous-version restore, no new audit table — ADR
+[`0027`](../decisions/0027-manual-rollback.md) decisions 1 + 2.
+Rollback is **universal**: any `activated` proposal qualifies,
+auto or human (decision 3). A `proposal.rolled-back` bus event
+is published; the reason text is **never** in the payload, the
+log, or telemetry (free-form user text; ADR 0027 decision 3
+under "Reason text is required").
+
+Phase 8 ships manual rollback only. An auto-rollback watcher
+that observes the post-activation thumbs ratio + auto-rolls
+capabilities below a per-layer floor is deferred to phase 9
+(filed as
+[`docs/dev/follow-ups/proposals-auto-rollback-watcher.md`](../follow-ups/proposals-auto-rollback-watcher.md);
+ADR 0027 decision 4 records the rationale).
+
+### 8.5 Phase-8 sub-flow (Mermaid; mirrors plan §15)
+
+```mermaid
+flowchart TD
+  A[proposals.auto-activate runs<br/>hourly, per layer] --> B{auto_activation_enabled?}
+  B -- no --> Z1[skip layer]
+  B -- yes --> C[list 'new' proposals for layer]
+  C --> D[evaluate gates per proposal]
+  D --> E{outcome}
+  E -- rejected --> F[record decision JSON<br/>increment gate-rejected metric]
+  E -- eligible --> G[record decision JSON<br/>call replanOnApproval, actorKind=system]
+  G --> H{replan outcome}
+  H -- activated-asis --> I[layer_capabilities row<br/>+ proposal.auto-activated event]
+  H -- activated-replanned --> I
+  H -- superseded --> J[status=superseded<br/>+ proposal.auto-activated event]
+  H -- superseded-after-replan --> J
+  I --> K[next chat message uses capability]
+  K --> L{admin clicks Rollback?}
+  L -- yes --> M[capabilityRegistry.deactivate<br/>+ rolled_back_* columns<br/>+ proposal.rolled-back event]
+  L -- no --> N[capability stays active]
+```
+
+### 8.6 Observability
+
+Stable bus event names (additive over phase 7):
+
+- `proposal.auto-activated` — payload `{ proposalId, layerId,
+artifactKind, outcome, threshold }`. Fired on every successful
+  gate pass (incl. `superseded` / `superseded-after-replan`).
+- `proposal.rolled-back` — payload `{ proposalId, layerId,
+artifactKind, capabilityId, rolledBackBy }`. Reason text is
+  **not** in the payload.
+- `layer.proposal-settings.updated` — payload `{ layerId,
+updatedBy, changedFields: string[] }`. No raw values.
+
+Telemetry counter dimensions are bounded — closed-enum
+`decision`, `rejectionReason`, `outcome`, `artifactKind`. Never
+use `proposalId` or `layerId` as a label value.
+
+### 8.7 Reference
+
+- ADR [`0026 — Auto-activation gating contract`](../decisions/0026-auto-activation-gating.md).
+- ADR [`0027 — Manual rollback as soft-deactivate + audit`](../decisions/0027-manual-rollback.md).
+- [`user/guides/improvement-proposals.md`](../../user/guides/improvement-proposals.md)
+  §"Auto-activation (Phase 8)" — layer-admin walkthrough.
+- [`job-inventory.md`](./job-inventory.md) — the
+  `proposals.auto-activate` row.
 
 ---
 
@@ -357,9 +498,13 @@ values.
 
 - ADRs [`0023`](../decisions/0023-improvement-proposal-contract.md),
   [`0024`](../decisions/0024-sandbox-runner.md),
-  [`0025`](../decisions/0025-replan-on-approval.md).
+  [`0025`](../decisions/0025-replan-on-approval.md),
+  [`0026`](../decisions/0026-auto-activation-gating.md),
+  [`0027`](../decisions/0027-manual-rollback.md).
 - [`docs/dev/plans/done/phase-07-self-learning.md`](../plans/done/phase-07-self-learning.md)
-  — the full plan + the per-sub-phase outputs.
+  — the full phase-7 plan + per-sub-phase outputs.
+- [`docs/dev/plans/done/phase-08-threshold-automation.md`](../plans/done/phase-08-threshold-automation.md)
+  — the phase-8 plan + close-out checklist.
 - [`docs/user/guides/improvement-proposals.md`](../../user/guides/improvement-proposals.md)
   — the layer-admin-facing guide.
 - [`chat-pipeline.md`](./chat-pipeline.md) — the pipeline the

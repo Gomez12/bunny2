@@ -76,12 +76,14 @@ export {
   PROPOSAL_DEACTIVATED_EVENT_TYPE,
   PROPOSAL_REJECTED_EVENT_TYPE,
   PROPOSAL_AUTO_ACTIVATED_EVENT_TYPE,
+  PROPOSAL_ROLLED_BACK_EVENT_TYPE,
   type ProposalActivatedPayload,
   type ProposalAutoActivatedPayload,
   type ProposalDeactivatedPayload,
   type ProposalEventType,
   type ProposalMintedPayload,
   type ProposalRejectedPayload,
+  type ProposalRolledBackPayload,
   type ProposalSupersededPayload,
 } from './events';
 

@@ -393,7 +393,13 @@ See `docs/dev/plans/overall.md` §8 for the full phased roadmap.
   (LIKE fallback + LanceDB vector path; auth contract).
 - `docs/dev/architecture/self-learning.md` — phase 7 review loop
   (cluster grouper → proposal minter → sandbox → re-plan →
-  activation; capability registry + overlay).
+  activation; capability registry + overlay) and phase 8 threshold
+  automation (seven-gate `evaluateAutoActivation` in
+  `apps/server/src/proposals/auto-activate.ts`, the hourly
+  `proposals.auto-activate` scheduled-task handler in
+  `apps/server/src/proposals/auto-activate-handler.ts`, and the
+  per-layer settings in
+  `apps/server/src/proposals/repos/layer-proposal-settings-repo.ts`).
 - `docs/dev/architecture/packaging.md` — build pipeline + per-OS
   data-dir paths.
 - `docs/dev/testing/phase-01-electron-manual.md` — manual per-OS

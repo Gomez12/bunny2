@@ -41,9 +41,10 @@ in chat. It always has:
   the proposed fix wired in via an in-memory overlay. You see
   both transcripts side-by-side.
 - A **threshold** — a number between 0 and 1 the review agent
-  attached to the proposal. In v1 this is **informational only**;
-  the activation gate is always your approval click. The
-  threshold becomes the auto-approval gate when phase 8 ships.
+  attached to the proposal. By default the activation gate is
+  always your approval click; once auto-activation is enabled on
+  the layer (§7) the threshold becomes one of the seven gates
+  that decide whether the proposal qualifies for the auto-path.
 
 The fix never contains executable code. The system supports a
 small, closed list of handler kinds (see ADR 0023 §2); the
@@ -124,9 +125,10 @@ Heuristics:
   later.
 
 The `threshold` value is the review agent's confidence — useful
-as a soft signal, but it does not approve anything for you in
-v1. When phase 8 ships, configuring a per-layer cutoff against
-this number is what flips the "skip the approval click" gate.
+as a soft signal. When auto-activation is enabled on a layer
+(§7), the per-layer cutoff against this number is what flips the
+"skip the approval click" gate; otherwise the threshold stays
+informational.
 
 ---
 
@@ -188,12 +190,110 @@ The **Deactivate** action soft-disables the capability:
   `activated`; the deactivate is a per-capability override.
 
 Re-activation is not a v1 affordance — if you change your mind,
-approve a new proposal addressing the same need. Phase 8's
-rollback UI will fill this gap.
+approve a new proposal addressing the same need. (Phase 8 ships a
+sibling **Rollback** affordance on the proposal detail page; see
+§7 below for the layer-admin walkthrough.)
 
 ---
 
-## 7. Frequently asked
+## 7. Auto-activation (Phase 8)
+
+### What it is
+
+Above-threshold proposals can activate **automatically** per layer.
+The same sandbox evidence and the same `replanOnApproval` machinery
+the approve button uses still runs — the auto-path just skips your
+click when the proposal clears a seven-gate quality bar you
+configured. Auto-activation is **off by default** on every layer;
+no proposal activates without your opt-in.
+
+### Settings page
+
+Open **Layer settings → Proposals** (`/l/<slug>/settings/proposals`).
+Each control:
+
+- **Enable auto-activation for this layer.** The master switch. Off
+  by default. With this off, every proposal still needs your
+  manual approve click (phase-7 behavior, unchanged).
+- **Threshold cutoff** (0.00 – 1.00, default 1.00). Proposals whose
+  threshold is **at or above** this value qualify for auto-
+  activation. The default 1.00 means "nothing ever qualifies"; you
+  start at 1.00 and lower it once you've watched a few proposals
+  and trust the review agent's self-rating on your data.
+- **Cooldown hours** (default 24). How long after a proposal is
+  minted before the auto-activate job will consider it. The
+  cooldown is the window where you (or another admin) can read
+  the sandbox evidence and intercept — reject the proposal, or
+  click approve manually — before the system acts on it.
+- **Require thumbs-up delta &gt; 0** (default on). Even if the
+  threshold + cooldown clear, the sandbox must have shown the
+  proposal making _more_ chat messages succeed, not fewer. Turn
+  off only if you genuinely want token-cost-driven activations
+  with no quality floor.
+- **Cap tokens delta at …** (default off). Optionally reject any
+  proposal whose sandbox showed the answerer's prompt growing by
+  more than this many tokens per message. Useful when chat cost
+  budget matters more than feature breadth.
+
+Settings are admin-only. Non-admin members of the layer can read
+them but the form is disabled.
+
+### The cooldown window
+
+The auto-activate job runs hourly. A proposal minted at 14:00
+with a 24h cooldown will not auto-activate before tomorrow 14:00,
+which leaves a full day for you to read the sandbox evidence and
+reject anything that looks wrong. The cooldown is enforced **per
+proposal**, not per job run — pausing the job doesn't reset
+anyone's clock. The user guide §3 detail page is the right place
+to read the evidence in that window.
+
+### What you see on auto-activated proposals
+
+Once a proposal auto-activates:
+
+- The **Proposals** list shows an **auto** chip in the Source
+  column for that row (rows you approved manually carry a
+  **manual** chip).
+- The detail page renders a collapsible **Auto-activation
+  decision** panel: one row per gate, each with a green or red
+  icon, the threshold and observed values, and the closed-enum
+  gate name (so you can search support docs by name if a gate
+  ever surprises you).
+- The capability shows up on `/l/<slug>/capabilities` exactly
+  as it does after a manual approve — there is no second-class
+  "auto-only" capability; everything downstream of activation is
+  the same code path.
+
+### Rollback
+
+Every `activated` proposal — auto **or** manual — carries a
+**Rollback** button on the detail page (admin-only). Click it,
+type a reason (required, 5 characters minimum), confirm. The
+linked capability soft-deactivates immediately (the registry
+stops returning it on the next chat run; agent subscribers
+detach on the same call). The proposal row records **who** rolled
+back, **when**, and **why** so the audit trail is intact.
+
+Rollback is **not** undoable — a rolled-back proposal stays
+terminal. If you change your mind, the next review-agent run on
+the same failure mode will mint a fresh proposal you can approve.
+The reason text stays on the row only; it is never written to
+operational logs, telemetry, or analytics, so you can be specific
+about why a capability misbehaved without worrying about it
+leaking.
+
+### What's NOT in phase 8
+
+Phase 8 ships **manual** rollback only. A scheduled
+auto-rollback watcher that observes the post-activation thumbs
+ratio and rolls capabilities below a per-layer floor is on the
+phase-9 roadmap; the audit columns + bus events shipped here are
+the data foundation it will consume.
+
+---
+
+## 8. Frequently asked
 
 - **Where does the proposal come from?** The per-layer review
   agent runs every 24 hours, looks at the last 7 days of chat
@@ -216,7 +316,7 @@ rollback UI will fill this gap.
 
 ---
 
-## 8. Related guides
+## 9. Related guides
 
 - [`working-with-chat.md`](./working-with-chat.md) — the
   chat itself.

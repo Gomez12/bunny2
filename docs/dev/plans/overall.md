@@ -417,6 +417,60 @@ shipped`, and `Phase 4 — entire phase: shipped`) for the per-DoD
 - **Exit:** thresholded automation runs safely for a week with zero
   rollbacks needed in dogfood use.
 
+- **Status (as of 2026-05-25):** all sub-phases 8.0–8.6 are `done`.
+  The plan is archived at
+  [`done/phase-08-threshold-automation.md`](./done/phase-08-threshold-automation.md);
+  see its §14 close-out checklist for the per-DoD walkthrough.
+  Above-threshold proposals can now auto-activate per layer behind
+  seven deterministic gates layered on top of the LLM-minted
+  threshold + a configurable cooldown window. The auto-path re-uses
+  `replanOnApproval(...)` (ADR 0025), so the snapshot-diff
+  guarantees + the four outcome labels remain the single source of
+  truth — phase 8 ships zero new code in the activation primitive
+  (ADR 0026 decision 2). `SYSTEM_ACTOR` is a fixed literal string,
+  never a real `users.id`: the audit lands in three new columns
+  (`auto_activated_by = 'system'`, `auto_activated_at`,
+  `auto_activation_decision_json`) on `improvement_proposals`,
+  keeping the `approved_by` FK clean (ADR 0026 decision 3). A new
+  1:1 table `layer_proposal_settings` carries the five admin-tunable
+  knobs (enabled, cutoff, cooldown hours, thumbs-up-delta required,
+  tokens cap); absent row = phase-7 behavior verbatim (no auto-
+  activation). Manual rollback is a sibling affordance — admin one-
+  click on any `activated` proposal soft-deactivates the linked
+  capability through the existing
+  `capabilityRegistry.deactivate(...)` and stamps three rollback
+  columns (`rolled_back_at`, `rolled_back_by`, `rolled_back_reason`)
+  on the proposal row (ADR 0027 decisions 1 + 2); reason text is
+  stored on the row only and never logged to telemetry, analytics,
+  or the bus payload (ADR 0027 decision 3). Two ADRs accepted on
+  2026-05-25:
+  [`0026`](../decisions/0026-auto-activation-gating.md)
+  (auto-activation gating contract — the seven gates, the
+  `replanOnApproval` re-use, the `SYSTEM_ACTOR` literal) and
+  [`0027`](../decisions/0027-manual-rollback.md) (manual rollback
+  as soft-deactivate + audit; phase 8 ships manual only, the auto-
+  rollback watcher is deferred to phase 9). The developer-side
+  narrative lives in
+  [`architecture/self-learning.md`](../architecture/self-learning.md)
+  §8 (gate flow + extended Mermaid mirroring plan §15); the layer-
+  admin guide is
+  [`user/guides/improvement-proposals.md`](../../user/guides/improvement-proposals.md)
+  §7 ("Auto-activation (Phase 8)"). One new job kind is registered
+  (`proposals.auto-activate`, default cadence 1 h, `--role=worker`)
+  in
+  [`architecture/job-inventory.md`](../architecture/job-inventory.md);
+  the `tests/docs/job-inventory.test.ts` catches drift. Smoke
+  covers the end-to-end auto-path — enable settings → run job →
+  proposal activates via auto-path with seven-gate decision JSON →
+  manual rollback (`apps/server/tests/smoke.test.ts` "phase 8.6 —
+  threshold-automation smoke"); the worker-role smoke pins that
+  `proposals.auto-activate` registers under `--role=worker`
+  (`apps/server/tests/smoke-worker.test.ts`). One follow-up filed:
+  `proposals-auto-rollback-watcher.md` (phase-9 scheduled job that
+  observes the post-activation thumbs ratio and auto-rolls
+  capabilities below a per-layer floor; needs real data to tune,
+  deferred per ADR 0027 decision 4).
+
 ### Later
 
 - Remaining entities from §6.

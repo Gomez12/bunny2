@@ -1,7 +1,7 @@
 # ADR 0027 — Manual rollback as soft-deactivate + audit
 
-- Status: proposed
-- Date: 2026-05-24
+- Status: accepted
+- Date: 2026-05-25
 - Phase: 8 (sub-phases 8.0, 8.5)
 - Related: [`docs/dev/plans/phase-08-threshold-automation.md`](../plans/phase-08-threshold-automation.md)
   §1, §2, §4.5, §11;

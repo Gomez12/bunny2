@@ -3260,7 +3260,14 @@ import {
   createLayerCapabilitiesRepo,
   registerProposalsScheduledTaskHandlers,
   replanOnApproval,
+  runAutoActivate,
+  PROPOSAL_AUTO_ACTIVATED_EVENT_TYPE,
+  PROPOSAL_ROLLED_BACK_EVENT_TYPE,
+  type ProposalAutoActivatedPayload,
+  type ProposalRolledBackPayload,
+  LayerProposalSettingsRepo,
 } from '../src/proposals';
+import { AutoActivationDecisionSchema } from '@bunny2/shared';
 import { createImprovementProposalEvidenceRepo } from '../src/proposals/repos/improvement-proposal-evidence-repo';
 import { createImprovementProposalArtifactsRepo } from '../src/proposals/repos/improvement-proposal-artifacts-repo';
 import { createChatConversationsRepo } from '../src/chat/repos/chat-conversations-repo';
@@ -3595,6 +3602,462 @@ describe('phase 7.7 — self-learning smoke (zero-hit retrieval → review → a
       } finally {
         __resetScheduledTaskRegistryForTests();
       }
+    } finally {
+      if (localDb !== null) {
+        try {
+          localDb.close();
+        } catch {
+          /* already closed */
+        }
+      }
+      try {
+        safeRmSync(localTmpDir);
+      } catch {
+        /* best-effort */
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------
+// Phase 8.6 — threshold-automation smoke. End-to-end auto-path:
+//   enable settings → run job → proposal activates via auto-path →
+//   manual rollback soft-deactivates the capability. Mirrors the
+//   phase-7.7 shape (fresh data-dir, in-memory bus, no HTTP wiring;
+//   the phase-7.6 routes are already covered by the per-route HTTP
+//   tests). The smoke headline is the threshold-automation machinery
+//   ITSELF — the auto-path's gate evaluation, the auto_activated_*
+//   audit columns, the proposal.auto-activated bus event, and the
+//   rollback metadata on the proposal row. Per ADR 0026 §2 the
+//   auto-path re-uses `replanOnApproval(...)` so the four-outcome
+//   verdict surface from phase 7 stays the single source of truth.
+// ---------------------------------------------------------------------
+
+describe('phase 8.6 — threshold-automation smoke (enable settings → auto-activate via job → manual rollback)', () => {
+  it('runs the seven-gate auto-path end-to-end, stamps audit columns, fires bus events, and rolls back', async () => {
+    // -------------------------------------------------------------
+    // 1. Fresh data-dir + DB so this smoke does not collide with
+    //    the spine smoke or the phase-7.7 block above.
+    // -------------------------------------------------------------
+    const localTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunny2-smoke-auto-activate-'));
+    let localDb: Database | null = null;
+    try {
+      const { openDatabase: openDb } = await import('../src/storage/sqlite');
+      const database = openDb(localTmpDir);
+      localDb = database;
+
+      const { InMemoryMessageBus: Bus } = await import('@bunny2/bus/test-utils');
+      const fixtureBus = new Bus();
+
+      // -------------------------------------------------------------
+      // 2. Seed a user + a layer. We do not seed entity / chat
+      //    telemetry here — phase-6.7 and phase-7.7 already cover
+      //    the upstream surface. This smoke takes a proposal +
+      //    its artifact pair as the starting point and exercises
+      //    only the auto-activate machinery downstream of mint.
+      // -------------------------------------------------------------
+      const baseNowIso = '2026-05-23T00:00:00.000Z';
+      const userId = crypto.randomUUID();
+      createUsersRepo(database).createUser({
+        id: userId,
+        username: 'smoke-admin-phase8',
+        displayName: 'Smoke Admin Phase 8',
+        passwordHash: 'h',
+        mustChangePassword: false,
+        now: baseNowIso,
+      });
+      const layer = createLayersRepo(database).insertLayer({
+        id: crypto.randomUUID(),
+        type: 'project',
+        slug: 'smoke-auto-activate',
+        name: 'Smoke Auto-Activate',
+        now: baseNowIso,
+      });
+      const layerId = layer.id;
+
+      // -------------------------------------------------------------
+      // 3. Insert a proposal directly via the repo with a
+      //    matching `current` + `proposed` artifact pair. We bypass
+      //    the review-handler so the smoke is deterministic
+      //    against the gate's seven preconditions (ADR 0026 §1) —
+      //    the per-handler unit tests in
+      //    `proposals-auto-activate-handler.test.ts` already
+      //    exercise the gate's rejection branches.
+      //
+      //    The metrics shape mirrors `VariantMetrics` from
+      //    `apps/server/src/proposals/sandbox/metrics.ts`. The
+      //    `proposed` variant carries a higher `thumbsScore` than
+      //    `current` so gate 6 (`thumbs-up-delta-non-positive`)
+      //    passes; both variants carry `sandboxOutcome: 'ok'` so
+      //    gate 5 passes; tokens delta sits at 0 so gate 7's cap
+      //    is moot when we leave `maxTokensDelta` null below.
+      // -------------------------------------------------------------
+      const proposalsRepo = createImprovementProposalsRepo(database);
+      const artifactsRepo = createImprovementProposalArtifactsRepo(database);
+      const proposalId = crypto.randomUUID();
+      const mintedAtIso = '2026-05-23T00:00:00.000Z';
+      const proposedSpec = {
+        artifactKind: 'skill' as const,
+        name: 'expand-zero-hit-retrieval-auto',
+        description: 'Skill addressing zero-hit-retrieval via auto-path',
+        intent: 'question.entity_lookup' as const,
+        promptFragment: 'If the user writes Acmé, also search for Acme.',
+        addressesTags: ['zero-hit-retrieval'] as const,
+      };
+      proposalsRepo.insertProposal({
+        id: proposalId,
+        layerId,
+        status: 'new',
+        artifactKind: 'skill',
+        problemSummary: 'Recurring zero-hit retrieval on Acmé queries.',
+        proposedSpecJson: JSON.stringify(proposedSpec),
+        expectedImpactJson: JSON.stringify({
+          thumbsUpDelta: 0.18,
+          tokensDelta: 12,
+          latencyDeltaMs: 14,
+        }),
+        // Threshold > the cutoff we'll set below (0.5) so gate 3 passes.
+        threshold: 0.85,
+        // Empty snapshot so replan's snapshot-diff is empty and we
+        // land on `activated-asis` (the simplest of the four outcome
+        // labels — sufficient to prove the auto-path wiring).
+        capabilitySnapshotJson: JSON.stringify({ capabilities: [], builtins: [] }),
+        mintedByRunId: crypto.randomUUID(),
+        mintedAt: mintedAtIso,
+      });
+      artifactsRepo.insertArtifact({
+        id: crypto.randomUUID(),
+        proposalId,
+        variant: 'current',
+        transcriptJson: '{"messages":[]}',
+        metricsJson: JSON.stringify({
+          tokensIn: 100,
+          tokensOut: 50,
+          latencyMs: 200,
+          thumbsScore: 0,
+          sandboxOutcome: 'ok',
+        }),
+        ranAt: mintedAtIso,
+      });
+      artifactsRepo.insertArtifact({
+        id: crypto.randomUUID(),
+        proposalId,
+        variant: 'proposed',
+        transcriptJson: '{"messages":[]}',
+        metricsJson: JSON.stringify({
+          tokensIn: 100,
+          tokensOut: 50,
+          latencyMs: 200,
+          thumbsScore: 1, // > current → thumbsUpDelta = 1 > 0 (gate 6 passes)
+          sandboxOutcome: 'ok',
+        }),
+        ranAt: mintedAtIso,
+      });
+
+      // -------------------------------------------------------------
+      // 4. Enable settings for the layer directly via the repo.
+      //    The brief authorises skipping the HTTP route (the
+      //    per-route HTTP tests cover settings persistence; this
+      //    smoke's headline is the auto-path itself).
+      // -------------------------------------------------------------
+      const settingsRepo = new LayerProposalSettingsRepo(database);
+      settingsRepo.upsert({
+        layerId,
+        autoActivationEnabled: true,
+        thresholdCutoff: 0.5, // gate 3: proposal.threshold (0.85) >= 0.5
+        cooldownHours: 0, // gate 2: no wait
+        requireThumbsUpDeltaPositive: true, // gate 6: delta > 0 required (we made it 1)
+        maxTokensDelta: null, // gate 7: cap disabled
+        updatedBy: userId,
+        now: baseNowIso,
+      });
+
+      // -------------------------------------------------------------
+      // 5. Wire the auto-activate handler deps the same way
+      //    `apps/server/src/index.ts` does: the `replan` closure
+      //    threads `actorKind: 'system'` through `replanOnApproval`
+      //    so the approve path leaves `approved_by` NULL and the
+      //    `auto_activated_*` columns get stamped by the handler.
+      // -------------------------------------------------------------
+      const capabilityRepo = createLayerCapabilitiesRepo(database);
+      const capabilityRegistry = createCapabilityRegistry({
+        repo: capabilityRepo,
+        bus: fixtureBus,
+      });
+      const evidenceRepo = createImprovementProposalEvidenceRepo(database);
+      const convRepo = createChatConversationsRepo(database);
+      const msgRepo = createChatMessagesRepo(database);
+      const noopLogger = {
+        info: (): void => undefined,
+        warn: (): void => undefined,
+        error: (): void => undefined,
+      };
+      // The replan path does NOT need extra LLM calls for the
+      // empty-diff `activated-asis` branch (no re-plan, no
+      // sandbox); a throwing stub LLM is fine.
+      const stubLlm = {
+        endpoint: 'mock://smoke-auto-activate',
+        defaultModel: 'mock-default',
+        async chat(): Promise<never> {
+          throw new Error('smoke phase 8.6: stubLlm.chat must not be called by activated-asis');
+        },
+      };
+
+      // -------------------------------------------------------------
+      // 6. Subscribe to the auto-activated bus event BEFORE the run
+      //    so the in-memory bus captures every publish.
+      // -------------------------------------------------------------
+      const autoActivatedEvents: ProposalAutoActivatedPayload[] = [];
+      fixtureBus.subscribe(PROPOSAL_AUTO_ACTIVATED_EVENT_TYPE, (e) => {
+        autoActivatedEvents.push(e.payload as ProposalAutoActivatedPayload);
+      });
+      const rolledBackEvents: ProposalRolledBackPayload[] = [];
+      fixtureBus.subscribe(PROPOSAL_ROLLED_BACK_EVENT_TYPE, (e) => {
+        rolledBackEvents.push(e.payload as ProposalRolledBackPayload);
+      });
+
+      // -------------------------------------------------------------
+      // 7. Run the auto-activate handler body. `runAutoActivate`
+      //    is exported by the proposals barrel for exactly this
+      //    purpose — same path the per-handler unit tests use, no
+      //    scheduler / SSE round-trip needed (the role-split
+      //    smoke pins the registry contract; this smoke pins the
+      //    auto-path behavior).
+      // -------------------------------------------------------------
+      const eligibleNowIso = '2026-05-24T00:00:00.000Z'; // mintedAt + 24h
+      const fakeTask: ScheduledTask = {
+        id: 'smoke-task-auto-activate',
+        layerId: 'everyone-id',
+        slug: 'proposals-auto-activate',
+        kind: 'proposals.auto-activate',
+        name: 'Proposal auto-activation',
+        status: 'active',
+        pauseReason: null,
+        schedule: { kind: 'interval', intervalMinutes: 60 },
+        config: {},
+        maxAttempts: 3,
+        backoffBaseMs: 1000,
+        backoffMaxMs: 60_000,
+        nextRunAt: eligibleNowIso,
+        lastRunAt: null,
+        attempt: 0,
+        claimedAt: null,
+        claimedByPid: null,
+        version: 1,
+        createdAt: eligibleNowIso,
+        createdBy: userId,
+        updatedAt: eligibleNowIso,
+        updatedBy: userId,
+        deletedAt: null,
+        deletedBy: null,
+      };
+      const fakeRun: ScheduledTaskRun = {
+        id: 'smoke-run-auto-activate',
+        taskId: fakeTask.id,
+        status: 'started',
+        attempt: 1,
+        triggeredBy: 'schedule',
+        requestedAt: eligibleNowIso,
+        startedAt: eligibleNowIso,
+        finishedAt: null,
+        durationMs: null,
+        error: null,
+        correlationId: 'smoke-cor-auto-activate',
+      };
+      const ctx: ScheduledTaskRunContext = {
+        task: fakeTask,
+        run: fakeRun,
+        correlationId: 'smoke-cor-auto-activate',
+        now: () => eligibleNowIso,
+        db: database,
+        bus: fixtureBus,
+        llm: stubLlm,
+        logger: noopLogger,
+      };
+
+      const layersRepo = createLayersRepo(database);
+      await runAutoActivate(ctx, {
+        layersRepo: {
+          listAllNonDeleted: () => layersRepo.listLayers().map((l) => ({ id: l.id })),
+        },
+        settingsRepo,
+        proposalsRepo,
+        artifactsRepo,
+        replan: (id, approvedBy) =>
+          replanOnApproval(id, approvedBy, {
+            llm: stubLlm,
+            db: database,
+            bus: fixtureBus,
+            capabilityRegistry,
+            proposalsRepo,
+            evidenceRepo,
+            artifactsRepo,
+            layerCapabilitiesRepo: capabilityRepo,
+            conversationsRepo: convRepo,
+            messagesRepo: msgRepo,
+            getEntityStore: () => null,
+            logger: noopLogger,
+            actorKind: 'system',
+          }),
+        bus: fixtureBus,
+      });
+
+      // The in-memory bus drains synchronously on `publish`, but the
+      // handler's `void bus.publish(...).catch(...)` deferral means
+      // the subscriber callbacks resolve on the next microtask.
+      await new Promise<void>((r) => {
+        setTimeout(r, 0);
+      });
+
+      // -------------------------------------------------------------
+      // 8. Audit assertions — the proposal row reflects the
+      //    auto-path verdict.
+      // -------------------------------------------------------------
+      const activatedRow = proposalsRepo.getProposalById(proposalId);
+      expect(activatedRow).not.toBeNull();
+      expect(activatedRow!.status).toBe('activated');
+      // ADR 0026 §3 — `approved_by` stays NULL on the system path.
+      expect(activatedRow!.approvedBy).toBeNull();
+      expect(activatedRow!.autoActivatedBy).toBe('system');
+      expect(activatedRow!.autoActivatedAt).toBe(eligibleNowIso);
+      expect(activatedRow!.autoActivationDecisionJson).not.toBeNull();
+
+      // The decision JSON parses cleanly against the shared zod
+      // schema and contains seven gate records, all `passed: true`.
+      const parsedDecision = AutoActivationDecisionSchema.parse(
+        JSON.parse(activatedRow!.autoActivationDecisionJson!),
+      );
+      expect(parsedDecision.outcome).toBe('eligible');
+      expect(parsedDecision.gates.length).toBe(7);
+      for (const gate of parsedDecision.gates) {
+        expect(gate.passed).toBe(true);
+      }
+
+      // -------------------------------------------------------------
+      // 9. Capability assertions — the activated skill is registered
+      //    with the canonical `origin = 'proposal:<id>'` shape.
+      // -------------------------------------------------------------
+      interface CapRow {
+        id: string;
+        kind: string;
+        name: string;
+        origin: string;
+        deactivated_at: string | null;
+      }
+      const capRows = database
+        .query<CapRow, [string]>(
+          `SELECT id, kind, name, origin, deactivated_at
+             FROM layer_capabilities
+            WHERE layer_id = ?
+            ORDER BY activated_at ASC`,
+        )
+        .all(layerId);
+      expect(capRows.length).toBe(1);
+      expect(capRows[0]?.kind).toBe('skill');
+      expect(capRows[0]?.name).toBe('expand-zero-hit-retrieval-auto');
+      expect(capRows[0]?.origin).toBe(`proposal:${proposalId}`);
+      expect(capRows[0]?.deactivated_at).toBeNull();
+      const capabilityId = capRows[0]!.id;
+
+      // The auto-activated bus event landed once with the right
+      // closed-enum payload shape.
+      expect(autoActivatedEvents.length).toBe(1);
+      expect(autoActivatedEvents[0]?.proposalId).toBe(proposalId);
+      expect(autoActivatedEvents[0]?.layerId).toBe(layerId);
+      expect(autoActivatedEvents[0]?.artifactKind).toBe('skill');
+      expect(autoActivatedEvents[0]?.outcome).toBe('activated-asis');
+      expect(autoActivatedEvents[0]?.threshold).toBe(0.85);
+
+      // -------------------------------------------------------------
+      // 10. Rollback — exercise the same primitives the rollback
+      //     HTTP route uses (capabilityRegistry.deactivate +
+      //     proposalsRepo.recordRollback + bus.publish). The brief
+      //     authorises this shape — the per-route HTTP test
+      //     (`http-layer-proposals-phase8.test.ts` and siblings)
+      //     covers the auth + validation surface end-to-end; the
+      //     smoke covers the audit-trail contract.
+      // -------------------------------------------------------------
+      const rollbackNowIso = '2026-05-24T01:00:00.000Z';
+      const rollbackReason = 'auto-activated skill conflicts with manual aliasing rules';
+      const targetCapability = capabilityRepo.findActiveByOrigin(layerId, `proposal:${proposalId}`);
+      expect(targetCapability).not.toBeNull();
+      capabilityRegistry.deactivate({
+        layerId,
+        kind: targetCapability!.kind,
+        name: targetCapability!.name,
+        deactivatedBy: userId,
+        now: rollbackNowIso,
+      });
+      proposalsRepo.recordRollback(proposalId, {
+        rolledBackBy: userId,
+        reason: rollbackReason,
+        now: rollbackNowIso,
+      });
+      const rolledBackPayload: ProposalRolledBackPayload = {
+        proposalId,
+        layerId,
+        artifactKind: 'skill',
+        capabilityId,
+        rolledBackBy: userId,
+      };
+      // Anti-leak invariant (ADR 0027 §3): reason text is NOT in the
+      // bus payload. The smoke pins that by NOT including reason on
+      // the published payload object.
+      await fixtureBus.publish<ProposalRolledBackPayload>({
+        type: PROPOSAL_ROLLED_BACK_EVENT_TYPE,
+        payload: rolledBackPayload,
+      });
+      await new Promise<void>((r) => {
+        setTimeout(r, 0);
+      });
+
+      // The capability is now soft-deactivated.
+      const activeAfterRollback = capabilityRepo.listActiveByLayer(layerId);
+      expect(activeAfterRollback.length).toBe(0);
+      const allRows = capabilityRepo.listAllByLayer(layerId);
+      expect(allRows.length).toBe(1);
+      expect(allRows[0]?.deactivatedAt).toBe(rollbackNowIso);
+
+      // The proposal row carries the three rollback audit columns.
+      const rolledRow = proposalsRepo.getProposalById(proposalId);
+      expect(rolledRow?.rolledBackAt).toBe(rollbackNowIso);
+      expect(rolledRow?.rolledBackBy).toBe(userId);
+      expect(rolledRow?.rolledBackReason).toBe(rollbackReason);
+
+      // The rolled-back bus event landed once and the closed-enum
+      // payload carries IDs only — no reason text (ADR 0027 §3).
+      expect(rolledBackEvents.length).toBe(1);
+      expect(rolledBackEvents[0]?.proposalId).toBe(proposalId);
+      expect(rolledBackEvents[0]?.layerId).toBe(layerId);
+      expect(rolledBackEvents[0]?.artifactKind).toBe('skill');
+      expect(rolledBackEvents[0]?.capabilityId).toBe(capabilityId);
+      expect(rolledBackEvents[0]?.rolledBackBy).toBe(userId);
+      // Defensive: the runtime payload object has no `reason` key.
+      expect('reason' in (rolledBackEvents[0] as object)).toBe(false);
+
+      // -------------------------------------------------------------
+      // 11. Re-running the auto-activate job after rollback is a
+      //     no-op — the proposal moved past `status='new'`, so the
+      //     candidate query skips it. Sanity-pins the idempotency
+      //     contract.
+      // -------------------------------------------------------------
+      autoActivatedEvents.length = 0;
+      await runAutoActivate(ctx, {
+        layersRepo: {
+          listAllNonDeleted: () => layersRepo.listLayers().map((l) => ({ id: l.id })),
+        },
+        settingsRepo,
+        proposalsRepo,
+        artifactsRepo,
+        replan: async () => {
+          throw new Error('smoke phase 8.6: replan must not be called on a non-new proposal');
+        },
+        bus: fixtureBus,
+      });
+      await new Promise<void>((r) => {
+        setTimeout(r, 0);
+      });
+      expect(autoActivatedEvents.length).toBe(0);
     } finally {
       if (localDb !== null) {
         try {
