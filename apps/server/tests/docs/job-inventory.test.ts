@@ -26,6 +26,11 @@ import {
   registerBuiltInScheduledTaskHandlers,
 } from '../../src/scheduled';
 import type { LlmCallLog } from '../../src/llm';
+import {
+  registerChatScheduledTaskHandlers,
+  createMockEmbedder,
+  createInMemoryLanceWriter,
+} from '../../src/chat';
 
 function repoRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -93,6 +98,11 @@ describe('phase 5.7 — job-inventory cross-check', () => {
       llmRetentionDays: 180,
       schemaVersion: 'test-schema',
       busAdapter: 'in-memory',
+    });
+    // Phase 6.2 — chat-domain handlers also feed the inventory.
+    registerChatScheduledTaskHandlers({
+      embedder: createMockEmbedder(),
+      writer: createInMemoryLanceWriter(),
     });
   });
 

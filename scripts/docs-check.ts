@@ -25,6 +25,11 @@ import {
   registerBuiltInScheduledTaskHandlers,
 } from '../apps/server/src/scheduled';
 import type { LlmCallLog } from '../apps/server/src/llm';
+import {
+  registerChatScheduledTaskHandlers,
+  createMockEmbedder,
+  createInMemoryLanceWriter,
+} from '../apps/server/src/chat';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const plansDir = join(repoRoot, 'docs/dev/plans');
@@ -120,6 +125,12 @@ async function checkJobInventory(): Promise<void> {
     llmRetentionDays: 180,
     schemaVersion: 'docs-check',
     busAdapter: 'docs-check',
+  });
+  // Phase 6.2 — register chat-domain handlers against in-memory deps
+  // so the documented set lines up with what production wires up.
+  registerChatScheduledTaskHandlers({
+    embedder: createMockEmbedder(),
+    writer: createInMemoryLanceWriter(),
   });
   const registered = new Set(listRegisteredScheduledTaskHandlers().map((h) => h.kind));
   const body = await readFile(inventoryPath, 'utf8');

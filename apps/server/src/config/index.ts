@@ -72,4 +72,4 @@ export function loadConfig(opts: { cwd?: string } = {}): LoadedConfig {
 }
 
 export { AppConfigSchema };
-export type { AppConfig, HttpConfig, LlmConfig, ModelPricing } from './schema';
+export type { AppConfig, HttpConfig, LlmConfig, ModelPricing, EmbeddingsConfig } from './schema';

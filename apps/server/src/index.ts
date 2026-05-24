@@ -38,6 +38,14 @@ import {
   registerBuiltInScheduledTaskHandlers,
   seedSystemScheduledTasksIfNeeded,
 } from './scheduled';
+import {
+  registerChatScheduledTaskHandlers,
+  createMockEmbedder,
+  createOpenAiEmbedder,
+  createLanceDbWriter,
+  createEmbeddingSubscriber,
+  type Embedder,
+} from './chat';
 
 // Phase 5.2 — process role split. `parseRole` accepts the CLI flag
 // (`--role=web|worker|all`) and falls back to the `BUNNY2_ROLE` env
@@ -341,6 +349,69 @@ registerBuiltInScheduledTaskHandlers({
   schemaVersion,
   busAdapter: busAdapterName,
 });
+
+// Phase 6.2 — chat embeddings (write-only LanceDB scaffold).
+//
+// `MockEmbedder` is the default when `config.embeddings.endpoint` is
+// absent — keeps tests / CI / offline dev free of network deps and
+// of the `OPENAI_API_KEY` cargo cult. When the endpoint IS set we
+// build an `OpenAiEmbedder` against the same secret machinery as
+// the chat LLM (the api key lives in the config file, never logged).
+//
+// The subscriber is started AFTER `createApp` so every entity module
+// has registered itself (per-kind `mountXRoutes` calls register
+// inside `createApp`). It runs on every role: the durable bus's
+// atomic outbox claim ensures at-most-one delivery, the same logic
+// as the connector dispatcher's role comment above.
+//
+// Read path stays on the per-kind LIKE search via `searchSummaries`
+// (phase 6). The phase-7 read swap will filter `layer_id IN (?)`
+// BEFORE the vector query so the corpus respects the same
+// authorization invariants the SQLite path enforces today
+// (`overall.md` §5 invariant 8 / ADR 0021).
+function buildEmbedder(): Embedder {
+  const cfg = config.embeddings;
+  if (cfg.endpoint !== undefined && cfg.endpoint.length > 0) {
+    if (cfg.model === undefined || cfg.model.length === 0) {
+      throw new Error('config.embeddings.endpoint is set but config.embeddings.model is missing');
+    }
+    return createOpenAiEmbedder({
+      endpoint: cfg.endpoint,
+      apiKey: cfg.apiKey ?? '',
+      model: cfg.model,
+      dimensions: cfg.dimensions,
+    });
+  }
+  return createMockEmbedder();
+}
+const embedder = buildEmbedder();
+const lanceWriter = createLanceDbWriter(lance);
+registerChatScheduledTaskHandlers({ embedder, writer: lanceWriter });
+
+const embeddingSubscriber = createEmbeddingSubscriber({
+  bus,
+  embedder,
+  writer: lanceWriter,
+  modules: listEntityModules(),
+  fetchEntity: (kind, id) => {
+    // Lazy per-kind store lookup mirroring the enrichment runner's
+    // `resolveStoreForModule` cache above. We only build a store the
+    // first time a `restored` event for that kind hits the subscriber.
+    const module = listEntityModules().find((m) => m.kind === kind);
+    if (module === undefined) return null;
+    const store = resolveStoreForModule(module);
+    const entity = store.getById(id);
+    if (entity === null) return null;
+    return {
+      id: entity.id,
+      layerId: entity.layerId,
+      kind: entity.kind,
+      slug: entity.slug,
+      searchableText: entity.searchableText,
+    };
+  },
+});
+embeddingSubscriber.start();
 // Phase 5.5 — seed the four system scheduled tasks into the
 // `everyone` layer. Runs on EVERY role (one-shot row insert; the
 // worker/all role owns execution via the scheduler tick). MUST run
@@ -379,6 +450,9 @@ console.log(
 );
 console.log(`[${appName}] scheduler:   ${role === 'web' ? 'disabled, role=web' : 'enabled'}`);
 console.log(
+  `[${appName}] embeddings:  ${embedder.id} (dims=${embedder.dimensions})`,
+);
+console.log(
   `[${appName}] system-tasks: ${systemTasksSeedResult.seeded ? `${systemTasksSeedResult.created} seeded` : 'already seeded'}`,
 );
 
@@ -391,6 +465,7 @@ void enrichmentRunner;
 void todoCalendarProjection;
 void scheduler;
 void scheduledRunSubscriber;
+void embeddingSubscriber;
 
 // Phase 5.2 — the `worker` role does background work only and binds
 // no TCP port. The `web` and `all` roles serve HTTP as before. The

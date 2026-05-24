@@ -132,6 +132,32 @@ export const SecretsConfigSchema = z.object({
   encryptionKey: z.string().optional(),
 });
 
+/**
+ * Phase 6.2 — chat-embeddings runtime knobs.
+ *
+ * All three fields are optional. When `endpoint` is absent the chat
+ * module falls back to the in-process `MockEmbedder` (deterministic
+ * 32-dim hash), which keeps tests / CI / offline dev free of network
+ * dependencies. When `endpoint` is set the `OpenAiEmbedder` is used —
+ * it follows the same secret-handling convention as the chat LLM
+ * config (the key may also be supplied via the existing config-file
+ * channel; no env override is added here in 6.2 to keep the surface
+ * minimal — operators that want one can use the same config file).
+ *
+ * `dimensions` is honored only by `OpenAiEmbedder`. The mock embedder
+ * has a fixed 32-dim shape; LanceDB derives the column type from the
+ * first inserted row so changing the dimension on a live deployment
+ * would require a backfill into a fresh table — that's a phase-7
+ * concern, not phase 6.
+ */
+export const EmbeddingsConfigSchema = z.object({
+  endpoint: z.string().optional(),
+  model: z.string().optional(),
+  apiKey: z.string().optional(),
+  /** Dimensionality reported by `OpenAiEmbedder`. Ignored by the mock. */
+  dimensions: z.number().int().positive().default(1536),
+});
+
 export const AppConfigSchema = z.object({
   dataDir: z.string().default('./.data'),
   http: HttpConfigSchema.default({}),
@@ -149,6 +175,7 @@ export const AppConfigSchema = z.object({
     maxRunsPerLayerPerMinute: 30,
   }),
   secrets: SecretsConfigSchema.default({}),
+  embeddings: EmbeddingsConfigSchema.default({ dimensions: 1536 }),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -159,4 +186,5 @@ export type LocalesConfig = z.infer<typeof LocalesConfigSchema>;
 export type ConnectorsConfig = z.infer<typeof ConnectorsConfigSchema>;
 export type EnrichmentConfig = z.infer<typeof EnrichmentConfigSchema>;
 export type SecretsConfig = z.infer<typeof SecretsConfigSchema>;
+export type EmbeddingsConfig = z.infer<typeof EmbeddingsConfigSchema>;
 export type ModelPricing = z.infer<typeof ModelPricingSchema>;
