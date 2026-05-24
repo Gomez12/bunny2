@@ -2148,3 +2148,131 @@ tweaks once the slots exist — the 4b.2 `ingest` extension was a
 one-time addition for the second connector style (payload-bearing
 vs. external-id-bearing); Calendar's OAuth-pull connector reuses
 the 4a.2 pattern verbatim.
+
+### 4c.1 shipped (2026-05-24)
+
+**What landed**
+
+- Migration `apps/server/src/storage/migrations/0009_calendar_events.sql`
+  — the third per-kind table. Follows §5 shape exactly: shared columns
+  (`id`, `layer_id`, `slug`, `title`, `searchable_text`,
+  `original_locale`, `payload_json`, audit columns, `version`) plus
+  five calendar-specific indexed columns:
+  - `starts_at TEXT NOT NULL` — ISO-8601 UTC OR date-only when
+    `payload.allDay`. Load-bearing for the 4c.4 widget's "next 7 days"
+    query and the 4c.5 week/month views.
+  - `ends_at TEXT` — nullable; if present, the zod superRefine
+    enforces `endsAt >= startsAt` (lexicographic compare, sound for
+    ISO-8601). The constraint stays in zod, NOT SQL — see §10g.
+  - `all_day INTEGER NOT NULL DEFAULT 0` — the first non-TEXT indexed
+    column the §4.0 foundation accepts.
+  - `rrule_string TEXT` — opaque; we store, we do NOT expand
+    recurrence in v1 (§2 stance).
+  - `external_calendar_id TEXT` — nullable; sparse index for the 4c.2
+    Google Calendar back-link.
+  - Indexes: `idx_calendar_events_layer`,
+    `idx_calendar_events_deleted_at`, `idx_calendar_events_starts_at`
+    (load-bearing for week/month views and the dashboard widget's
+    "next 7 days" query), `idx_calendar_events_external_cal` (sparse).
+  - `apps/server/tests/migrations.test.ts` asserts the new schema
+    lands on a fresh DB and that the migration list ends at
+    `0009_calendar_events`.
+- Cross-package zod schemas in `packages/shared/src/calendar.ts`:
+  - `CalendarAttendeeSchema` — `{ value, displayName?,
+contactEntityId?, status }` with `status` defaulting to
+    `'needs_action'`. `value` is intentionally NOT email-validated —
+    the spec allows free-text fallback (room names, generic invites);
+    `contactEntityId` is the soft UUID link the 4c.3 enrichment writes.
+  - `CalendarEventPayloadSchema` — every field optional except
+    `startsAt`. `allDay` defaults to `false`; the superRefine enforces
+    `endsAt >= startsAt`, `YYYY-MM-DD` format on `startsAt`/`endsAt`
+    when `allDay`, and dedupes `attendees[]` by lowercased `value`.
+    `meetingSummaryNote` is reserved for the 4c.3 AI write path —
+    forward-stable, never user-set in 4c.1.
+  - `CreateCalendarEventRequestSchema` / `UpdateCalendarEventRequestSchema`
+    mirror the 4a.1 / 4b.1 request shapes; slug `^[a-z0-9-]+$`.
+  - Re-exported from `packages/shared/src/index.ts`.
+- `calendarEventModule` (`apps/server/src/entities/calendar/module.ts`)
+  with `kind = 'calendar_event'`, `tableName = 'calendar_events'`, the
+  five-entry `indexedColumns` declaration, a lowercase searchable-text
+  digest, and a `subtitle` of `${startsAt}${location ? ' · ' + location : ''}`
+  capped at 120 chars. Exposed as both the singleton
+  `calendarEventModule` and the `createCalendarEventModule(opts)`
+  factory so 4c.2 (Google Calendar connector) and 4c.3 (AI enrichment)
+  stay additive.
+- Wire-up helper `apps/server/src/entities/calendar/index.ts` exports
+  `registerCalendarEventModule()` (idempotent — short-circuits when
+  any calendar-event module is already registered, mirroring the 4a.6
+  / 4b companies / contacts pattern) and `mountCalendarEventRoutes`.
+  Wired into the production app from `apps/server/src/http/router.ts`
+  alongside the existing companies + contacts wiring.
+- Contract suite for the kind:
+  `apps/server/tests/entities/calendar-contract.test.ts` runs the §4.0
+  reusable suite against `calendarEventModule` and adds per-kind
+  assertions for the five indexed columns (`starts_at` round-trips
+  verbatim; `all_day` writes 0 / 1 as a JS `number`; clearing
+  `endsAt` / `rruleString` / `externalCalendarId` writes `NULL`) plus
+  a `toSummary` subtitle assertion.
+- i18n: new `entity.calendar.*` block (listTitle / listEmpty /
+  listLoading / listError / createCta / field\* / save / cancel /
+  deleteCta) and new `errors.entity.calendar.*` block (loadFailed /
+  saveFailed / validation / slugTaken / endsBeforeStarts /
+  allDayFormat / attendeeDuplicate) in both `en.json` and `nl.json`
+  with real Dutch translations.
+- Docs: `docs/dev/architecture/entities.md` §10g "Third consumer:
+  calendar events (4c.1)" documents the registered module shape and
+  explicitly calls out that the typed `indexedColumns` projection
+  handles both TEXT (`starts_at`) and INTEGER (`all_day`) without any
+  foundation modification — the empirical confirmation that the
+  contract takes a clean third adoption with only the five extension
+  slots already shipped in the 4a / 4b blocks.
+
+**Foundation tweaks**
+
+- **None.** The five extension slots (`indexedColumns`,
+  `getConnector` + dispatcher + runner, `enrichmentJobs`,
+  `statsProvider`, `EntityConnector.ingest`) introduced during the
+  4a / 4b blocks were sufficient. 4c.1 declares `indexedColumns`
+  only; the connector / enrichment / stats slots stay empty and ship
+  in 4c.2 / 4c.3 / 4c.4. Critically: the `IndexedValue = string |
+number | null` type space in `apps/server/src/entities/store.ts`
+  already covered INTEGER projections — `all_day` flowed through
+  without a single store / module change.
+- The `payloadSchema` slot accepts the schema via a narrow cast
+  (`as unknown as ZodType<CalendarEventPayload>`) because the
+  `allDay: z.boolean().default(false)` makes the input type
+  `boolean | undefined` while the parsed output is `boolean`. The
+  asymmetry stays inside the per-kind module file; the §4.0
+  `EntityModule<Payload>` contract is unchanged.
+
+**Notable for 4c.2 (Google Calendar connector — OAuth tokens,
+polling)**
+
+- The 4a.2 connector dispatch model (sync request → dispatcher →
+  `connector.pull(ctx, { externalId })` → `markSucceeded` /
+  `markFailed`) maps cleanly to Google Calendar: each calendar entry
+  becomes one `entity_external_links` row with the calendar event id
+  as `externalId`. OAuth refresh tokens belong in
+  `entity_external_links.payload_json` per ADR 0011 §6 — the
+  connector base's `scrubConnectorPayload` already strips
+  configurable secret-key prefixes before publish, so the existing
+  invariant covers Google tokens once their key names are added to
+  the scrub list.
+- The `pollIntervalMinutes` config slot on the KvK connector
+  (`apps/server/src/entities/companies/kvk-connector.ts`) is the
+  template — Google Calendar should accept the same per-attachment
+  config shape (`{ apiKey: refreshToken, pollIntervalMinutes }`) so
+  the runner's stale-link iteration applies without modification.
+- `external_calendar_id` indexed column is already in place so a
+  4c.2 pull can scope writes to "events for this specific Google
+  calendar id" with an indexed lookup.
+- The web UI does NOT exist yet — the route segment is singular
+  (`/l/:slug/calendar_event/*`) per the §4.0 router naming. The
+  4c.5 UI will surface a friendlier `/l/:slug/calendar` page that
+  hits the singular URL underneath, same singular↔plural seam
+  Companies (4a.5) and Contacts (4b.5) established client-side.
+
+**No new ADR** — 4c.1 consumes the foundation cleanly with zero
+contract changes. ADR 0011 already governs the entity contract; 4c.2
+will likely earn ADR 0015 for the Google Calendar OAuth token
+choice.

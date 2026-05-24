@@ -184,6 +184,15 @@
         "validation": "Het contact kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
         "emailDuplicate": "Elk e-mailadres kan maar één keer worden toegevoegd."
       },
+      "calendar": {
+        "loadFailed": "Kon deze afspraak niet laden. Probeer het opnieuw.",
+        "saveFailed": "Kon de afspraak niet opslaan. Controleer de invoer en probeer het opnieuw.",
+        "validation": "De afspraak kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
+        "slugTaken": "Er bestaat al een afspraak met deze slug in deze laag.",
+        "endsBeforeStarts": "De eindtijd mag niet vóór de starttijd liggen.",
+        "allDayFormat": "Hele-dag-afspraken gebruiken alleen datums (JJJJ-MM-DD).",
+        "attendeeDuplicate": "Elke deelnemer kan maar één keer worden toegevoegd."
+      },
       "connectorIngestFailed": "Kon het bestand niet importeren. Controleer het en probeer het opnieuw.",
       "connectorIngestUnavailable": "Bestandsimport is niet beschikbaar voor dit itemtype."
     },
@@ -336,6 +345,32 @@
       "linkSyncError": "Synchronisatie mislukt",
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de naam."
+    },
+    "calendar": {
+      "listTitle": "{{name}} · Agenda",
+      "listEmpty": "Nog geen afspraken in deze laag. Maak de eerste aan om te starten.",
+      "listLoading": "Afspraken laden…",
+      "listError": "Kon afspraken niet laden.",
+      "createCta": "Afspraak aanmaken",
+      "fieldSummary": "Samenvatting",
+      "fieldDescription": "Beschrijving",
+      "fieldLocation": "Locatie",
+      "fieldStartsAt": "Begint om",
+      "fieldEndsAt": "Eindigt om",
+      "fieldAllDay": "Hele dag",
+      "fieldRrule": "Herhaling (RRULE)",
+      "fieldAttendees": "Deelnemers",
+      "fieldAttendeeValue": "E-mail of naam",
+      "fieldAttendeeName": "Weergavenaam",
+      "fieldAttendeeStatus": "Status",
+      "fieldAttendeeStatusAccepted": "Geaccepteerd",
+      "fieldAttendeeStatusDeclined": "Geweigerd",
+      "fieldAttendeeStatusTentative": "Voorlopig",
+      "fieldAttendeeStatusNeedsAction": "Reactie vereist",
+      "fieldConferenceUrl": "Vergaderlink",
+      "save": "Opslaan",
+      "cancel": "Annuleren",
+      "deleteCta": "Afspraak verwijderen"
     }
   },
   "connectors": {

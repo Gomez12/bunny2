@@ -21,6 +21,7 @@ import { registerSystemLocalesRoute } from './routes/system-locales';
 // helper exported from `apps/server/src/entities/<kind>/index.ts`.
 import { mountCompanyRoutes, registerCompanyModule } from '../entities/companies';
 import { mountContactRoutes, registerContactModule } from '../entities/contacts';
+import { mountCalendarEventRoutes, registerCalendarEventModule } from '../entities/calendar';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -160,6 +161,19 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     ...(deps.ingestDispatcher === undefined ? {} : { ingestDispatcher: deps.ingestDispatcher }),
     ...(deps.ingestMaxBytes === undefined ? {} : { ingestMaxBytes: deps.ingestMaxBytes }),
     defaultLocale: deps.locales.default,
+  });
+
+  // Phase 4c.1 — calendar-event entity. Same idempotent registration
+  // pattern as companies / contacts so `makeTestApp`-driven tests can
+  // rebuild the app any number of times without resetting the
+  // registry; see `apps/server/src/entities/calendar/index.ts`. No
+  // connector / enrichment / stats provider in 4c.1 — those land in
+  // 4c.2 / 4c.3 / 4c.4 respectively.
+  registerCalendarEventModule();
+  mountCalendarEventRoutes(app, {
+    db: deps.db,
+    bus: deps.bus,
+    llm: deps.llmClient,
   });
 
   return app;

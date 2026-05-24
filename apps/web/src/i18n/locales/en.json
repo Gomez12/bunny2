@@ -404,6 +404,15 @@
         "validation": "The contact could not be saved. Please check the input and try again.",
         "emailDuplicate": "Each email address can only be added once."
       },
+      "calendar": {
+        "loadFailed": "Could not load this event. Please try again.",
+        "saveFailed": "Could not save the event. Please check the input and try again.",
+        "validation": "The event could not be saved. Please check the input and try again.",
+        "slugTaken": "An event with this slug already exists in this layer.",
+        "endsBeforeStarts": "The end time must not be earlier than the start time.",
+        "allDayFormat": "All-day events use date-only values (YYYY-MM-DD).",
+        "attendeeDuplicate": "Each attendee can only be added once."
+      },
       "connectorIngestFailed": "Could not import the file. Please verify it and try again.",
       "connectorIngestUnavailable": "File import is not available for this item kind."
     },
@@ -556,6 +565,32 @@
       "linkSyncError": "Sync failed",
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the name."
+    },
+    "calendar": {
+      "listTitle": "{{name}} · Calendar",
+      "listEmpty": "No events in this layer yet. Create the first one to get started.",
+      "listLoading": "Loading events…",
+      "listError": "Could not load events.",
+      "createCta": "Create event",
+      "fieldSummary": "Summary",
+      "fieldDescription": "Description",
+      "fieldLocation": "Location",
+      "fieldStartsAt": "Starts at",
+      "fieldEndsAt": "Ends at",
+      "fieldAllDay": "All day",
+      "fieldRrule": "Recurrence (RRULE)",
+      "fieldAttendees": "Attendees",
+      "fieldAttendeeValue": "Email or name",
+      "fieldAttendeeName": "Display name",
+      "fieldAttendeeStatus": "Status",
+      "fieldAttendeeStatusAccepted": "Accepted",
+      "fieldAttendeeStatusDeclined": "Declined",
+      "fieldAttendeeStatusTentative": "Tentative",
+      "fieldAttendeeStatusNeedsAction": "Needs action",
+      "fieldConferenceUrl": "Conference URL",
+      "save": "Save",
+      "cancel": "Cancel",
+      "deleteCta": "Delete event"
     }
   },
   "connectors": {

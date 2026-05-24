@@ -926,6 +926,81 @@ connector with no `ingest` (`errors.connectors.ingestNotSupported`).
 
 ---
 
+## 10g. Third consumer: calendar events (4c.1)
+
+`calendarEventModule` (`apps/server/src/entities/calendar/module.ts`)
+is the third concrete `EntityModule` to land on the §4.0 foundation.
+It registers under `kind = 'calendar_event'`, writes to the
+`calendar_events` table created by `0009_calendar_events.sql`, and
+declares five indexed columns projected from the JSON payload:
+
+```ts
+export const calendarEventModule: EntityModule<CalendarEventPayload> = createCalendarEventModule();
+// ⇒ kind: 'calendar_event', tableName: 'calendar_events',
+//   payloadSchema: CalendarEventPayloadSchema,
+//   indexedColumns: [
+//     { name: 'starts_at',            extract: (p) => p.startsAt },
+//     { name: 'ends_at',              extract: (p) => p.endsAt ?? null },
+//     { name: 'all_day',              extract: (p) => p.allDay ? 1 : 0 },
+//     { name: 'rrule_string',         extract: (p) => p.rruleString ?? null },
+//     { name: 'external_calendar_id', extract: (p) => p.externalCalendarId ?? null },
+//   ],
+//   toSummary: subtitle = `${startsAt}${location ? ' · ' + location : ''}` (capped at 120 chars),
+//   searchableText: lowercased digest of summary + description + location
+//                   + attendees' values + displayNames + conferenceUrl
+```
+
+The headline finding for 4c.1: the typed indexed-column projection
+(`IndexedValue = string | number | null` in `apps/server/src/entities/store.ts`)
+handles the `all_day INTEGER` column **without any foundation change**.
+The four other indexed columns (`starts_at`, `ends_at`, `rrule_string`,
+`external_calendar_id`) are `TEXT`; `all_day` is `INTEGER`. The store's
+generic INSERT / UPDATE binds whichever primitive the `extract`
+callback returns, and SQLite stores it in the column's native type. The
+first non-TEXT indexed column the foundation accepted is empirical
+proof that the slot generalises beyond strings.
+
+`starts_at` is `NOT NULL` in the migration because every event must
+have a start time; the zod payload schema enforces the same invariant
+(`startsAt: z.string().min(1)` — required). The other four columns
+are nullable so a layer can own a "draft" event (title + startsAt
+only) before the 4c.2 Google Calendar connector or the 4c.5 web UI
+fills the remaining fields.
+
+`ends_at` is nullable, and the `endsAt >= startsAt` constraint lives
+at the zod superRefine layer, NOT in SQL — the constraint compares
+ISO-8601 strings lexicographically (sound for the format) and surfaces
+as `errors.entity.calendar.endsBeforeStarts`. The application-layer
+choice is intentional: SQLite CHECKs can't reach into the JSON
+payload's mixed timestamp / date-only spaces.
+
+`rrule_string` is stored verbatim and **never expanded at runtime in
+v1** (§2 of `docs/dev/plans/phase-04-first-entities.md`). The web UI
+in 4c.5 renders only the master occurrence; a future v2 will expand
+recurrence client-side.
+
+Calendar events pass the §4.0 contract suite verbatim
+(`apps/server/tests/entities/calendar-contract.test.ts` →
+`runEntityContractSuite(...)`). The same file adds extra checks for
+the five indexed-column projections: `starts_at` round-trips
+verbatim, `all_day` writes 0 / 1 as a JS `number` (SQLite returns the
+column as `number`, confirming the INTEGER lane), and clearing the
+optional fields writes `NULL` across the board.
+
+**Zero foundation tweaks landed in 4c.1.** The five extension slots
+(`indexedColumns`, `getConnector` / dispatcher / runner,
+`enrichmentJobs`, `statsProvider`, `EntityConnector.ingest`) already
+in place from the 4a / 4b blocks were enough to absorb the third
+consumer cleanly — empirical confirmation that the §4.0 contract
+generalises beyond the kinds it was extracted with. No `connectors`,
+`enrichmentJobs`, or `statsProvider` ship in 4c.1: the Google
+Calendar connector lands in 4c.2, the meeting-summary + attendee-link
+enrichment in 4c.3, the dashboard widget in 4c.4. The
+`createCalendarEventModule(opts)` factory is in place so each of
+those sub-phases stays additive.
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit
