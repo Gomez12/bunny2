@@ -59,8 +59,9 @@ apply must happen BEFORE React paints; a tiny inline script in
   (function () {
     try {
       var p = localStorage.getItem('bunny2.theme') || 'system';
-      var isDark = p === 'dark' || (p === 'system' &&
-        window.matchMedia('(prefers-color-scheme: dark)').matches);
+      var isDark =
+        p === 'dark' ||
+        (p === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
       if (isDark) document.documentElement.classList.add('dark');
     } catch (_) {}
   })();

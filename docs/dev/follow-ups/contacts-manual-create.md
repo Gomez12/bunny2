@@ -4,7 +4,7 @@
 - Created: 2026-05-24 (user request: "ik wil de entiteit contacts ook
   handmatig kunnen toevoegen")
 - Phases referencing it: 4b.2 (vCard ingest landed), 4b.5 (list page
-  + create dialog landed in the current minimal form)
+  and create dialog landed in the current minimal form)
 
 ## What remains
 
@@ -18,7 +18,7 @@ Today it only collects four fields:
 - `familyName`
 
 Everything that makes a contact useful — emails, phone numbers,
-company link, job title, notes — has to be added *afterwards* via the
+company link, job title, notes — has to be added _afterwards_ via the
 detail page. That's discoverable for power users, but to a first-time
 user it looks as if "create contact" is broken: they enter a name,
 land on a near-empty detail page, and have to figure out the edit
@@ -68,7 +68,7 @@ Concrete steps:
 Keep the dialog minimal, then immediately route to the detail page
 in edit mode after successful creation (instead of read mode).
 Smaller change, but it surfaces the same data twice (the toast says
-"contact created" while the page asks the user to *finish* creating
+"contact created" while the page asks the user to _finish_ creating
 it). Mention but do not recommend.
 
 ## Why not done now
