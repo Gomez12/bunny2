@@ -1,8 +1,9 @@
 # ADR 0021 — Embedding pipeline + LanceDB `layer_id` auth_tag
 
-- Status: proposed
+- Status: accepted
+- Accepted on: 2026-05-24
 - Date: 2026-05-24
-- Phase: 6 (sub-phase 6.2; flips to `accepted` in 6.7)
+- Phase: 6 (sub-phase 6.2; landed across 6.2–6.6)
 - Related: `docs/dev/plans/phase-06-super-chat.md` §2, §4.3, §6,
   §10; `docs/dev/architecture/retrieval.md` (lands in 6.7);
   ADR [`0003`](./0003-lancedb.md) (LanceDB choice; this ADR is the

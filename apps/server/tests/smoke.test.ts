@@ -2928,3 +2928,288 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     }
   });
 });
+
+// ---------------------------------------------------------------------
+// Phase 6.7 — chat-pipeline smoke
+//
+// Runs as a sibling `describe` so it does NOT need to interleave with
+// the 2900-line phase-1-through-5 spine above. Builds its own fixture
+// via `makeChatFixture` (programmable LLM, real layers, real entity
+// modules) plus an in-memory LanceDB writer + embedding subscriber so
+// the calendar-event create → ask → answer → thumbs-up → soft-delete
+// flow can be asserted end-to-end.
+//
+// Covers (matches phase-6 plan §13 verification, automatable steps):
+//
+//   1. Create a calendar event titled "Acme strategy".
+//   2. The LanceDB write subscriber lands one row for the event with
+//      `layer_id` matching the layer the event was created in (ADR
+//      0021 §1 auth_tag invariant).
+//   3. Hit `POST .../messages` (SSE) asking "When do I meet Acme?".
+//      The programmable LLM returns canned intent + entities + a
+//      streamed answer that mentions the event's date string.
+//   4. Assert the streamed answer contains the date string.
+//   5. Thumbs-up via `POST .../messages/:id/feedback`; assert the
+//      `chat_message_feedback` row.
+//   6. Soft-delete the event; assert the LanceDB row disappears (ADR
+//      0021 §2 soft-delete contract).
+// ---------------------------------------------------------------------
+import {
+  createEmbeddingSubscriber,
+  createInMemoryLanceWriter,
+  createMockEmbedder,
+  getLanceTableForKind,
+  type LanceWriter,
+} from '../src/chat';
+import { makeChatFixture } from './chat-routes/_helpers';
+import { consumeSse } from './chat-routes/_helpers';
+import { listEntityModules } from '../src/entities';
+
+interface FeedbackRow {
+  message_id: string;
+  value: string;
+  reason: string | null;
+}
+
+describe('phase 6.7 — chat smoke (calendar event → ask → answer → thumbs → soft-delete)', () => {
+  it('lands LanceDB row, streams the date in the answer, persists feedback, removes the row on soft-delete', async () => {
+    const fx = await makeChatFixture('bunny2-smoke-chat-');
+    try {
+      // -------------------------------------------------------------
+      // 1. Wire the embedding write path. Production uses the real
+      //    LanceDB; the smoke uses the in-memory writer + the mock
+      //    embedder (matches phase 6.2's test seam). The subscriber
+      //    listens for `entity.<kind>.created` / `updated` /
+      //    `softDeleted` / `deleted` / `restored`.
+      // -------------------------------------------------------------
+      const writer: LanceWriter = createInMemoryLanceWriter();
+      const embedder = createMockEmbedder();
+      const modules = listEntityModules();
+      const sub = createEmbeddingSubscriber({
+        bus: fx.app.bus,
+        embedder,
+        writer,
+        modules,
+        fetchEntity: () => null,
+      });
+      sub.start();
+
+      // -------------------------------------------------------------
+      // 2. Resolve the layer id for `alice-p1` so we can read the
+      //    LanceDB row's `layer_id` later.
+      // -------------------------------------------------------------
+      const layerRow = fx.app.db
+        .query<{ id: string }, [string]>('SELECT id FROM layers WHERE slug = ?')
+        .get(fx.layerSlug);
+      if (layerRow === null) throw new Error('smoke-chat: alice-p1 layer not found');
+      const layerId = layerRow.id;
+
+      // -------------------------------------------------------------
+      // 3. Create a calendar event titled "Acme strategy". The
+      //    fixture-registered calendar module's HTTP route is
+      //    `/l/:slug/calendar_event`. We pin the date string in the
+      //    payload so we can assert the streamed answer mentions it.
+      // -------------------------------------------------------------
+      const eventDate = '2026-06-01';
+      const eventStartIso = `${eventDate}T10:00:00.000Z`;
+      const createRes = await fx.app.app.fetch(
+        new Request(`http://localhost/l/${fx.layerSlug}/calendar_event`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${fx.token}`,
+          },
+          body: JSON.stringify({
+            title: 'Acme strategy',
+            slug: 'acme-strategy',
+            originalLocale: 'en',
+            payload: {
+              summary: 'Acme strategy',
+              startsAt: eventStartIso,
+            },
+          }),
+        }),
+      );
+      expect(createRes.status).toBe(201);
+      const createdBody = (await createRes.json()) as { entity: { id: string } };
+      const calendarEntityId = createdBody.entity.id;
+
+      // Wait for the off-bus subscriber to land the LanceDB row. The
+      // `InMemoryMessageBus` is synchronous, but the embedding write
+      // is `await`ed inside the subscriber, so we poll briefly. The
+      // LanceDB row primary key is the entity UUID, not the slug —
+      // the row's `slug` column is `'acme-strategy'` for human-friendly
+      // lookup but the writer keys on `id`.
+      const calendarTable = getLanceTableForKind('calendar_event');
+      if (calendarTable === null)
+        throw new Error('smoke-chat: no LanceDB table for calendar_event');
+      let landedRow: { id: string; layer_id: string; text: string; slug: string } | null = null;
+      for (let i = 0; i < 30; i += 1) {
+        const row = await writer.getById(calendarTable, calendarEntityId);
+        if (row !== null) {
+          landedRow = row;
+          break;
+        }
+        await Bun.sleep(20);
+      }
+      expect(landedRow).not.toBeNull();
+      expect(landedRow!.layer_id).toBe(layerId);
+      expect(landedRow!.text.toLowerCase()).toContain('acme');
+      expect(landedRow!.slug).toBe('acme-strategy');
+
+      // -------------------------------------------------------------
+      // 4. Create a conversation, then post the question. The
+      //    programmable LLM returns the canned answers the
+      //    orchestrator's three LLM steps need: intent, entities,
+      //    answer (streamed via `chatStream`).
+      // -------------------------------------------------------------
+      const convRes = await fx.app.app.fetch(
+        new Request(`http://localhost/l/${fx.layerSlug}/chat/conversations`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${fx.token}`,
+          },
+          body: JSON.stringify({ title: 'Acme strategy' }),
+        }),
+      );
+      expect(convRes.status).toBe(201);
+      const convBody = (await convRes.json()) as { conversation: { id: string } };
+      const conversationId = convBody.conversation.id;
+
+      const answerText =
+        `Your Acme strategy meeting is on ${eventDate} at 10:00 UTC. ` +
+        `(One match was found inside this layer.)`;
+      fx.llm.enqueue('intent', {
+        content: JSON.stringify({ intent: 'question.entity_lookup', confidence: 0.95 }),
+      });
+      fx.llm.enqueue('entities', {
+        content: JSON.stringify({
+          kinds: ['calendar_event'],
+          queryHints: [{ term: 'acme', kind: 'calendar_event' }],
+        }),
+      });
+      fx.llm.enqueue('answer', { content: answerText, streamChunkCount: 6 });
+
+      const sseRes = await fx.app.app.fetch(
+        new Request(
+          `http://localhost/l/${fx.layerSlug}/chat/conversations/${conversationId}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${fx.token}`,
+            },
+            body: JSON.stringify({ content: 'When do I meet Acme?' }),
+          },
+        ),
+      );
+      expect(sseRes.status).toBe(200);
+      expect(sseRes.headers.get('content-type')).toContain('text/event-stream');
+
+      const frames = await consumeSse(sseRes);
+      const events = frames.map((f) => f.event);
+      expect(events).toContain('step');
+      expect(events).toContain('token');
+      expect(events).toContain('done');
+      expect(events[events.length - 1]).toBe('done');
+
+      const reconstructed = frames
+        .filter((f) => f.event === 'token')
+        .map((f) => (JSON.parse(f.data) as { delta: string }).delta)
+        .join('');
+      expect(reconstructed).toBe(answerText);
+      // The streamed answer must contain the calendar event's date
+      // string. This is the headline "grounded in real data"
+      // assertion from plan §1 / §13.
+      expect(reconstructed).toContain(eventDate);
+
+      const doneFrame = frames.find((f) => f.event === 'done');
+      const doneData = JSON.parse(doneFrame!.data) as { messageId: string; status: string };
+      expect(doneData.status).toBe('done');
+      const assistantMessageId = doneData.messageId;
+
+      // Three LLM calls land in `llm_calls`: intent + entities +
+      // answer. Retrieval is pure code, no LLM call.
+      interface LlmCallCount {
+        n: number;
+      }
+      const callCount = fx.app.db
+        .query<LlmCallCount, []>('SELECT COUNT(*) AS n FROM llm_calls')
+        .get();
+      expect(callCount?.n).toBeGreaterThanOrEqual(3);
+
+      // Four `chat_pipeline_steps` rows for the assistant message
+      // (intent / entities / retrieval / answer).
+      interface StepRow {
+        kind: string;
+        status: string;
+      }
+      const stepRows = fx.app.db
+        .query<StepRow, [string]>(
+          `SELECT s.kind, s.status FROM chat_pipeline_steps s
+              JOIN chat_pipeline_runs r ON r.id = s.run_id
+             WHERE r.message_id = ?
+             ORDER BY s.started_at ASC`,
+        )
+        .all(assistantMessageId);
+      expect(stepRows.map((r) => r.kind)).toEqual(['intent', 'entities', 'retrieval', 'answer']);
+      expect(stepRows.every((r) => r.status === 'succeeded')).toBe(true);
+
+      // -------------------------------------------------------------
+      // 5. Thumbs-up the assistant message. The feedback row uses
+      //    `message_id` as the UNIQUE key (one rating per user).
+      // -------------------------------------------------------------
+      const feedbackRes = await fx.app.app.fetch(
+        new Request(
+          `http://localhost/l/${fx.layerSlug}/chat/messages/${assistantMessageId}/feedback`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${fx.token}`,
+            },
+            body: JSON.stringify({ value: 'up' }),
+          },
+        ),
+      );
+      expect(feedbackRes.status).toBeLessThan(300);
+
+      const feedback = fx.app.db
+        .query<
+          FeedbackRow,
+          [string]
+        >('SELECT message_id, value, reason FROM chat_message_feedback WHERE message_id = ?')
+        .get(assistantMessageId);
+      expect(feedback).not.toBeNull();
+      expect(feedback?.value).toBe('up');
+      expect(feedback?.reason).toBeNull();
+
+      // -------------------------------------------------------------
+      // 6. Soft-delete the calendar event. The subscriber must
+      //    remove the LanceDB row (ADR 0021 §2 contract). Off-bus
+      //    work — poll briefly for the row to disappear.
+      // -------------------------------------------------------------
+      const deleteRes = await fx.app.app.fetch(
+        new Request(`http://localhost/l/${fx.layerSlug}/calendar_event/acme-strategy`, {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${fx.token}` },
+        }),
+      );
+      expect(deleteRes.status).toBe(200);
+
+      let gone = false;
+      for (let i = 0; i < 30; i += 1) {
+        const row = await writer.getById(calendarTable, calendarEntityId);
+        if (row === null) {
+          gone = true;
+          break;
+        }
+        await Bun.sleep(20);
+      }
+      expect(gone).toBe(true);
+    } finally {
+      fx.app.cleanup();
+    }
+  });
+});

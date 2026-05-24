@@ -60,8 +60,19 @@ import {
   createScheduler,
   registerBuiltInScheduledTaskHandlers,
   registerScheduledTaskHandler,
+  getScheduledTaskHandler,
   seedSystemScheduledTasksIfNeeded,
 } from '../src/scheduled';
+// Phase 6.7 — assert the three chat-domain scheduled-task handlers
+// register on the worker process. The smoke does NOT exercise them
+// end-to-end (the per-handler unit tests cover that). It only pins
+// that the registry shape an `--role=worker` process produces matches
+// the documented job inventory (`docs/dev/architecture/job-inventory.md`).
+import {
+  registerChatScheduledTaskHandlers,
+  createMockEmbedder,
+  createInMemoryLanceWriter,
+} from '../src/chat';
 
 interface OutboxRow {
   status: string;
@@ -152,6 +163,26 @@ describe('phase 5.7 — smoke-worker (role=worker against DurableSqliteMessageBu
           handlerInvocations += 1;
         },
       });
+
+      // Phase 6.7 — register the three chat-domain handlers exactly
+      // the way `apps/server/src/index.ts` does on every role (the
+      // production wiring at index.ts:389 calls this with the real
+      // LanceDB writer; the smoke uses the in-memory writer + mock
+      // embedder so we don't touch the LanceDB file). After the
+      // call all three `kind`s must resolve to a non-null handler —
+      // matching the rows in `docs/dev/architecture/job-inventory.md`
+      // and the assertions in `tests/docs/job-inventory.test.ts`.
+      registerChatScheduledTaskHandlers({
+        embedder: createMockEmbedder(),
+        writer: createInMemoryLanceWriter(),
+      });
+      for (const kind of [
+        'chat.embeddings.backfill',
+        'chat.review-layer',
+        'chat.runs.prune',
+      ] as const) {
+        expect(getScheduledTaskHandler(kind)).not.toBeNull();
+      }
 
       const scheduledRepo = createScheduledTasksRepo(database);
       // Seed system tasks (verifies the seed pipeline boots against

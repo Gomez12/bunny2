@@ -1,8 +1,9 @@
 # ADR 0022 — SSE for the answerer step
 
-- Status: proposed
+- Status: accepted
+- Accepted on: 2026-05-24
 - Date: 2026-05-24
-- Phase: 6 (sub-phase 6.4; flips to `accepted` in 6.7)
+- Phase: 6 (sub-phase 6.4; landed across 6.4–6.6)
 - Related: `docs/dev/plans/phase-06-super-chat.md` §2, §4.4, §6,
   §10, §11; `docs/dev/architecture/chat-pipeline.md` (lands in 6.7);
   ADR [`0020`](./0020-chat-pipeline.md) (the pipeline whose final

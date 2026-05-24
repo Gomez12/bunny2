@@ -314,6 +314,38 @@ shipped`, and `Phase 4 — entire phase: shipped`) for the per-DoD
 - **Exit:** the "wanneer heb ik de ontmoeting met 2ba"-class question
   is answered correctly from real entity data.
 
+- **Status (as of 2026-05-24):** all sub-phases 6.0–6.7 are `done`.
+  The plan is archived at
+  [`done/phase-06-super-chat.md`](./done/phase-06-super-chat.md); see
+  its §14 close-out checklist for the per-DoD walkthrough. The
+  per-layer chat lives at `/l/:slug/chat` with the streaming
+  answerer over SSE, the per-message Kanban at `/l/:slug/chat/board`,
+  and the `RecentChatsWidget` on the layer dashboard. Three
+  scheduled-task kinds are registered (`chat.embeddings.backfill`,
+  `chat.review-layer` placeholder, `chat.runs.prune`). The LanceDB
+  write subscriber mirrors every entity create / update / soft-delete
+  into a `layer_id`-tagged corpus; the read path stays on
+  `EntityStore.searchSummaries` LIKE-search until phase 7's read swap.
+  ADRs [`0020`](../decisions/0020-chat-pipeline.md) (chat pipeline
+  contract), [`0021`](../decisions/0021-embedding-and-lance-auth-tag.md)
+  (embedding + LanceDB auth_tag), and
+  [`0022`](../decisions/0022-sse-for-answerer.md) (SSE for the
+  answerer step) are accepted; the developer-side narrative lives in
+  [`architecture/chat-pipeline.md`](../architecture/chat-pipeline.md)
+  and [`architecture/retrieval.md`](../architecture/retrieval.md);
+  the user-side guide is
+  [`user/guides/working-with-chat.md`](../../user/guides/working-with-chat.md).
+  Smoke now covers the end-to-end calendar-event question flow plus
+  the LanceDB soft-delete contract
+  (`apps/server/tests/smoke.test.ts` "phase 6.7 — chat smoke"); the
+  worker-role smoke pins that the three chat scheduled-task handlers
+  register under `--role=worker`
+  (`apps/server/tests/smoke-worker.test.ts`). Eight follow-ups
+  recorded under `docs/dev/follow-ups/` (per-layer model override,
+  conversation auto-summary, LanceDB read swap, shared
+  conversations, tool-calling answerer, per-layer embedding budget,
+  page deep-link to a message, real web analytics primitive).
+
 ### Phase 7 — Self-learning, user-verified
 
 - Per-layer scheduled review agent over feedback.

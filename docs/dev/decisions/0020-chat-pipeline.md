@@ -1,8 +1,9 @@
 # ADR 0020 — Chat pipeline contract
 
-- Status: proposed
+- Status: accepted
+- Accepted on: 2026-05-24
 - Date: 2026-05-24
-- Phase: 6 (sub-phases 6.0 through 6.7; flips to `accepted` in 6.7)
+- Phase: 6 (sub-phases 6.0 through 6.7)
 - Related: `docs/dev/plans/phase-06-super-chat.md` §1, §4.1, §6, §11;
   `docs/dev/architecture/chat-pipeline.md` (lands in 6.7);
   ADR [`0019`](./0019-durable-sqlite-message-bus.md) (durable bus
