@@ -390,3 +390,39 @@ export interface GoogleCalendarSyncResult {
   readonly updated: number;
   readonly warnings: readonly string[];
 }
+
+// ---------- todos (phase 4d.5) ---------------------------------------------
+
+export type TodoStatus = 'open' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
+/** 1 = highest, 5 = lowest, 3 = normal default. */
+export type TodoPriority = 1 | 2 | 3 | 4 | 5;
+export type TodoLinkedEntityKind = 'company' | 'contact';
+
+export interface TodoLinkedEntityRef {
+  readonly kind: TodoLinkedEntityKind;
+  readonly entityId: string;
+}
+
+export interface TodoPayload {
+  readonly description?: string;
+  readonly status: TodoStatus;
+  readonly priority: TodoPriority;
+  readonly dueAt?: string;
+  readonly linkedEntityRef?: TodoLinkedEntityRef;
+  readonly completedAt?: string;
+  readonly tags?: readonly string[];
+}
+
+export type Todo = Entity<TodoPayload>;
+
+export interface CreateTodoPayload {
+  readonly title: string;
+  readonly slug?: string;
+  readonly originalLocale: string;
+  readonly payload: TodoPayload;
+}
+
+export interface UpdateTodoPayload {
+  readonly title?: string;
+  readonly payload: TodoPayload;
+}

@@ -33,6 +33,7 @@ import type {
   CreateContactPayload,
   CreateGroupPayload,
   CreateLayerPayload,
+  CreateTodoPayload,
   CreateUserPayload,
   EntityExternalLink,
   EntitySummary,
@@ -50,11 +51,13 @@ import type {
   SafeUser,
   SetLayerLocalesPayload,
   SystemLocalesResponse,
+  Todo,
   UpdateCalendarEventPayload,
   UpdateCompanyPayload,
   UpdateContactPayload,
   UpdateGroupPayload,
   UpdateLayerPayload,
+  UpdateTodoPayload,
   UpdateUserPayload,
 } from './api-types';
 import {
@@ -69,6 +72,7 @@ import {
   companyServerExternalLinks,
 } from './companies-routes';
 import { contactServerDetail, contactsServerBase } from './contacts-routes';
+import { todoServerDetail, todosServerBase } from './todos-routes';
 
 interface BunnyBridge {
   readonly apiBase: string;
@@ -874,4 +878,52 @@ export async function syncGoogleCalendar(layerSlug: string): Promise<GoogleCalen
     throw new ApiError('errors.network', res.status);
   }
   return body;
+}
+
+// ---------- todos CRUD (phase 4d.5) ----------------------------------------
+//
+// Same singular ↔ plural seam as Companies / Contacts / Calendar — see
+// `apps/web/src/lib/todos-routes.ts`. The server router mounts the
+// singular `/l/:slug/todo` segment per the §4.0 entity contract; the
+// web UI's friendlier URL is `/l/:slug/todos`. The list endpoint
+// returns `EntitySummary[]` (title + subtitle + meta only); the kanban
+// view needs `status` / `priority` / `dueAt` which only live on the
+// full payload, so the list page hydrates each summary via
+// `getTodo(...)` after listing. The N+1 cost mirrors the calendar
+// list page; the documented "summaryColumns" follow-up at
+// `docs/dev/follow-ups/companies-list-columns.md` already tracks the
+// gap.
+
+export async function listTodos(layerSlug: string): Promise<readonly EntitySummary[]> {
+  const res = await request<{ entities: readonly EntitySummary[] }>(todosServerBase(layerSlug));
+  return res.entities;
+}
+
+export async function getTodo(layerSlug: string, todoSlug: string): Promise<Todo> {
+  const res = await request<{ entity: Todo }>(todoServerDetail(layerSlug, todoSlug));
+  return res.entity;
+}
+
+export async function createTodo(layerSlug: string, body: CreateTodoPayload): Promise<Todo> {
+  const res = await request<{ entity: Todo }>(todosServerBase(layerSlug), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function updateTodo(
+  layerSlug: string,
+  todoSlug: string,
+  body: UpdateTodoPayload,
+): Promise<Todo> {
+  const res = await request<{ entity: Todo }>(todoServerDetail(layerSlug, todoSlug), {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function softDeleteTodo(layerSlug: string, todoSlug: string): Promise<void> {
+  await request<{ ok: true }>(todoServerDetail(layerSlug, todoSlug), { method: 'DELETE' });
 }

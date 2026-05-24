@@ -3718,3 +3718,192 @@ contract changes.
   bridge can subscribe to `entity.todo.{created,updated,deleted}`
   and project read-only events without needing to coordinate with
   the stats provider.
+
+### 4d.5 shipped (2026-05-24)
+
+**What landed**
+
+- `apps/web/src/pages/TodosPage.tsx` — `/l/:layerSlug/todos` list +
+  simple-kanban page. Two view modes selectable via a two-button
+  toolbar with `aria-pressed`:
+  - **List view** (default): table with title / status badge /
+    priority badge / dueAt / linked-entity-kind chip columns.
+  - **Kanban view**: five columns (Open / In Progress / Blocked /
+    Done / Cancelled), each listing cards sorted by priority
+    ascending then `dueAt` ascending (missing `dueAt` sorts last)
+    then title. Each card carries a status `<select>` whose onChange
+    routes through `applyClientStatusTransition` so `completedAt`
+    normalization mirrors the detail page. NO drag-and-drop in v1
+    per the plan — "simple kanban only; full Kanban-entity later"
+    (see §6 of this plan).
+  - "New todo" opens an inline dialog (same pattern as the prior
+    three list pages). The `/l/:layerSlug/todos/new` deep link
+    auto-opens the dialog on mount; the 4d.4 dashboard widget's
+    "New todo" CTA now lands a real form.
+  - The list endpoint returns `EntitySummary[]` which lacks
+    `status` / `priority` / `dueAt`; the page hydrates each summary
+    via `getTodo(...)` in parallel — same N+1 trade-off as
+    `CalendarPage`. The `summaryColumns` follow-up cited in the
+    4a.5 close-out remains the parked unifying solution.
+- `apps/web/src/pages/TodoDetailPage.tsx` — `/l/:layerSlug/todos/:todoSlug`
+  detail + edit page. Editable fields: title, description, status
+  (segmented control of five buttons with `aria-pressed`),
+  priority (`<select>` 1-5), dueAt (`<input type="date">`),
+  linkedEntityRef (two-step picker), tags (chip editor). The
+  `completedAt` field is rendered read-only when present. Save /
+  Cancel / Soft-delete buttons mirror the prior three detail
+  pages; the soft-delete confirm dialog reuses `ConfirmDialog`.
+- `apps/web/src/pages/todos-page-state.ts` — pure helpers:
+  `todosListView` / `todoDetailView` load-state reducers,
+  `groupTodosByStatus` kanban grouping (priority then dueAt then
+  title), `applyClientStatusTransition` (the load-bearing
+  `completedAt` normalizer — see below), linked-entity picker
+  reducers (`setLinkedEntityKind` / `setLinkedEntityId` /
+  `clearLinkedEntity`), tags editor reducers (`addTag` /
+  `removeTag`), `validateTodoForm` mirroring `TodoPayloadSchema`,
+  `buildCreateTodoRequest` / `buildUpdateTodoRequest`, label-key
+  derivation helpers.
+- `apps/web/src/lib/todos-routes.ts` — singular ↔ plural URL seam
+  (server `/l/:slug/todo/*` ↔ web `/l/:slug/todos/*`),
+  `webTodosPath` / `webTodoPath` / `webTodoNewPath`,
+  `slugifyTodoTitle` with the reserved-slug fallback (`"New"` ↦
+  `"new-todo"`) mirroring `calendar-routes.ts`'s
+  `RESERVED_CALENDAR_SLUGS` pattern.
+- `apps/web/src/lib/api.ts` — `listTodos` / `getTodo` /
+  `createTodo` / `updateTodo` / `softDeleteTodo` CRUD helpers
+  targeting the singular `/l/:slug/todo` server URLs.
+- `apps/web/src/lib/api-types.ts` — `Todo`, `TodoPayload`,
+  `TodoStatus`, `TodoPriority`, `TodoLinkedEntityRef`,
+  `CreateTodoPayload`, `UpdateTodoPayload`. Mirrors the
+  Company / Contact / CalendarEvent precedent — the web client
+  re-declares the shapes rather than importing from
+  `@bunny2/shared` directly, same as the other entities.
+- Router wiring in `apps/web/src/App.tsx` — three routes mounted
+  (`/todos`, `/todos/new`, `/todos/:todoSlug`); `todos` added to
+  the page-title resolver alongside the existing entity subpages.
+- i18n: the `entity.todos.*` block grew the spec'd keys
+  (`createDialogTitle`, `viewList` / `viewKanban`,
+  `kanbanColumn*`, `status*` / `priority*` / `statusChangedTo`,
+  `fieldLinkedKind*` / `fieldLinkedEntityPlaceholder` /
+  `fieldLinkedEntityClear` / `fieldLinkedEntityUnknown`,
+  `tagsEmpty`, `deleteConfirmTitle/Body`, `slug` / `slugHint` /
+  `originalLocale`, `created` / `saved` / `deleted`,
+  `detailTitle` / `detailFallbackTitle`); `errors.entity.todos.*`
+  gained `deleteFailed`. Both `en.json` and `nl.json` carry the
+  full set with real Dutch translations.
+
+**No-DnD-in-kanban decision**
+
+The phase plan row for 4d.5 calls explicitly for a "simple
+per-status kanban (volledige kanban-entity komt later in §6)". We
+ship five status columns with per-card status `<select>`
+controls and no drag-and-drop library. Rationale:
+
+- Adding a DnD primitive (react-beautiful-dnd / dnd-kit) would be
+  a non-trivial new web dependency for one screen — the
+  "Dependencies" gate of AGENTS.md asks us to justify each one,
+  and the upcoming Kanban-entity in §6 would re-evaluate the same
+  choice from scratch anyway.
+- The status `<select>` keeps the v1 interaction keyboard- and
+  screen-reader-friendly out of the box. No focus-trap edge cases,
+  no touch-vs-mouse pointer handling, no library-specific
+  accessibility audit.
+- Mobile widths reflow to a single-column stack via the existing
+  Tailwind grid; cards remain reachable by scroll.
+
+When the full Kanban entity lands later in the phase plan it can
+own the DnD experience without two surfaces competing for the
+user's mental model.
+
+**`completedAt` client-side normalization decision**
+
+The 4d.1 close-out documented that the §4.0 `onUpdate` lifecycle
+hook fires AFTER the row write and cannot mutate the persisted
+payload, so automatic server-side `completedAt` normalization was
+deferred to the 4d.5 web UI. 4d.5 honours that contract via the
+pure `applyClientStatusTransition(draft, newStatus, nowIso)`
+helper exported from `todos-page-state.ts`:
+
+- `status -> 'done'` and `completedAt` empty → fill with `nowIso`.
+- `status -> 'done'` and `completedAt` already set → preserve
+  (re-marking done should not reset the audit timestamp).
+- `status` moves OFF `'done'` → clear `completedAt`.
+- Same-status transition → no-op (idempotent).
+
+Both write paths use the same helper:
+
+- The detail page's status segmented control onChange.
+- The kanban view's per-card status `<select>` onChange.
+
+Single helper = single test surface. The detail-page test file
+exercises the full matrix; the page tests assert the kanban
+status-change handler routes through the same helper.
+
+The schema slot stays forward-stable: when a future server-side
+"transform before persist" foundation hook lands, the server can
+take over normalization and the client code becomes redundant
+without a breaking schema change.
+
+**Foundation tweaks**
+
+- **ZERO.** Pure UI work. The §4.0 entity contract, the per-kind
+  module, the connector / enrichment / stats slots, and the
+  validate-link middleware are all untouched.
+
+**Tests**
+
+- `apps/web/tests/todos-page.test.ts` (new) — covers
+  `todosListView` (4 branches), `groupTodosByStatus` (column
+  presence + 3 sort cases including dated-above-undated),
+  `todos-routes` helpers (singular ↔ plural mapping, reserved
+  slug `new` ↦ `new-todo`, slugifier corner cases). 13 tests.
+- `apps/web/tests/todo-detail-page.test.ts` (new) — covers
+  `todoDetailView`, `draftFromTodo`, `applyClientStatusTransition`
+  (the four branches above plus the "non-done transition from
+  open" case), linked-entity picker reducers (kind change clears
+  id; kind=none clears both; setId is no-op when kind=none),
+  tags editor (add / dedupe / cap at 16 / remove), validation,
+  payload builders (omit empty fields, include linked ref, dedupe
+  tags), label-key derivation. 34 tests.
+- All 720 prior tests stay green (`bun test` totals 720 pass).
+
+**Docs**
+
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out
+  (no-DnD decision, `completedAt` client-side normalization
+  decision).
+- `docs/dev/tasklist.md` 4d.5 row → `done`.
+
+**No new ADR** — UI work consumes the foundation cleanly with
+zero contract changes; ADR 0011 still governs the entity contract.
+
+**Notable for 4d.6 (calendar projection bridge)**
+
+- The detail page edits `dueAt` as a `YYYY-MM-DD` value via
+  `<input type="date">`. Date-only `dueAt` already projects to an
+  all-day calendar event per the 4d.1 schema doc; the bridge
+  needs no extra date-extraction logic for UI-created todos.
+- Timestamped `dueAt` survives the create / update round-trip if
+  set via the API (the page only writes date-only); the bridge
+  must still tolerate both shapes since the 4d.3 `todos.autoDue`
+  job may set either.
+- Clicking a kanban card's "Done" option fills `completedAt`
+  client-side. The bridge does NOT need to project a todo's
+  `completedAt` separately; the calendar entry remains anchored
+  to `dueAt`. If a future "completed-events ledger" view wants
+  `completedAt`, it can read it directly off the todo payload.
+
+**Notable for 4d.7 (smoke + close-out)**
+
+- The smoke runner already covers `GET /l/:slug/todo` and the
+  stats endpoint via 4d.4. 4d.7 should add a single smoke pass
+  that POSTs a todo (status='open'), PATCHes it to status='done'
+  with a `completedAt` ISO, and asserts the round-trip preserves
+  the client-stamped timestamp — this protects the UI's
+  normalizer from a regression in the server's PATCH merge.
+- i18n: the `entity.todos.*` block is the spec'd full set;
+  4d.7 should re-run `i18n:check` after smoke updates to confirm
+  no new keys snuck in unaccompanied by nl translations.
+- The 4d.4 "View todos" / "New todo" CTAs now resolve to real
+  pages instead of the App router's 404; the smoke pass that
+  follows the widget links can stop expecting the 404 branch.

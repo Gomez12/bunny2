@@ -29,6 +29,8 @@ import { CompanyDetailPage } from './pages/CompanyDetailPage';
 import { ContactDetailPage } from './pages/ContactDetailPage';
 import { ContactsImportPage } from './pages/ContactsImportPage';
 import { ContactsListPage } from './pages/ContactsListPage';
+import { TodoDetailPage } from './pages/TodoDetailPage';
+import { TodosPage } from './pages/TodosPage';
 import { bootstrapSession, useSession } from './lib/session';
 
 /**
@@ -230,6 +232,9 @@ function AppShell(): JSX.Element {
           <Route path="/l/:layerSlug/calendar" element={<CalendarPage />} />
           <Route path="/l/:layerSlug/calendar/new" element={<CalendarPage />} />
           <Route path="/l/:layerSlug/calendar/:eventSlug" element={<CalendarEventDetailPage />} />
+          <Route path="/l/:layerSlug/todos" element={<TodosPage />} />
+          <Route path="/l/:layerSlug/todos/new" element={<TodosPage />} />
+          <Route path="/l/:layerSlug/todos/:todoSlug" element={<TodoDetailPage />} />
           <Route path="/l/:layerSlug" element={<LayerSlugIndexRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -277,6 +282,7 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
     if (sub === 'companies') return t('layer.shell.subpages.companies');
     if (sub === 'contacts') return t('layer.shell.subpages.contacts');
     if (sub === 'calendar') return t('layer.shell.subpages.calendar');
+    if (sub === 'todos') return t('layer.shell.subpages.todos');
     return null;
   }
   if (pathname.startsWith('/layers')) return t('admin.layers.list.title');
