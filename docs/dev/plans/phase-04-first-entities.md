@@ -2867,3 +2867,268 @@ own ADR at that point.
   per-user timezone preference + TZ-aware localizer.
   `docs/dev/follow-ups/react-big-calendar-a11y.md` — arrow-key
   cell navigation + view-switch announcement.
+
+### 4c.6 shipped (2026-05-24)
+
+**What landed**
+
+- `apps/server/tests/smoke.test.ts` extended with the canonical
+  Calendar entity flow (step 14). Reuses the seeded admin session and
+  personal layer from steps 12 / 13, then walks the full Calendar
+  vertical mirroring the 4a.6 / 4b.6 templates:
+  - `POST /l/personal-admin/contact` (slug `alice-cal`) seeds a fresh
+    Alice contact in the personal layer (step 13's Alice was soft-
+    deleted; the attendee resolver skips soft-deleted rows).
+  - The Google Calendar OAuth attachment is inserted directly into
+    `layer_attachments` via `createLayerAttachmentsRepo` — the route
+    that stores the config blob does not enforce `enc:v1:` shape, but
+    the connector's `verify` does. The smoke encrypts the
+    `clientSecret` + `refreshToken` via a per-step
+    `createSecretsService({ key: generateEncryptionKey() })` so the
+    same service can decrypt round-trip inside the stub fetch.
+  - The Google API `fetch` is stubbed at the connector construction
+    site (token endpoint + events.list/get). Three confirmed events
+    on the wire: one normal, one all-day, one with multiple
+    attendees including the seeded Alice. No `nextSyncToken` is
+    returned — the connector's syncToken write-back path stays
+    silent.
+  - `POST /l/.../calendar_event` — create "Project kickoff" with
+    `attendees: [{ value: 'alice@ami.nl', displayName: 'Alice' }]`.
+    Asserts 201, version=1.
+  - `PATCH /l/.../calendar_event/project-kickoff` — change the
+    location. Asserts 200, version=2.
+  - `dispatcher.ingest(...)` driven synchronously with the synthetic
+    `application/x-google-calendar-list-request` content type and an
+    empty bytes payload. The connector's `events.list` stub fires,
+    three entities ingest, response is `{ created: 3, updated: 0,
+warnings: [] }`. Exactly one `entity.connector.ingest.completed`
+    event lands on the bus.
+  - **External-link back-fill workaround**: the connector dispatcher
+    does NOT today insert into `entity_external_links` on
+    `create`-from-ingest (see
+    `docs/dev/follow-ups/ingest-externalid-dedup.md`). The smoke
+    manually inserts the rows after the first ingest so the second
+    ingest's externalId match key resolves — the spec's intended
+    `{ created: 0, updated: 3 }` then passes.
+  - Re-ingest with the same body → `{ created: 0, updated: 3,
+warnings: [] }`. Dedup via `entity_external_links` works once the
+    back-fill is in place.
+  - `enrichmentRunner.tickOnce()` twice (workaround for the
+    in-tick clobber bug — see
+    `docs/dev/follow-ups/enrichment-runner-stale-payload.md`).
+    Asserts the kickoff event's first attendee carries
+    `contactEntityId === aliceCalId` (exact-email match,
+    deterministic path — no LLM call mentioning "Project kickoff")
+    and `payload.meetingSummaryNote` is set (summary job ran).
+  - Soul stamp assertion: `entity_souls.memory_json
+.lastEnrichedAtVersionByJob` carries numeric entries for both
+    `calendar.attendeeContacts` and `calendar.summary`.
+  - Idempotence sanity: a third tick does NOT add new
+    attendeeContacts LLM calls for the kickoff. (Summary may still
+    tick on other events as the clobber-induced ping-pong settles —
+    once the runner-stale-payload follow-up lands, the assertion
+    tightens.)
+  - `GET /l/.../calendar_event/_stats` → `total: 4`,
+    `withAttendeesLinked >= 1`, `recentlyEnriched: 4`. The lower
+    bound on `withAttendeesLinked` accounts for the runner-bug
+    settling on the ingested events.
+  - **`meetingSummaryNote` preservation regression**: PATCH the
+    kickoff event without `meetingSummaryNote` in the body. The
+    router wholesale-replaces `payload` via
+    `module.payloadSchema.safeParse(body.payload)` (no merge), so
+    the runner-owned field IS wiped. The smoke pre-asserts the bug
+    with `.toBeUndefined()` and a comment pointing at
+    `docs/dev/follow-ups/calendar-patch-payload-merge.md`. When
+    the follow-up lands the assertion flips to
+    `.not.toBeUndefined()`.
+  - `DELETE /l/.../calendar_event/project-kickoff` — soft-delete.
+    List omits it; detail-GET still returns the soft-deleted row
+    with `meta.deletedAt !== null`. Other 3 events still present.
+  - Cross-layer isolation: the `contact-isolation` layer from
+    step 13 contains zero calendar events.
+  - Secret-strip canary: no captured ingest event payload contains
+    the clientSecret or refreshToken plaintext.
+- The smoke construction pattern matches 4a.6 / 4b.6 exactly:
+  pre-register a stub-fetched calendar module
+  (`createCalendarEventModule({ connectors, enrichmentJobs })`) +
+  the production contact module via
+  `__resetEntityRegistryForTests()` + `registerEntityModule(...)`;
+  build a fake `LlmClient` whose calls land on a per-step ledger;
+  construct a dedicated `connectorDispatcher` with
+  `createGoogleCalendarConfigResolver(db)` so `ingest` sees
+  `attachmentId`. The step's `finally` block stops the runner,
+  drops the bus subscriptions, and clears the registry.
+- i18n sweep (English primary, Dutch parity in scope namespaces):
+  - All in-scope keys under `entity.calendar.*`,
+    `errors.entity.calendar.*`,
+    `errors.connectors.google.calendar.*`, `errors.secrets.*`,
+    and `layer.dashboard.widgets.calendar.*` are present in BOTH
+    `en.json` and `nl.json`. Every Dutch value is a real
+    translation, not an English placeholder. The handful of
+    `entity.calendar.*` keys where `en === nl` are short technical
+    words that survive the translation (`Week`, `Agenda`,
+    `Status`, `Slug`) plus a parameterised format string
+    (`linkConnectorLabel = '{{connector}} · {{externalId}}'`) —
+    confirmed by spot-check.
+  - Removed truly-orphan keys with zero references in
+    `apps/server/src`, `apps/web/src`, or `packages/`: - `entity.enrichment.calendar.attendeeContacts.{running,
+appliedCount, noMatch}` and
+    `entity.enrichment.calendar.summary.{running, applied,
+skippedNoContent}` — surface labels for a future enrichment
+    UI that doesn't exist yet. Re-add alongside the surface that
+    consumes them. Mirrors the 4a.6 / 4b.6 removals of
+    `entity.enrichment.*` enrichment-job labels. - `connectors.google.calendar.{label, description, fieldClientId,
+fieldClientSecret, fieldRefreshToken, fieldCalendarId,
+fieldPollInterval, syncNowCta, syncSuccess, syncEmpty}` —
+    admin-UI metadata for a connector picker that doesn't exist
+    yet (the 4c.5 calendar page sends the sync request through
+    the existing ingest endpoint without rendering connector
+    metadata). Re-add when a connector-picker UI motivates them.
+    Mirrors the 4a.6 / 4b.6 removals of `connectors.kvk.*` /
+    `connectors.vcard.label`.
+  - Kept the eight `errors.connectors.google.calendar.*` keys
+    because they ARE server-emitted (the connector throws them as
+    response-body error codes). Same pattern as the 4a.6 /
+    4b.6 close-outs for `errors.connectors.kvk.*` /
+    `errors.connectors.vcard.*`.
+  - Kept the six `errors.secrets.*` keys for the same reason —
+    the `SecretsService` throws them at runtime.
+  - `bun run i18n:check` ends green; 162 → 162 warnings (all
+    out-of-scope `status.*`, `chat.*`, `auth.*`, generic
+    `entity.*` cross-cutting keys from earlier phases).
+- Follow-up triage. All eight follow-ups the task spec called out
+  remain open and correctly placed under `docs/dev/follow-ups/`
+  (not `docs/dev/follow-ups/done/`):
+  - `companies-list-columns.md` — open. Still tracks the
+    `summaryColumns?` slot; calendar (4c.5) ships the same `title /
+subtitle / updatedAt` triple Companies / Contacts use today.
+  - `web-component-tests.md` — open. The DOM-driven render harness
+    is still future work.
+  - `google-calendar-oauth-ui.md` — open. The OAuth dance UI was
+    deferred from 4c.2; the smoke encrypts secrets via the test
+    secrets service directly.
+  - `ingest-delete-semantics.md` — open. The Google connector's
+    cancelled-event handling surfaces warnings instead of soft-
+    deletes. The 4c.6 smoke never sees a cancelled event so the
+    gap stays parked.
+  - `enrichment-i18n-drift.md` — open. The contacts enrichment
+    label keys claimed in the 4b.3 close-out were removed in the
+    4b.6 sweep; this calendar sweep made the same call.
+  - `calendar-list-range-filter.md` — open. The list endpoint
+    still has no `?from=&to=` filter; the 4c.4 widget hydrates
+    the next-7-day count via SQL aggregate.
+  - `calendar-timezone-v1.md` — open. The 4c.5 UI treats events as
+    browser-local; per-layer / per-user TZ preference remains
+    deferred.
+  - `react-big-calendar-a11y.md` — open. Arrow-key cell
+    navigation gap stays a known carve-out.
+- Three NEW follow-ups filed by 4c.6 itself, documenting bugs
+  discovered while writing the smoke:
+  - `docs/dev/follow-ups/calendar-patch-payload-merge.md` — PATCH
+    wholesale-replaces `payload`, wiping runner-owned fields like
+    `meetingSummaryNote`. Smoke step 14.8 pre-asserts the bug.
+  - `docs/dev/follow-ups/ingest-externalid-dedup.md` — the
+    connector dispatcher does not insert
+    `entity_external_links` on create-from-ingest, so the
+    documented externalId dedup contract requires the smoke to
+    back-fill links manually.
+  - `docs/dev/follow-ups/enrichment-runner-stale-payload.md` —
+    the runner reuses the same in-memory entity reference across
+    jobs; the second job's `applyPatch` clobbers the first
+    job's writes for non-overlapping fields. Smoke runs two
+    ticks as a documented workaround.
+
+**Foundation tweaks**
+
+- **None.** The six foundation extensions
+  (`indexedColumns`, `getConnector` + dispatcher + runner,
+  `enrichmentJobs`, `statsProvider`, `EntityConnector.ingest`,
+  `enrichmentOverwriteFields`) all pre-date 4c.6. The smoke exercises
+  them end-to-end as a cohort; no contract change was needed. The
+  three bugs the smoke exposed each get a follow-up, not a
+  contract change in 4c.6.
+
+**Tests**
+
+- `apps/server/tests/smoke.test.ts` step 14 added (1 test, 196
+  expect calls — up from 174 / 160 in 4b.6).
+- All prior tests stay green: 624 pass, 0 fail, 85 files,
+  1902 expect calls.
+
+**Docs**
+
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out
+  and the 4c-block recap section below.
+- `docs/dev/tasklist.md` 4c.6 row → `done`.
+
+**No new ADR** — translation + smoke + close-out work doesn't earn
+an ADR. ADRs 0011 / 0012 / 0013 / 0014 / 0015 / 0016 already govern
+the relevant contracts (entity contract, KvK connector, enrichment,
+connector ingest, secret encryption, Google Calendar connector).
+
+---
+
+## 4c — Calendar block: shipped
+
+The 4c PR block (4c.1 → 4c.6) completes the third concrete entity on
+top of the §4.0 foundation + the 4a / 4b extension slots. The six
+sub-phases land additively:
+
+| Sub-phase | What shipped                                                                                                                                                | Foundation extension                                                                                                |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 4c.1      | `0009_calendar_events.sql`, `calendarEventModule`, `packages/shared/src/calendar.ts` payload (startsAt, attendees[], allDay, rrule, …)                      | None — third clean consumer of `indexedColumns` (first INTEGER projection via `all_day`)                            |
+| 4c.2      | Google Calendar connector — first connector that implements BOTH `pull` and `ingest`; symmetric secret encryption helper + `BUNNY2_ENCRYPTION_KEY` env knob | None — composes additively over `pull` + `ingest` slots                                                             |
+| 4c.3      | `calendar.attendeeContacts` + `calendar.summary` enrichment jobs (deterministic-first / LLM-fallback)                                                       | `EntityModule.enrichmentOverwriteFields?` slot (the SIXTH foundation extension, pre-promised by the 4a.3 close-out) |
+| 4c.4      | `calendarEventStatsProvider` + `CalendarWidget` (third consumer of the `statsProvider` slot)                                                                | None — third clean consumer of the 4a.4 slot                                                                        |
+| 4c.5      | Web UI: list grid (react-big-calendar), detail/edit, create, attendee editor with contact deep-links, soft-delete, Sync-Google CTA                          | None — singular↔plural seam stays client-side                                                                       |
+| 4c.6      | Smoke step (Google ingest leak canary + meetingSummaryNote preservation regression + dedup-by-externalId), i18n sweep                                       | None — purely test + docs + i18n polish                                                                             |
+
+**ADRs landed in the 4c block**
+
+- `docs/dev/decisions/0015-secret-encryption.md` — AES-256-GCM
+  self-describing envelope (`enc:v1:<iv>:<ct>:<tag>`), key-absence
+  fail-closed semantics, rotation seam.
+- `docs/dev/decisions/0016-google-calendar-connector.md` — token
+  storage in the encrypted attachment blob, per-event vs. per-layer
+  link split, sync-token persistence, MVP "paste refresh token" UX.
+
+**Open follow-ups remaining**
+
+- `docs/dev/follow-ups/companies-list-columns.md` — extend
+  `EntityModule.summaryColumns?` (or change the list contract) so
+  the list pages can surface richer per-row data.
+- `docs/dev/follow-ups/web-component-tests.md` — DOM-driven render
+  tests for the widgets + 4a / 4b / 4c pages.
+- `docs/dev/follow-ups/google-calendar-oauth-ui.md` — the OAuth
+  dance UI + per-field attachment form.
+- `docs/dev/follow-ups/ingest-delete-semantics.md` — the proper
+  soft-delete path for cancelled ingest events.
+- `docs/dev/follow-ups/enrichment-i18n-drift.md` — re-add the
+  contacts enrichment job labels alongside a real consumer.
+- `docs/dev/follow-ups/calendar-list-range-filter.md` — server-side
+  `?from=&to=` filter for the calendar grid.
+- `docs/dev/follow-ups/calendar-timezone-v1.md` — per-layer /
+  per-user timezone preference + TZ-aware localizer.
+- `docs/dev/follow-ups/react-big-calendar-a11y.md` — arrow-key
+  cell navigation + view-switch announcement.
+
+Three new follow-ups added by 4c.6 itself:
+
+- `docs/dev/follow-ups/calendar-patch-payload-merge.md` — PATCH
+  wholesale-replaces `payload`, wiping runner-owned fields.
+- `docs/dev/follow-ups/ingest-externalid-dedup.md` — dispatcher
+  does not write `entity_external_links` on create-from-ingest.
+- `docs/dev/follow-ups/enrichment-runner-stale-payload.md` —
+  multi-job tick clobbers earlier writes via stale in-memory
+  entity reference.
+
+**Next**
+
+The 4d block (Todos + Calendar bridge) opens on this foundation.
+The smoke template carries through one more time; the
+runner-stale-payload follow-up is the natural prerequisite for any
+future job-pair that touches overlapping payload fields, and the
+calendar-patch-payload-merge follow-up should land alongside the
+4d.5 todo detail page so the merge semantics ship cleanly together.
+The six foundation extensions are stable; 4c.6 ran the existing
+contract end-to-end without earning a seventh slot.

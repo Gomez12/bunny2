@@ -268,20 +268,6 @@
       "addExternalLink": "Extern systeem koppelen",
       "removeExternalLink": "Koppeling verwijderen"
     },
-    "enrichment": {
-      "calendar": {
-        "attendeeContacts": {
-          "running": "Deelnemers koppelen aan contacten…",
-          "appliedCount": "{{count}} deelnemers gekoppeld aan bestaande contacten.",
-          "noMatch": "Geen nieuwe deelnemerkoppelingen gevonden."
-        },
-        "summary": {
-          "running": "Bezig met opstellen van een afspraaksamenvatting…",
-          "applied": "Afspraaksamenvatting bijgewerkt.",
-          "skippedNoContent": "Nog niet genoeg afspraakinhoud om samen te vatten."
-        }
-      }
-    },
     "companies": {
       "subtitle": {
         "noDetails": "Nog geen KvK-nummer of website."
@@ -474,20 +460,6 @@
       "importSuccess": "{{created}} nieuwe contacten geïmporteerd en {{updated}} bestaande bijgewerkt.",
       "importWarningsTitle": "Waarschuwingen",
       "importNoFile": "Kies eerst een .vcf-bestand."
-    },
-    "google": {
-      "calendar": {
-        "label": "Google Agenda",
-        "description": "Synchroniseer afspraken vanuit Google Agenda naar deze laag. Tokens blijven versleuteld op de server.",
-        "fieldClientId": "OAuth-client-id",
-        "fieldClientSecret": "OAuth-clientgeheim (versleuteld)",
-        "fieldRefreshToken": "OAuth-refresh-token (versleuteld)",
-        "fieldCalendarId": "Agenda-id (standaard: primary)",
-        "fieldPollInterval": "Polling-interval (minuten)",
-        "syncNowCta": "Agenda nu synchroniseren",
-        "syncSuccess": "{{created}} nieuwe afspraken geïmporteerd en {{updated}} bestaande bijgewerkt.",
-        "syncEmpty": "Sinds de vorige synchronisatie zijn er geen afspraken gewijzigd."
-      }
     }
   }
 }

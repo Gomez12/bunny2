@@ -489,20 +489,6 @@
       "addExternalLink": "Link external system",
       "removeExternalLink": "Remove link"
     },
-    "enrichment": {
-      "calendar": {
-        "attendeeContacts": {
-          "running": "Linking attendees to contacts…",
-          "appliedCount": "Linked {{count}} attendees to existing contacts.",
-          "noMatch": "No new attendee links found."
-        },
-        "summary": {
-          "running": "Drafting a meeting summary…",
-          "applied": "Meeting summary updated.",
-          "skippedNoContent": "Not enough meeting content to summarise yet."
-        }
-      }
-    },
     "companies": {
       "subtitle": {
         "noDetails": "No KvK number or website yet."
@@ -695,20 +681,6 @@
       "importSuccess": "Imported {{created}} new and updated {{updated}} existing contacts.",
       "importWarningsTitle": "Warnings",
       "importNoFile": "Please choose a .vcf file first."
-    },
-    "google": {
-      "calendar": {
-        "label": "Google Calendar",
-        "description": "Sync events from Google Calendar into this layer. Tokens stay encrypted on the server.",
-        "fieldClientId": "OAuth client id",
-        "fieldClientSecret": "OAuth client secret (encrypted)",
-        "fieldRefreshToken": "OAuth refresh token (encrypted)",
-        "fieldCalendarId": "Calendar id (default: primary)",
-        "fieldPollInterval": "Poll every (minutes)",
-        "syncNowCta": "Sync calendar now",
-        "syncSuccess": "Synced {{created}} new and updated {{updated}} events.",
-        "syncEmpty": "No events were changed since the last sync."
-      }
     }
   }
 }
