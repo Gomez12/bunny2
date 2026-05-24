@@ -351,7 +351,7 @@ describe('enrichment runner :: subscribe + tickOnce', () => {
     }
   });
 
-  it('skips fields the patch sets to null/undefined and refuses to overwrite non-empty user fields (except description)', async () => {
+  it('skips fields the patch sets to null/undefined and refuses to overwrite non-empty user fields not listed in module.enrichmentOverwriteFields', async () => {
     const fixture = f();
     const job: EnrichmentJob<FixturePayload> = {
       id: 'fixture.respect',
@@ -403,6 +403,65 @@ describe('enrichment runner :: subscribe + tickOnce', () => {
       const succeeded = fixture.events.filter((e) => e.type === 'entity.enrichment.succeeded');
       expect(succeeded.length).toBe(1);
       expect((succeeded[0]?.payload as { hasPatch: boolean }).hasPatch).toBe(false);
+    } finally {
+      runner.stop();
+    }
+  });
+});
+
+describe('enrichment runner :: per-module enrichmentOverwriteFields slot', () => {
+  it('overwrites a non-empty field listed in enrichmentOverwriteFields and protects fields not listed', async () => {
+    const fixture = f();
+    const job: EnrichmentJob<FixturePayload> = {
+      id: 'fixture.overwriteSlot',
+      runOn: ['updated'],
+      async run() {
+        return {
+          patch: { title: 'NEW-TITLE', body: 'NEW-BODY' },
+        };
+      },
+    };
+    // Fixture module declares ONLY `body` as overrideable. `title` is
+    // not listed → must stay protected when already non-empty.
+    const module: EntityModule<FixturePayload> = {
+      ...buildFixtureModule([job]),
+      enrichmentOverwriteFields: ['body'],
+    };
+    registerEntityModule(module);
+    const store = createEntityStore<FixturePayload>({
+      module,
+      db: fixture.db,
+      bus: fixture.bus,
+      llm: fixture.llm,
+    });
+    const layerId = seedLayer(fixture.db, 'lo');
+    const userId = seedUser(fixture.db, 'lo-u');
+    const runner = createEnrichmentRunner({
+      db: fixture.db,
+      bus: fixture.bus,
+      llm: fixture.llm,
+      resolveStore: () => store as EntityStore<unknown>,
+    });
+    runner.start();
+    try {
+      const created = await store.create({
+        layerId,
+        slug: 'o',
+        title: 'OriginalTitle',
+        originalLocale: 'en',
+        payload: { title: 'OriginalTitle', body: 'OriginalBody' },
+        actorId: userId,
+      });
+      await store.update({
+        id: created.id,
+        payload: { title: 'OriginalTitle', body: 'OriginalBody' },
+        actorId: userId,
+      });
+      await runner.tickOnce();
+      const refreshed = store.getById(created.id);
+      expect(refreshed?.payload.title).toBe('OriginalTitle');
+      // body was listed → overwritten.
+      expect(refreshed?.payload.body).toBe('NEW-BODY');
     } finally {
       runner.stop();
     }

@@ -254,6 +254,20 @@
       "addExternalLink": "Extern systeem koppelen",
       "removeExternalLink": "Koppeling verwijderen"
     },
+    "enrichment": {
+      "calendar": {
+        "attendeeContacts": {
+          "running": "Deelnemers koppelen aan contacten…",
+          "appliedCount": "{{count}} deelnemers gekoppeld aan bestaande contacten.",
+          "noMatch": "Geen nieuwe deelnemerkoppelingen gevonden."
+        },
+        "summary": {
+          "running": "Bezig met opstellen van een afspraaksamenvatting…",
+          "applied": "Afspraaksamenvatting bijgewerkt.",
+          "skippedNoContent": "Nog niet genoeg afspraakinhoud om samen te vatten."
+        }
+      }
+    },
     "companies": {
       "subtitle": {
         "noDetails": "Nog geen KvK-nummer of website."

@@ -304,3 +304,36 @@ own connector by inspecting `entity.externalLinks`.
   unless the payload makes another locale obvious. When the
   translator (4.0) and enrichment land in the same loop the prompts
   should consult `entity.originalLocale`. Not a 4a.3 concern.
+
+---
+
+## Update (4c.3) — per-module `enrichmentOverwriteFields` slot
+
+The "Follow-ups" entry above ("The skip on non-empty user value
+(except description) overwrite policy will likely need extension
+when a kind genuinely wants enrichment to update a structured
+field") was answered in 4c.3.
+
+Calendar enrichment needs two structured-field exceptions in a
+single commit (`attendees` and `meetingSummaryNote`), so the
+hardcoded `description` branch in `applyPatch` was generalised into
+a per-module list:
+
+```ts
+// EntityModule<P>
+readonly enrichmentOverwriteFields?: readonly string[];
+```
+
+The runner consults the registered module's list on every patched
+field. Empty / null / whitespace-only fields remain overridable
+regardless of the list. Per-module declarations:
+
+- `company` → `['description']` (preserves the 4a.3 behaviour).
+- `contact` → omitted (the existing job only writes empty fields).
+- `calendar_event` → `['attendees', 'meetingSummaryNote']`.
+
+This is the SIXTH foundation extension on top of the §4.0
+contract, and the 4a.3 close-out predicted it. See
+`docs/dev/architecture/entities.md` §10c.i and
+`docs/dev/plans/phase-04-first-entities.md` §14 "4a.3 shipped"
+follow-up bullet for the prediction.

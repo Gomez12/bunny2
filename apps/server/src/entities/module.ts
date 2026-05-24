@@ -71,6 +71,25 @@ export interface EntityModule<Payload> {
    * needs omit the field entirely.
    */
   readonly enrichmentJobs?: readonly EnrichmentJob<Payload>[];
+  /**
+   * Phase 4c.3 — Field names (keys of `Payload` as strings) that an
+   * enrichment job is allowed to overwrite even when the current value
+   * is non-empty / non-null. All other non-empty fields are protected
+   * from runner-applied overwrites.
+   *
+   * Typed loosely as `readonly string[]` (NOT `keyof Payload`) because
+   * the runner uses the list at a generic boundary where `Payload` is
+   * erased and the list's variance does not survive narrowing. The
+   * declarations remain self-documenting at the per-module level —
+   * each module lists its own payload field names verbatim.
+   *
+   * Generalises the previously-hardcoded `description` exception (the
+   * 4a.3 close-out predicted this generalisation when a second
+   * exception landed; 4c.3's `attendees` + `meetingSummaryNote` are
+   * the trigger). Modules that need NO overwrites omit the field
+   * entirely; their enrichment can only fill empty fields.
+   */
+  readonly enrichmentOverwriteFields?: readonly string[];
   readonly onCreate?: EntityLifecycleHook<Payload>;
   readonly onUpdate?: EntityLifecycleHook<Payload>;
   readonly onSoftDelete?: EntityLifecycleHook<Payload>;
@@ -167,6 +186,11 @@ export interface EntityScheduledJob {
  * patch are SKIPPED (treated as "uncertain"); the LLM prompt is
  * expected to return `null` on uncertainty so the runner can apply
  * defense-in-depth.
+ *
+ * The runner refuses to overwrite a non-empty existing field UNLESS
+ * the field name appears in `module.enrichmentOverwriteFields` (see
+ * `EntityModule`). Empty / null / whitespace-only fields are always
+ * fair game regardless of that list — "fill the blank" is the default.
  */
 export type EnrichmentTrigger = 'created' | 'updated' | 'sync.succeeded';
 

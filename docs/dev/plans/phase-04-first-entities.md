@@ -2419,3 +2419,164 @@ fieldPollInterval, syncNowCta, syncSuccess, syncEmpty}` (en + nl).
   call to `store.softDelete`. Track for 4c.3 or later.
 - A future sub-phase that needs key rotation will land the `v2`
   envelope + multi-key decrypt in `apps/server/src/storage/secrets.ts`.
+
+### 4c.3 shipped (2026-05-24)
+
+**What landed**
+
+- Two calendar enrichment jobs in
+  `apps/server/src/entities/calendar/enrichment.ts`:
+  - `calendar.attendeeContacts` (runs on `created` / `updated` /
+    `sync.succeeded`). Walks each attendee with `contactEntityId`
+    unset, applies the §10c "deterministic-first / LLM-fallback"
+    pattern: exact lowercase email match → display-name fuzzy match
+    (Levenshtein ≤ 2 over normalised strings) → LLM fallback gated
+    by an email-shaped `value`. Free-text attendees (room names,
+    generic invites) NEVER reach the LLM. Returns the full
+    `attendees` array as the patch (per-attendee merging happens
+    inside the job); the runner applies it via the new
+    `enrichmentOverwriteFields = ['attendees']` affordance.
+    Attendees already carrying a `contactEntityId` are never
+    touched.
+  - `calendar.summary` (runs on `created` / `updated` /
+    `sync.succeeded`). Generates a ≤500-char paragraph stored in
+    `payload.meetingSummaryNote`. Skips when there is nothing
+    summarisable (no description / location / conferenceUrl and ≤1
+    attendee). Idempotent: skip when the soul stamp for
+    `calendar.summary` matches the current entity version AND
+    `meetingSummaryNote` is non-empty.
+- `CreateCalendarEventModuleOptions` extended with
+  `enrichmentJobs?: readonly EnrichmentJob<CalendarEventPayload>[]`
+  (mirrors `createCompanyModule` / `createContactModule`). The
+  default singleton stays connector- and enrichment-less; production
+  wiring opts in via `buildProductionCalendarEventModule`, which now
+  passes `enrichmentJobs: calendarEventEnrichmentJobs`.
+- Calendar module declares
+  `enrichmentOverwriteFields: ['attendees', 'meetingSummaryNote']`
+  so the runner applies both jobs' patches even when the fields are
+  already populated.
+
+**Foundation tweak (inline in this commit, pre-promised by the 4a.3
+close-out)**
+
+- New `EntityModule.enrichmentOverwriteFields?: readonly string[]`
+  slot. The runner's `applyPatch` consults the registered module's
+  list: a non-empty field is overwritable IFF its name appears in
+  the list. Empty / null / whitespace-only fields stay overridable
+  regardless of the list — "fill the blank" is the universal
+  default.
+- The previously-hardcoded `description` exception inside
+  `applyPatch` is removed. Companies now declares
+  `enrichmentOverwriteFields: ['description']` to preserve the 4a.3
+  behaviour. Calendar declares
+  `['attendees', 'meetingSummaryNote']`. Contacts declares nothing
+  — `contacts.suggestCompany` only writes `companyEntityId` when
+  that field is null, so the empty-field default already covers it.
+- The slot is typed loosely (`readonly string[]`) because the
+  runner consumes the list at a generic boundary where `Payload` is
+  erased. Per-module declarations match payload field names
+  verbatim.
+- This is the SIXTH foundation extension on top of §4.0 (after
+  `indexedColumns` 4a.1, `getConnector` + dispatcher + runner 4a.2,
+  `enrichmentJobs` 4a.3, `statsProvider` 4a.4, and
+  `EntityConnector.ingest` 4b.2). The 4a.3 close-out's "follow-ups
+  noted" section explicitly predicted this generalisation when
+  calendar's attendees landed; 4c.3 implements the prediction.
+
+**Tests**
+
+- `apps/server/tests/entities/calendar-enrichment.test.ts` — ten
+  scenarios covering the surface:
+  1. Attendee resolution by exact email match (fake LLM not called).
+  2. Attendee resolution by display-name fuzzy match (fake LLM not
+     called; free-text attendee value still resolves via the name
+     branch).
+  3. Attendee resolution by LLM fallback (one call, high confidence
+     applied).
+  4. No-overwrite invariant — attendees with `contactEntityId`
+     already set are not touched even when the link points to a
+     soft-deleted contact and a fresh contact would match.
+  5. Summary job applies a description-style note.
+  6. Summary skip on no content — bare event payload, LLM not
+     called.
+  7. Summary idempotence — second `tickOnce()` does not re-run
+     when the soul stamp matches the entity version.
+  8. Summary idempotence variant — version-2 entity with summary
+     applied, a second tick does not re-call the LLM.
+  9. Secret-strip canary — known canary never appears in any LLM
+     prompt nor any bus event payload.
+  10. Cross-layer isolation — a contact in layer A is not a
+      candidate for an attendee in layer B; LLM never called.
+- `apps/server/tests/entities/enrichment-runner.test.ts` — extended
+  with one new scenario asserting the per-module overwrite slot
+  itself: a fixture module declaring `['body']` overwrites `body`
+  but protects `title`. The existing "respects non-empty user
+  fields" test's title is updated to reflect the new contract; its
+  body keeps asserting the same protection (the fixture module
+  declares no overwrites, so the default "protect everything"
+  branch is exercised).
+- The 4a.3 companies summary test, the 4a.3 fillFields test, and
+  the 4b.3 contacts suggestCompany tests all stay green without
+  modification — `'description'` is now declared on the companies
+  module, and the contacts job already gates on
+  `companyEntityId == null`.
+
+**i18n**
+
+- `entity.enrichment.calendar.attendeeContacts.{running,
+appliedCount, noMatch}` and
+  `entity.enrichment.calendar.summary.{running, applied,
+skippedNoContent}` (en + nl with real Dutch translations).
+- `entity.enrichment.contacts.suggestCompany.*` keys remain absent
+  — see follow-up below.
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10c (deterministic-first /
+  LLM-fallback) gained a paragraph documenting calendar as the
+  third application of the pattern; new §10c.i documents the
+  `enrichmentOverwriteFields` slot and tabulates per-module
+  declarations.
+- `docs/dev/decisions/0013-entity-enrichment.md` — added an
+  "Update (4c.3)" addendum citing the 4a.3 prediction.
+- `docs/dev/tasklist.md` 4c.3 row → `done`.
+
+**No new ADR** — 4c.3 consumes the foundation cleanly + extends the
+`applyPatch` policy that ADR 0013 already governs. The ADR gains an
+addendum, not a successor.
+
+**Follow-ups noted**
+
+- `docs/dev/follow-ups/enrichment-i18n-drift.md` — the 4b.3
+  close-out claimed `entity.enrichment.contacts.suggestCompany.*`
+  shipped in en + nl; they did not (and the 4b.6 sweep documented
+  removing similarly-named keys as orphans). Filed as a follow-up
+  rather than fixed here because it's a contacts i18n concern, not
+  a calendar concern.
+
+**Notable for 4c.4 (dashboard widget)**
+
+- A `calendar.attendeeContacts` job applied count would be a good
+  headline number alongside the upcoming-events count the widget
+  will surface. The `entity.enrichment.succeeded` event carries
+  `hasPatch: true` when an attendee link was applied; a future
+  subscriber could derive "links suggested today" without touching
+  the calendar table. Same shape as the 4b.3 follow-up note for
+  4b.4.
+- The `meetingSummaryNote` field will be the natural source for the
+  widget's per-event preview text once a real consumer needs it.
+
+**Notable for 4c.5 (web UI — calendar grid)**
+
+- The per-attendee `contactEntityId` is now populated automatically;
+  the grid's attendee chip can deep-link to the contact's detail
+  page using the same `/l/:slug/contacts/:contactSlug` pattern 4b.5
+  exposed. The attendee deduplication invariant
+  (`CalendarEventPayloadSchema` lower-cases `value` for dedup) means
+  the chip can safely use the lowercase email as a stable React
+  key.
+- `meetingSummaryNote` is the visible enrichment outcome for the
+  detail page — analogous to companies' `description`. The UI
+  should treat the field as read-only (the runner manages it via
+  the `enrichmentOverwriteFields` slot; user edits would be
+  immediately re-written).

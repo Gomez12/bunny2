@@ -474,6 +474,20 @@
       "addExternalLink": "Link external system",
       "removeExternalLink": "Remove link"
     },
+    "enrichment": {
+      "calendar": {
+        "attendeeContacts": {
+          "running": "Linking attendees to contacts…",
+          "appliedCount": "Linked {{count}} attendees to existing contacts.",
+          "noMatch": "No new attendee links found."
+        },
+        "summary": {
+          "running": "Drafting a meeting summary…",
+          "applied": "Meeting summary updated.",
+          "skippedNoContent": "Not enough meeting content to summarise yet."
+        }
+      }
+    },
     "companies": {
       "subtitle": {
         "noDetails": "No KvK number or website yet."

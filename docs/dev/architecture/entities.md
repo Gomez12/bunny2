@@ -672,11 +672,11 @@ website)`) and ask the model for `{ slug, confidence }`. Apply
    the link only when `confidence >= 0.8` and the slug matches a
    candidate. Anything else returns `{}`.
 4. **Hard gate on user-set fields.** The runner's `applyPatch`
-   already refuses to overwrite a non-empty field (except
-   `description`), but the job ALSO short-circuits when
-   `payload.companyEntityId` is already set, so the candidate list
-   is never even enumerated. Defense in depth keeps the LLM cost
-   profile predictable.
+   refuses to overwrite a non-empty field UNLESS the field name
+   appears in `module.enrichmentOverwriteFields` (see 10c.i below),
+   but the job ALSO short-circuits when `payload.companyEntityId`
+   is already set, so the candidate list is never even enumerated.
+   Defense in depth keeps the LLM cost profile predictable.
 
 Concrete production job: `contacts.suggestCompany`
 (`apps/server/src/entities/contacts/enrichment.ts`). Runs on
@@ -703,6 +703,67 @@ hands the LLM only `(slug, title, website)`; the attachment row's
 `apiKey` lives in `layer_attachments.config` and never reaches any
 company payload. The 4b.3 secret-strip regression test asserts the
 literal apiKey never appears in any LLM prompt nor in any bus event.
+
+The third application of the deterministic-first / LLM-fallback
+pattern is `calendar.attendeeContacts` (4c.3,
+`apps/server/src/entities/calendar/enrichment.ts`). The job walks
+each attendee whose `contactEntityId` is unset, tries an exact
+lowercase email match against contacts in the same layer, then a
+display-name fuzzy match (Levenshtein ≤ 2), and finally an LLM
+fallback gated by an email-shaped `value` (free-text attendees such
+as room names never reach the LLM). The job returns the FULL
+`attendees` array as the patch; the runner applies it via the
+`enrichmentOverwriteFields = ['attendees']` affordance documented
+below. Per-attendee merging happens INSIDE the job: attendees whose
+`contactEntityId` is already set are never modified — same hard gate
+the contacts job exposes.
+
+### 10c.i `enrichmentOverwriteFields` — per-module overwrite slot (4c.3)
+
+The runner's default protection is "do not overwrite a non-empty
+user field". Concrete jobs sometimes need exactly one or two
+exceptions — companies (4a.3) needs to refresh `description` on
+every trigger; calendar (4c.3) needs to replace `attendees`
+wholesale (per-attendee logic happens inside the job) and to manage
+`meetingSummaryNote` as an AI-owned field the user never edits.
+
+The 4a.3 close-out predicted the inevitable generalisation: when a
+second exception lands, the policy becomes per-field and lives in
+the module rather than in the runner. 4c.3 implements that:
+
+```ts
+// EntityModule<P>
+readonly enrichmentOverwriteFields?: readonly string[];
+```
+
+The runner reads the list at the start of `applyPatch`. For every
+patched field with a non-empty existing value, the field name MUST
+appear in the list or the patch entry is dropped. Empty / null /
+whitespace-only fields stay overridable regardless of the list —
+"fill the blank" is the universal default.
+
+The slot is typed loosely (`readonly string[]`, not
+`(keyof Payload)[]`) because the runner uses the list at a generic
+boundary where `Payload` is erased and the keyof variance does not
+survive narrowing. Modules document their entries with a short
+comment; the entries match payload field names verbatim.
+
+Per-module declarations as of 4c.3:
+
+| Module           | `enrichmentOverwriteFields`           | Rationale                                                                                                                       |
+| ---------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `company`        | `['description']`                     | `companies.summary` refreshes the description on every trigger; matches the previously-hardcoded exception.                     |
+| `contact`        | (omitted)                             | `contacts.suggestCompany` writes `companyEntityId` only when null — empty-field default already allows it.                      |
+| `calendar_event` | `['attendees', 'meetingSummaryNote']` | `calendar.attendeeContacts` replaces attendees wholesale (per-attendee merge inside the job); `meetingSummaryNote` is AI-owned. |
+| `fixture`        | (per-test override)                   | Test modules declare the list inline to assert both branches of the slot in the contract suite.                                 |
+
+This is the **sixth** foundation extension shipped on top of the
+§4.0 contract — after `indexedColumns` (4a.1), `getConnector` +
+dispatcher + runner (4a.2), `enrichmentJobs` (4a.3),
+`statsProvider` (4a.4), and `EntityConnector.ingest` (4b.2). The
+runner's per-module overwrite-list logic was a planned evolution,
+not a surprise: see the 4a.3 close-out in
+`docs/dev/plans/phase-04-first-entities.md` §14.
 
 ---
 

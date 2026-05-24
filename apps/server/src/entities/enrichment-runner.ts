@@ -191,6 +191,7 @@ export function createEnrichmentRunner(deps: EnrichmentRunnerDeps): EnrichmentRu
     entity: Entity<P>,
     patch: Partial<P>,
   ): Promise<boolean> {
+    const overwriteFields = module.enrichmentOverwriteFields ?? [];
     const filtered: Record<string, unknown> = {};
     for (const [field, value] of Object.entries(patch as Record<string, unknown>)) {
       if (value === null || value === undefined) continue;
@@ -200,13 +201,14 @@ export function createEnrichmentRunner(deps: EnrichmentRunnerDeps): EnrichmentRu
         current === null ||
         current === undefined ||
         (typeof current === 'string' && current.trim().length === 0);
-      // `description` is allowed to be overwritten by enrichment — see
-      // companies.summary contract. Companies-specific decisions are
-      // expressed by the job itself: the runner only refuses to
-      // overwrite a non-empty field when the field is NOT named
-      // `description`. This is the bare-minimum "do not stomp on user
-      // input" defense — kind-specific overrides live in the job.
-      if (!currentIsEmpty && field !== 'description') continue;
+      // Phase 4c.3 — the runner refuses to overwrite a non-empty field
+      // UNLESS the module explicitly lists it in
+      // `enrichmentOverwriteFields`. Empty / null / whitespace-only
+      // fields stay overridable regardless of the list. This
+      // generalises the previously-hardcoded `description` exception
+      // (4a.3 close-out predicted this generalisation when calendar's
+      // attendees / meetingSummaryNote needed the same affordance).
+      if (!currentIsEmpty && !overwriteFields.includes(field)) continue;
       filtered[field] = value;
     }
     if (Object.keys(filtered).length === 0) return false;

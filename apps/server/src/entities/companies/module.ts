@@ -72,6 +72,11 @@ export function createCompanyModule(
     ],
     connectors,
     enrichmentJobs,
+    // Phase 4c.3 — the runner's per-module `enrichmentOverwriteFields`
+    // slot replaces the previously-hardcoded `description` exception.
+    // Companies declares the field here so `companies.summary` continues
+    // to overwrite an existing description on `updated` / `sync.succeeded`.
+    enrichmentOverwriteFields: ['description'],
     statsProvider: companyStatsProvider,
     toSummary({ ref, meta, payload, title }) {
       const subtitle = payload.kvkNumber ?? payload.website ?? null;

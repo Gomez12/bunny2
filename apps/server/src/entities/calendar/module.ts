@@ -1,6 +1,6 @@
 import type { ZodType } from 'zod';
 import { CalendarEventPayloadSchema, type CalendarEventPayload } from '@bunny2/shared';
-import type { EntityModule } from '../module';
+import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
 
 /**
@@ -54,6 +54,13 @@ const SUBTITLE_MAX_LENGTH = 120;
  */
 export interface CreateCalendarEventModuleOptions {
   readonly connectors?: readonly EntityConnector<CalendarEventPayload>[];
+  /**
+   * Phase 4c.3 — optional enrichment-job override. Mirrors the
+   * companies / contacts factory pattern. Defaults to the empty list
+   * inside the factory; production wiring opts in via
+   * `buildProductionCalendarEventModule`.
+   */
+  readonly enrichmentJobs?: readonly EnrichmentJob<CalendarEventPayload>[];
 }
 
 /**
@@ -70,6 +77,13 @@ export function createCalendarEventModule(
     kind: CALENDAR_EVENT_KIND,
     tableName: CALENDAR_EVENT_TABLE,
     ...(opts.connectors === undefined ? {} : { connectors: opts.connectors }),
+    ...(opts.enrichmentJobs === undefined ? {} : { enrichmentJobs: opts.enrichmentJobs }),
+    // Phase 4c.3 — enrichment is allowed to overwrite these two fields
+    // even when already populated. `attendees` is replaced wholesale by
+    // `calendar.attendeeContacts` (per-attendee merge happens inside the
+    // job). `meetingSummaryNote` is the AI-managed surface for meeting
+    // summaries; the user never edits it directly in v1.
+    enrichmentOverwriteFields: ['attendees', 'meetingSummaryNote'],
     // The shared schema has `allDay: z.boolean().default(false)` so
     // its input type is `boolean | undefined` while the parsed type
     // is `boolean`. The `EntityModule<Payload>` slot wants

@@ -10,6 +10,7 @@ import { getEntityModule, registerEntityModule } from '../registry';
 import type { EntityModule } from '../module';
 import { calendarEventModule, createCalendarEventModule } from './module';
 import { buildProductionGoogleCalendarConnector } from './google-connector';
+import { calendarEventEnrichmentJobs } from './enrichment';
 
 export {
   calendarEventModule,
@@ -18,6 +19,12 @@ export {
   CALENDAR_EVENT_TABLE,
   type CreateCalendarEventModuleOptions,
 } from './module';
+export {
+  calendarAttendeeContactsJob,
+  calendarSummaryJob,
+  calendarEventEnrichmentJobs,
+} from './enrichment';
+
 export {
   createGoogleCalendarConnector,
   createGoogleCalendarConfigResolver,
@@ -113,6 +120,7 @@ export function registerCalendarEventModule(
 export function buildProductionCalendarEventModule(): EntityModule<CalendarEventPayload> {
   return createCalendarEventModule({
     connectors: [buildProductionGoogleCalendarConnector()],
+    enrichmentJobs: calendarEventEnrichmentJobs,
   });
 }
 
