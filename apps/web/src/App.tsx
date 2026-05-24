@@ -24,7 +24,9 @@ import { LayerSettingsPage } from './pages/LayerSettingsPage';
 import { LayerDashboardPage } from './pages/LayerDashboardPage';
 import { CompaniesListPage } from './pages/CompaniesListPage';
 import { CompanyDetailPage } from './pages/CompanyDetailPage';
+import { ContactDetailPage } from './pages/ContactDetailPage';
 import { ContactsImportPage } from './pages/ContactsImportPage';
+import { ContactsListPage } from './pages/ContactsListPage';
 import { bootstrapSession, useSession } from './lib/session';
 
 /**
@@ -219,7 +221,10 @@ function AppShell(): JSX.Element {
           <Route path="/l/:layerSlug/companies" element={<CompaniesListPage />} />
           <Route path="/l/:layerSlug/companies/new" element={<CompaniesListPage />} />
           <Route path="/l/:layerSlug/companies/:companySlug" element={<CompanyDetailPage />} />
+          <Route path="/l/:layerSlug/contacts" element={<ContactsListPage />} />
+          <Route path="/l/:layerSlug/contacts/new" element={<ContactsListPage />} />
           <Route path="/l/:layerSlug/contacts/import" element={<ContactsImportPage />} />
+          <Route path="/l/:layerSlug/contacts/:contactSlug" element={<ContactDetailPage />} />
           <Route path="/l/:layerSlug" element={<LayerSlugIndexRedirect />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -265,6 +270,7 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
     if (sub === 'dashboard') return t('layer.shell.subpages.dashboard');
     if (sub === 'settings') return t('layer.shell.subpages.settings');
     if (sub === 'companies') return t('layer.shell.subpages.companies');
+    if (sub === 'contacts') return t('layer.shell.subpages.contacts');
     return null;
   }
   if (pathname.startsWith('/layers')) return t('admin.layers.list.title');

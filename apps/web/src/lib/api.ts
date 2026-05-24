@@ -26,7 +26,9 @@ import type {
   AdminUserListResponse,
   AdminUserRow,
   Company,
+  Contact,
   CreateCompanyPayload,
+  CreateContactPayload,
   CreateGroupPayload,
   CreateLayerPayload,
   CreateUserPayload,
@@ -46,6 +48,7 @@ import type {
   SetLayerLocalesPayload,
   SystemLocalesResponse,
   UpdateCompanyPayload,
+  UpdateContactPayload,
   UpdateGroupPayload,
   UpdateLayerPayload,
   UpdateUserPayload,
@@ -56,6 +59,7 @@ import {
   companyServerExternalLink,
   companyServerExternalLinks,
 } from './companies-routes';
+import { contactServerDetail, contactsServerBase } from './contacts-routes';
 
 interface BunnyBridge {
   readonly apiBase: string;
@@ -592,6 +596,65 @@ export async function removeCompanyExternalLink(
   await request<{ ok: true }>(companyServerExternalLink(layerSlug, companySlug, linkId), {
     method: 'DELETE',
   });
+}
+
+// ---------- contacts CRUD (phase 4b.5) -------------------------------------
+//
+// Same singular ↔ plural seam as Companies — see the head note above the
+// companies CRUD block and `apps/web/src/lib/contacts-routes.ts`. The
+// server router mounts the singular `/l/:slug/contact` segment per the
+// §4.0 entity contract; the web URLs use the friendlier plural form.
+
+export async function listContacts(layerSlug: string): Promise<readonly EntitySummary[]> {
+  const res = await request<{ entities: readonly EntitySummary[] }>(contactsServerBase(layerSlug));
+  return res.entities;
+}
+
+export async function getContact(layerSlug: string, contactSlug: string): Promise<Contact> {
+  const res = await request<{ entity: Contact }>(contactServerDetail(layerSlug, contactSlug));
+  return res.entity;
+}
+
+export async function createContact(
+  layerSlug: string,
+  body: CreateContactPayload,
+): Promise<Contact> {
+  const res = await request<{ entity: Contact }>(contactsServerBase(layerSlug), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function updateContact(
+  layerSlug: string,
+  contactSlug: string,
+  body: UpdateContactPayload,
+): Promise<Contact> {
+  const res = await request<{ entity: Contact }>(contactServerDetail(layerSlug, contactSlug), {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function softDeleteContact(layerSlug: string, contactSlug: string): Promise<void> {
+  await request<{ ok: true }>(contactServerDetail(layerSlug, contactSlug), { method: 'DELETE' });
+}
+
+/**
+ * External links are returned on the full contact envelope from
+ * `getContact(...)`. This helper exists for symmetry with
+ * `listCompanyExternalLinks` and for code paths that want to re-poll
+ * the read-only provenance list (vCard imports create them) without
+ * touching the rest of the form draft.
+ */
+export async function listContactExternalLinks(
+  layerSlug: string,
+  contactSlug: string,
+): Promise<readonly EntityExternalLink[]> {
+  const contact = await getContact(layerSlug, contactSlug);
+  return contact.externalLinks;
 }
 
 // ---------- contacts ingest (phase 4b.2) ---------------------------------

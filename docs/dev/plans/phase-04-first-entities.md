@@ -1795,3 +1795,137 @@ contract changes. ADR 0011 already governs the entity contract; the
   `order: 100` / `order: 200` choice. 4c.4 / 4d.4 will pick 300 /
   400 to keep the order deterministic without re-touching the
   earlier widgets.
+
+### 4b.5 shipped (2026-05-24)
+
+**Goal** — Web UI for contacts (list, detail, create, edit, soft-
+delete, email/phone array editors, company-link picker) at
+`/l/:layerSlug/contacts/*`, mirroring the 4a.5 Companies surface
+1:1 so the two entity kinds feel identical to the user.
+
+**Files added**
+
+- `apps/web/src/lib/contacts-routes.ts` — URL helpers + the singular
+  ↔ plural seam, mirroring `companies-routes.ts`. Exposes
+  `CONTACTS_SERVER_KIND='contact'` + `CONTACTS_WEB_SEGMENT='contacts'`,
+  the four web routes (list / detail / new / import), three server
+  helpers (base / detail / external-links), and
+  `slugifyContactTitle`.
+- `apps/web/src/pages/ContactsListPage.tsx` — list page + the
+  inline create dialog. Same `/contacts/new` deep-link pattern as
+  `CompaniesListPage` (the route reuses the list component and the
+  `NewRouteDialogTrigger` opens the dialog on first paint).
+- `apps/web/src/pages/ContactDetailPage.tsx` — detail/edit page
+  with the email/phone array editors, company-link `<select>`
+  picker (populated from `listCompanies(layerSlug)`), and a
+  **read-only** external-links card. The vCard import creates the
+  link rows; the UI deliberately does not expose an add/remove
+  flow this phase.
+- `apps/web/src/pages/contacts-page-state.ts` — pure reducers +
+  validators + payload builders. Includes the array-editor
+  triplet for emails (`addEmail` / `removeEmail` / `updateEmail`
+  / `promotePrimaryEmail`) and the matching phones triplet, plus
+  the two `primaryEmailFromPayload` / `primaryPhoneFromPayload`
+  selectors. The build path de-duplicates emails by lower-cased
+  value, matching `ContactPayloadSchema.superRefine`.
+- `apps/web/tests/contacts-list-page.test.ts` and
+  `apps/web/tests/contacts-detail-page.test.ts` — 52 pure tests
+  exercising the reducer matrix (loading/error/empty/ready) +
+  every array-editor operation + every validator branch.
+
+**Files changed**
+
+- `apps/web/src/lib/api.ts` — adds `listContacts`, `getContact`,
+  `createContact`, `updateContact`, `softDeleteContact`,
+  `listContactExternalLinks`. No new endpoint surface; every
+  helper hits the §4.0 generic router under the singular
+  `/l/:slug/contact/...` prefix. The company-link picker reuses
+  `listCompanies(layerSlug)` directly — no per-purpose helper.
+- `apps/web/src/lib/api-types.ts` — adds `ContactEmail`,
+  `ContactPhone`, `ContactPayload`, `Contact`, `CreateContactPayload`,
+  `UpdateContactPayload`. Same hand-written-interface convention as
+  the Companies types (the web bundle stays zod-free at runtime).
+- `apps/web/src/App.tsx` — mounts three new routes
+  (`/contacts`, `/contacts/new`, `/contacts/:contactSlug`).
+  React Router v6 ranks routes by specificity, so the existing
+  `/contacts/import` static-segment route always wins over the
+  `:contactSlug` parameter route regardless of declaration order.
+  `pageTitleFor` learns the `contacts` subpage.
+- `apps/web/src/i18n/locales/en.json` + `nl.json` — full key set
+  for the list/detail/create surfaces plus error keys. Dutch
+  translations are real, not stubs. `layer.shell.subpages.contacts`
+  added so the header surfaces the page name.
+
+**Foundation extension** — None. The §4.0 contract is unchanged.
+
+**Tests**
+
+- `apps/web/tests/contacts-list-page.test.ts` — `contactsListView`
+  reducer matrix, the singular↔plural URL helpers (11 cases
+  including percent-encoding), and `slugifyContactTitle`.
+- `apps/web/tests/contacts-detail-page.test.ts` — `contactDetailView`
+  reducer, `draftFromContact` round-trip, the email/phone reducer
+  triplets (add / remove / update / promote-primary, plus
+  out-of-range no-ops), the `validateContactForm` matrix (empty
+  title, malformed email, duplicate-email by lower-cased value,
+  empty-row tolerance, malformed birthday, oversized notes),
+  `buildCreateContactRequest` (strip-empties, isPrimary promotion,
+  de-dup, slug override, companyEntityId pass-through),
+  `buildUpdateContactRequest` (no `originalLocale`),
+  `linkSyncStateBadgeKey`, and the primary-email/phone selectors.
+
+**i18n** — `entity.contacts.*` extended from the 4b.4 starter set
+to cover the create dialog, the array editors, the company-link
+picker, the soft-delete confirm dialog, and the read-only
+external-links card. `errors.entity.contacts.*` already covered
+the keys the validators emit; no additions there.
+
+**Accessibility** — Every input has `<label htmlFor>`. The
+email/phone array editors are pure-keyboard (every row is a
+labelled input group with a "primary" toggle and a labelled
+"remove" button; "add" appends a row the user can tab into).
+The company picker is a plain native `<select>` with an explicit
+"Clear" button so the value can be removed with one keypress.
+Soft-delete confirmation reuses `ConfirmDialog`'s native
+`<dialog>` focus trap.
+
+**Docs**
+
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/tasklist.md` 4b.5 row → `done`.
+
+**No new ADR** — pure UI work; the entity contract (ADR 0011) is
+unchanged.
+
+**Notable for 4b.6 (i18n + tests + smoke)**
+
+- The list page intentionally renders three columns
+  (`title` / `subtitle` / `meta.updatedAt`) — the exact pattern
+  Companies established in 4a.5. The original 4b.5 spec asked for
+  four columns (title / primary email / primary phone / linked
+  company) but the `EntitySummary` projected by the §4.0 store
+  carries only `subtitle` (the contact module picks
+  `primary_email ?? primary_phone ?? jobTitle` for it). Honoring
+  four columns would have meant either an N+1 `getContact` per
+  row or a foundation-level `summaryColumns` slot — both deferred
+  per the "no foundation extensions" constraint and the
+  parked follow-up cited in the 4a.5 close-out. The detail page
+  remains the source of truth for the linked-company badge, the
+  full email/phone arrays, notes, and the read-only external-links
+  list. If 4c.5 / 4d.5 need richer per-row data the
+  `summaryColumns` discussion can land in 4b.6 or its own ticket.
+- The Contacts widget does not have a "Create contact" CTA today
+  (only "View" + "Import vCard"), so the `?new=1`/`/new`
+  canonical deep-link convention from 4a.6 has no consumer in
+  4b yet. The 4b.5 list page IS mounted at `/contacts/new` —
+  the convention is wired client-side and ready for whichever
+  surface adds the CTA next.
+- The external-links card on the detail page is read-only.
+  vCard imports populate the rows (provenance); the user can
+  see connector + external-id + sync state. A future
+  "manage external links" surface, if it ever lands, would
+  reuse the Companies pattern (`addCompanyExternalLink` /
+  `removeCompanyExternalLink`); both server endpoints already
+  exist on the generic entity router.
+- The smoke test is **not** extended in this commit — 4b.6
+  owns that.

@@ -305,3 +305,43 @@ export interface AddCompanyExternalLinkPayload {
   readonly externalId: string;
   readonly payload?: Record<string, unknown>;
 }
+
+// ---------- contacts (phase 4b.5) -------------------------------------------
+
+export interface ContactEmail {
+  readonly value: string;
+  readonly label?: string;
+  readonly isPrimary?: boolean;
+}
+
+export interface ContactPhone {
+  readonly value: string;
+  readonly label?: string;
+  readonly isPrimary?: boolean;
+}
+
+export interface ContactPayload {
+  readonly givenName?: string;
+  readonly familyName?: string;
+  readonly displayName?: string;
+  readonly emails?: readonly ContactEmail[];
+  readonly phones?: readonly ContactPhone[];
+  readonly companyEntityId?: string;
+  readonly jobTitle?: string;
+  readonly notes?: string;
+  readonly birthday?: string;
+}
+
+export type Contact = Entity<ContactPayload>;
+
+export interface CreateContactPayload {
+  readonly title: string;
+  readonly slug?: string;
+  readonly originalLocale: string;
+  readonly payload: ContactPayload;
+}
+
+export interface UpdateContactPayload {
+  readonly title?: string;
+  readonly payload: ContactPayload;
+}
