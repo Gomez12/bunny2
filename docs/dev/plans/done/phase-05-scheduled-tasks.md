@@ -780,11 +780,101 @@ danger zone shipped earlier this week).
 
 ---
 
-## 16. Plan close-out (filled in when phase 5 ships)
+## 16. Plan close-out
 
-Each sub-phase's commit updates this section with: what shipped,
-where the developer narrative now lives, which ADRs landed,
-which follow-ups remain. On all sub-phases `done`, the plan
-moves to `docs/dev/plans/done/phase-05-scheduled-tasks.md` and
-the tasklist `Related document` paths get rewritten in the same
-commit.
+Phase 5 shipped across eight sub-phases on the same branch. The
+consolidated summary below is what landed; the per-sub-phase
+narratives live alongside the commits in `git log`.
+
+### 16.1 What shipped, per sub-phase
+
+| Sub | Commit subject                                                     | Headline deliverables                                                                                                                                                                                                                                                                |
+| --- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 5.0 | `feat(scheduled): schema + repo (phase 5.0)`                       | Migration `0012_scheduled_tasks.sql`; `packages/shared/src/scheduled-tasks.ts`; `apps/server/src/scheduled/{repo,schedule}.ts`; `croner` dependency.                                                                                                                                 |
+| 5.1 | `feat(bus): durable sqlite adapter (phase 5.1)`                    | Migration `0013_durable_bus.sql`; `DurableSqliteMessageBus` in `packages/bus/src/adapters/`; atomic publish; replay-on-boot; contract tests parameterized over both adapters; in-memory moved to test-utils.                                                                         |
+| 5.2 | `feat(server): role split (web/worker/all) (phase 5.2)`            | `--role` CLI flag + `BUNNY2_ROLE` env; role gating around scheduler, connector, enrichment, todo projection runners.                                                                                                                                                                 |
+| 5.3 | `feat(scheduled): registry + scheduler + retry (phase 5.3)`        | `registerScheduledTaskHandler`; `createScheduler`; `createScheduledRunSubscriber`; `scheduledtask.*` event taxonomy; retry/backoff math; auto-pause after `maxAttempts`; boot-recovery sweep.                                                                                        |
+| 5.4 | `feat(scheduled): http routes + dlq view (phase 5.4)`              | `/l/:slug/scheduled-tasks/*` CRUD; `POST .../runs`; `GET .../runs`; admin `/admin/scheduled-tasks`; admin `/admin/bus/dlq` + replay.                                                                                                                                                 |
+| 5.5 | `refactor(llm): prune as scheduled task + healthcheck (phase 5.5)` | `llm.calls.prune`, `system.healthcheck`, `scheduled.runs.prune`, `bus.outbox.prune` as registry handlers; `seedSystemScheduledTasksIfNeeded`.                                                                                                                                        |
+| 5.6 | `feat(scheduled): web UI + dlq page (phase 5.6)`                   | `/l/:slug/scheduled-tasks` list + create dialog + pause/resume + run-now + history; admin DLQ page; dashboard "Recent runs" widget.                                                                                                                                                  |
+| 5.7 | `test(scheduled,bus): smoke + i18n + docs + close-out (phase 5.7)` | Smoke extension + `smoke-worker.test.ts`; NL translations for the 5.4/5.6 keys; ADRs `0018` + `0019`; `architecture/scheduled-tasks.md`; `architecture/job-inventory.md` + matching test + `docs:check` enforcement; `event-bus.md` rewrite; user guide; this close-out + plan move. |
+
+### 16.2 Where the developer narrative now lives
+
+- `docs/dev/architecture/scheduled-tasks.md` — the registry, tick
+  loop, retry math, role gating, boot recovery.
+- `docs/dev/architecture/event-bus.md` — rewritten around
+  `DurableSqliteMessageBus`. The in-memory adapter is documented in
+  the "Testing appendix" only.
+- `docs/dev/architecture/job-inventory.md` — canonical catalogue of
+  every registered handler kind, enforced by `bun run docs:check`
+  and `apps/server/tests/docs/job-inventory.test.ts`.
+- `docs/dev/architecture/overview.md` — picked up the new
+  "scheduled tasks" band and the web/worker process-role table.
+- `docs/dev/architecture/llm-and-telemetry.md` §7 — notes that
+  `llm.calls.prune` is now a scheduled-task handler.
+- `docs/dev/setup/running.md` — `--role=web|worker|all` flag and
+  the single-process + split deployment recipes.
+- `docs/user/guides/scheduled-tasks.md` — user-facing walkthrough
+  (create, pause, run-now, read history, when an error pauses a
+  task, who can edit which).
+- ADRs: [`0018`](../decisions/0018-generic-scheduled-tasks.md)
+  (cron+interval, retry math, claim, `croner`, idempotency),
+  [`0019`](../decisions/0019-durable-sqlite-message-bus.md)
+  (outbox + offsets + DLQ, atomic publish, role split, supersedes
+  ADR 0005's in-memory-only stance).
+
+### 16.3 Tests added in phase 5
+
+- `apps/server/tests/scheduled/` — full unit + integration set
+  (registry, scheduler, run subscriber, backoff, schedule,
+  boot recovery, end-to-end against the durable bus).
+- `apps/server/tests/scheduled-tasks-repo.test.ts` — repo round-trip.
+- `apps/server/tests/http-scheduled-tasks-*.test.ts` +
+  `http-admin-scheduled-tasks.test.ts` +
+  `http-admin-bus-dlq.test.ts` — HTTP route integration.
+- `apps/server/tests/role-split.test.ts` — `role=web` publish vs.
+  `role=worker` consume against the durable bus.
+- `apps/server/tests/smoke.test.ts` — step 16 registers a one-shot
+  task, drives `scheduler.tickOnce()`, asserts a `succeeded` run row.
+- `apps/server/tests/smoke-worker.test.ts` — full role=worker
+  shape against `DurableSqliteMessageBus`; pre-seeds a task,
+  ticks, drains, asserts the outbox row is `delivered` and the
+  `/status` body reports `role: 'worker'`.
+- `apps/server/tests/docs/job-inventory.test.ts` — fails when a
+  registered kind is missing from the inventory or a row is stale.
+
+### 16.4 Follow-ups carried out of phase 5
+
+Documented gaps that did not block the close-out but should land
+later. Each has, or will get, a tracking row in `docs/dev/tasklist.md`
+under `docs/dev/follow-ups/...` when picked up.
+
+1. **Bulk DLQ replay.** Single-row replay is the v1 surface (plan
+   §15 Q5). A "replay every dead row for this subscriber" affordance
+   is queued for a follow-up.
+2. **Per-handler retry defaults.** The retry / backoff parameters
+   currently live only on the task row. The 5.1 implementation took
+   "bus-level retry" via the durable adapter's outbox retry, but the
+   handler-level retry lives on `scheduled_tasks` columns rather
+   than a `ScheduledTaskHandler.defaultRetry` descriptor. A handler
+   that wants "5 attempts, exponential cap at 4 h" today sets it at
+   task creation time. Promoting this to a handler-side default is
+   on the follow-up list.
+3. **Connector subscriber idempotency review.** Phase 5 keeps
+   connector handlers opt-out of replay (plan §4.3 decision #8). A
+   per-connector audit (KvK, Google Calendar, vCard) should flag
+   each as idempotent or document the explicit reason it cannot be.
+4. **`web`-role subscription stripping.** The connector dispatcher
+   and the scheduled-run subscriber currently register on every
+   role for correctness (durable-outbox claim is atomic, so at most
+   one process delivers). A future phase can tighten this into a
+   hard isolation boundary so `web` truly does zero background
+   work.
+5. **External-trigger entrypoint.** Phase 5 is time-only. Webhooks
+   and the chat-pipeline's "schedule this" affordance land in
+   phase 6+ once the agent surface exists.
+6. **Cross-host transport.** Multi-host deployment is deferred.
+   The trigger is a real second host; the
+   `DurableSqliteMessageBus` interface accepts the swap when the
+   time comes (ADR 0019).

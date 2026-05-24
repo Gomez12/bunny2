@@ -36,10 +36,16 @@ file; if you have an hour, follow the links.
 |          │     └── kv_meta                                     |
 |          └── LanceDB (empty scaffolding in phase 1)            |
 |                                                                |
-|  MessageBus (packages/bus, in-memory adapter)                  |
+|  MessageBus (packages/bus, durable-sqlite adapter)             |
 |    ├── correlationIdMiddleware                                 |
-|    ├── telemetryMiddleware → events table                      |
-|    └── errorCaptureMiddleware                                  |
+|    ├── errorCaptureMiddleware                                  |
+|    └── publish writes events + bus_outbox in one tx (phase 5)  |
+|                                                                |
+|  Scheduled tasks (apps/server/src/scheduled, phase 5)          |
+|    ├── registry + scheduler tick (worker/all)                  |
+|    ├── run subscriber (every role; idempotent: true)           |
+|    └── built-ins: llm.calls.prune, system.healthcheck,         |
+|         scheduled.runs.prune, bus.outbox.prune                 |
 |                                                                |
 |  LLM client (apps/server/src/llm)                              |
 |    ├── mock://  provider  (deterministic, tests + dev default) |
@@ -114,16 +120,51 @@ sidecar talk **only** over HTTP, which keeps Electron a thin wrapper
 
 ### 2.4 Message bus + event log
 
-- Code: `packages/bus/` (interface + in-memory adapter) +
-  `apps/server/src/bus/event-log.ts` (SQLite writer).
-- Adapter: in-memory only in phase 1. Bunqueue was the originally
-  proposed transport and was rejected after a fit-check —
-  [ADR 0005](../decisions/0005-event-sourcing-and-bunqueue.md).
-- Middleware chain (outer→inner): correlation id → telemetry (writes
-  to `events` before dispatch) → error capture → handler dispatch.
-- Replay: `bun run replay` (`scripts/replay.ts`) re-emits the log to a
-  fresh subscriber set — proves event sourcing is real.
+- Code: `packages/bus/` (interface + adapters) +
+  `apps/server/src/bus/event-log.ts` (SQLite writer / counter).
+- Adapter: `DurableSqliteMessageBus` is the single production
+  adapter from phase 5. `InMemoryMessageBus` lives in
+  `@bunny2/bus/test-utils` for unit tests only. ADR
+  [`0005`](../decisions/0005-event-sourcing-and-bunqueue.md) decided
+  the interface; ADR
+  [`0019`](../decisions/0019-durable-sqlite-message-bus.md) records
+  the durable adapter and supersedes the in-memory-only stance.
+- Middleware chain (outer→inner): correlation id → error capture →
+  handler dispatch. The `events` row is written inside the outbox
+  transaction by the adapter itself.
+- Replay: `bun run replay` (`scripts/replay.ts`) re-emits the
+  `events` log to a fresh `InMemoryMessageBus`.
 - Deep dive: `docs/dev/architecture/event-bus.md`.
+
+### 2.4a Scheduled tasks (phase 5)
+
+- Code: `apps/server/src/scheduled/`. Migration
+  `0012_scheduled_tasks.sql` for the two tables.
+- Generic registry of `kind`-keyed handlers. The four built-ins
+  (`llm.calls.prune`, `system.healthcheck`, `scheduled.runs.prune`,
+  `bus.outbox.prune`) live in the `everyone` layer; future
+  domain-specific handlers register from their own modules.
+- The scheduler tick is role-gated (worker/all); the run
+  subscriber is on every role. Inventory is in
+  [`job-inventory.md`](./job-inventory.md), enforced by
+  `bun run docs:check` and `tests/docs/job-inventory.test.ts`.
+- Deep dive: `docs/dev/architecture/scheduled-tasks.md`. Decisions:
+  ADR [`0018`](../decisions/0018-generic-scheduled-tasks.md).
+
+### 2.4b Process role split (phase 5)
+
+- `apps/server/src/index.ts` accepts `--role=web|worker|all`
+  (default `all`, also `BUNNY2_ROLE`).
+- `web` — HTTP listener only; publishes into the durable bus,
+  skips the scheduler tick and the background runners (connector
+  poll, enrichment, todo→calendar projection).
+- `worker` — no HTTP listener; runs the scheduler tick, the
+  background runners, and the durable bus consume loop.
+- `all` — current single-process shape; default for `bun run dev`
+  and the Electron sidecar.
+- Both processes bind to the same SQLite file via
+  `DurableSqliteMessageBus`. Recipes:
+  [`setup/running.md`](../setup/running.md).
 
 ### 2.5 LLM client + telemetry
 
@@ -321,7 +362,6 @@ at
   shell (phase 4). Every entity is born inside a layer and inherits
   the resolver-driven auth filter described in
   [`layers-and-auth.md`](./layers-and-auth.md) §7.
-- Scheduled tasks UI + retry/backoff (phase 5).
 - Super chat (intent router → entity resolver → retrieval → answerer)
   with auth-aware LanceDB retrieval (phase 6).
 - Self-learning loop, user-verified then threshold-automated
@@ -343,6 +383,10 @@ See `docs/dev/plans/overall.md` §8 for the full phased roadmap.
   surface (login, sessions, admin gate).
 - `docs/dev/architecture/layers-and-auth.md` — phase 3 layer model
   - per-request enrichment + resolver.
+- `docs/dev/architecture/scheduled-tasks.md` — phase 5 scheduled-task
+  runtime (registry, tick, retry, boot recovery).
+- `docs/dev/architecture/job-inventory.md` — phase 5 catalogue of
+  registered handler kinds (one row per kind).
 - `docs/dev/architecture/packaging.md` — build pipeline + per-OS
   data-dir paths.
 - `docs/dev/testing/phase-01-electron-manual.md` — manual per-OS

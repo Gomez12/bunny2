@@ -16,6 +16,7 @@ artifact), see `docs/dev/testing/phase-01-electron-manual.md`.
 | `bun run dev:web`      | Vite dev server on `:5173` for `apps/web`.                                                   | Hacking on the renderer; needs a server reachable at `:4317`.  |
 | `bun run dev:desktop`  | Orchestrates Vite + server + Electron together via `apps/desktop/scripts/dev.ts`.            | Full Electron loop with hot UI reload.                         |
 | `bun run smoke`        | Runs only `apps/server/tests/smoke.test.ts`.                                                 | Quickly verify the end-to-end spine after touching wiring.     |
+| `bun run smoke-worker` | Runs only `apps/server/tests/smoke-worker.test.ts`.                                          | Verify the `--role=worker` shape against the durable bus.      |
 | `bun test`             | Runs every workspace's tests.                                                                | Pre-commit / pre-PR.                                           |
 | `bun run typecheck`    | `tsc --noEmit` across all workspaces.                                                        | Pre-commit / pre-PR.                                           |
 | `bun run lint`         | ESLint across `.`.                                                                           | Pre-commit / pre-PR.                                           |
@@ -65,6 +66,55 @@ API base via `contextBridge`. Ctrl+C tears all three down cleanly.
 Server source changes are **not** hot-reloaded by the orchestrator —
 restart the dev session. Tracked in
 `docs/dev/follow-ups/desktop-dev-restart.md`.
+
+---
+
+## Process roles (phase 5)
+
+The Bun server accepts `--role=web|worker|all` (default `all`,
+also `BUNNY2_ROLE`). Every role shares the same SQLite file via
+the durable-SQLite message bus (ADR
+[`0019`](../decisions/0019-durable-sqlite-message-bus.md)).
+
+| Role     | HTTP listener | Scheduler tick | Background runners | Bus consume |
+| -------- | ------------- | -------------- | ------------------ | ----------- |
+| `web`    | yes           | no             | no                 | yes         |
+| `worker` | no            | yes            | yes                | yes         |
+| `all`    | yes           | yes            | yes                | yes         |
+
+`web` publishes scheduled-task run requests via the durable
+bus; `worker` claims and executes them. Killing either process
+mid-flight is safe — the next consumer picks up `pending` /
+stuck-`in_flight` rows on boot recovery.
+
+### Single-process deployment (default)
+
+```bash
+bun run --filter '@bunny2/server' dev       # equivalent to --role=all
+bun start --role=all                        # explicit form
+```
+
+This is the right shape for `bun run dev:*`, the packaged Electron
+sidecar, and small deployments. One process owns everything.
+
+### Split web / worker deployment
+
+```bash
+# host A — public HTTP, no background work
+bun start --role=web
+
+# host A — background worker; no TCP port
+bun start --role=worker
+```
+
+Two processes must share the same `BUNNY2_DATA_DIR` so they both
+open the same SQLite file. The durable adapter's atomic
+publish-and-claim across processes makes this safe.
+
+> Multi-host deployment is **not** supported in phase 5. The
+> durable adapter assumes a single SQLite file accessible to every
+> process. A multi-host transport is the trigger to revisit (ADR
+> 0019).
 
 ---
 

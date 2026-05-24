@@ -24,6 +24,7 @@
     "docs:check": "bun run scripts/docs-check.ts",
     "replay": "bun run scripts/replay.ts",
     "smoke": "bun test apps/server/tests/smoke.test.ts",
+    "smoke-worker": "bun test apps/server/tests/smoke-worker.test.ts",
     "i18n:check": "bun run scripts/i18n-check.ts"
   },
   "devDependencies": {

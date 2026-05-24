@@ -21,7 +21,9 @@
     "chat": "Chat",
     "layers": "Lagen",
     "adminUsers": "Beheer · Gebruikers",
-    "adminGroups": "Beheer · Groepen"
+    "adminGroups": "Beheer · Groepen",
+    "adminScheduledTasks": "Beheer · Geplande taken",
+    "adminBusDlq": "Beheer · DLQ"
   },
   "layer": {
     "switcher": {
@@ -94,7 +96,27 @@
           "statDueToday": "Vandaag te doen",
           "statOverdue": "Te laat",
           "statHighPriorityOpen": "Hoge prioriteit"
+        },
+        "recentRuns": {
+          "title": "Recente runs",
+          "loading": "Recente runs laden…",
+          "error": "Kon recente runs niet laden.",
+          "empty": "Nog geen geplande runs in deze laag.",
+          "viewAllCta": "Geplande taken openen",
+          "columns": {
+            "task": "Taak",
+            "status": "Status",
+            "finishedAt": "Klaar om",
+            "triggeredBy": "Gestart door"
+          }
         }
+      }
+    },
+    "shell": {
+      "subpages": {
+        "scheduledTasks": "Geplande taken",
+        "adminScheduledTasks": "Beheer · Geplande taken",
+        "adminBusDlq": "Beheer · Dead-letter-wachtrij"
       }
     }
   },
@@ -116,6 +138,42 @@
         "confirmTitle": "Deze laag verwijderen?",
         "confirmBody": "“{{name}}” verdwijnt uit jouw switcher en uit het zicht van alle andere leden. Dit kan niet meer via de UI ongedaan worden gemaakt.",
         "deleted": "Laag “{{name}}” verwijderd."
+      }
+    },
+    "scheduledTasks": {
+      "title": "Geplande taken (alle lagen)",
+      "empty": "Nog geen geplande taken geregistreerd.",
+      "columns": {
+        "name": "Naam",
+        "layer": "Laag",
+        "kind": "Type",
+        "schedule": "Schema",
+        "nextRun": "Volgende run",
+        "lastRun": "Laatste run",
+        "status": "Status"
+      },
+      "openInLayerCta": "Openen in laag"
+    },
+    "bus": {
+      "dlq": {
+        "title": "Dead-letter-wachtrij",
+        "empty": "Geen dead-letter-rijen. De bus is gezond.",
+        "refresh": "Vernieuwen",
+        "columns": {
+          "eventType": "Eventtype",
+          "subscriberKey": "Abonnee",
+          "attempts": "Pogingen",
+          "error": "Fout",
+          "failedAt": "Mislukt om",
+          "action": "Actie"
+        },
+        "replay": "Opnieuw afspelen",
+        "replayConfirm": {
+          "title": "Deze dead-letter-rij opnieuw afspelen?",
+          "body": "De bus zet dit event opnieuw in de wachtrij voor de abonnee. Als de onderliggende fout nog speelt, kan de rij terugkeren in de wachtrij.",
+          "cta": "Opnieuw afspelen"
+        },
+        "replayed": "Rij opnieuw afgespeeld."
       }
     }
   },
@@ -277,6 +335,19 @@
       "alreadyEncrypted": "Deze waarde is al versleuteld.",
       "notEncrypted": "Deze waarde is niet versleuteld.",
       "decryptFailed": "De versleutelde waarde kon niet worden ontsleuteld."
+    },
+    "scheduledTasks": {
+      "badRequest": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw.",
+      "notFound": "Geplande taak niet gevonden.",
+      "notInLayer": "Geplande taak niet gevonden in deze laag.",
+      "slugTaken": "Er bestaat al een geplande taak met deze slug in deze laag.",
+      "handlerUnknown": "De gekozen handler voor geplande taken is niet beschikbaar op deze server.",
+      "invalidCron": "De cron-expressie is ongeldig. Controleer de syntaxis en tijdzone.",
+      "invalidInterval": "Het interval is ongeldig. Geef een positief aantal minuten op."
+    },
+    "bus": {
+      "dlqReplayFailed": "De dead-letter-rij kon niet opnieuw worden afgespeeld.",
+      "outboxClaimRace": "Een ander proces heeft deze outbox-rij al opgeëist."
     }
   },
   "entity": {
@@ -581,6 +652,120 @@
       "importSuccess": "{{created}} nieuwe contacten geïmporteerd en {{updated}} bestaande bijgewerkt.",
       "importWarningsTitle": "Waarschuwingen",
       "importNoFile": "Kies eerst een .vcf-bestand."
+    }
+  },
+  "scheduledTasks": {
+    "list": {
+      "title": "{{name}} · Geplande taken",
+      "empty": "Nog geen geplande taken in deze laag.",
+      "loading": "Geplande taken laden…",
+      "error": "Kon geplande taken niet laden.",
+      "createCta": "Taak toevoegen",
+      "refresh": "Vernieuwen",
+      "columns": {
+        "name": "Naam",
+        "kind": "Type",
+        "schedule": "Schema",
+        "nextRun": "Volgende run",
+        "lastRun": "Laatste run",
+        "status": "Status",
+        "actions": "Acties"
+      },
+      "lastRunNever": "Nooit",
+      "expand": "Recente runs tonen",
+      "collapse": "Recente runs verbergen",
+      "runsTitle": "Recente runs",
+      "runsEmpty": "Nog geen runs voor deze taak.",
+      "runsLoading": "Run-historie laden…",
+      "runsError": "Kon run-historie niet laden.",
+      "runsColumns": {
+        "status": "Status",
+        "started": "Gestart",
+        "duration": "Duur",
+        "triggeredBy": "Gestart door",
+        "attempt": "Poging",
+        "error": "Fout"
+      },
+      "durationMs": "{{ms}} ms"
+    },
+    "status": {
+      "active": "Actief",
+      "paused": "Gepauzeerd",
+      "canceled": "Geannuleerd"
+    },
+    "schedule": {
+      "cron": "cron: {{expression}} · {{timezone}}",
+      "interval": "elke {{minutes}} min"
+    },
+    "trigger": {
+      "schedule": "Schema",
+      "manual": "Handmatig",
+      "retry": "Nieuwe poging"
+    },
+    "run": {
+      "status": {
+        "requested": "Aangevraagd",
+        "started": "Bezig",
+        "succeeded": "Geslaagd",
+        "failed": "Mislukt",
+        "skipped_offline": "Overgeslagen (offline)",
+        "skipped_no_handler": "Overgeslagen (geen handler)",
+        "skipped_crashed": "Overgeslagen (gecrasht)"
+      }
+    },
+    "dialog": {
+      "title": "Geplande taak toevoegen",
+      "nameLabel": "Naam",
+      "slugLabel": "Slug",
+      "slugHint": "Wordt afgeleid van de naam. URL-veilig: kleine letters, cijfers en streepjes.",
+      "kindLabel": "Type",
+      "kindPlaceholder": "Kies een geregistreerde handler",
+      "scheduleKindCron": "Cron",
+      "scheduleKindInterval": "Interval",
+      "cronExpression": "Cron-expressie",
+      "cronExpressionHint": "Vijf velden, bijvoorbeeld 0 7 * * MON.",
+      "cronTimezone": "Tijdzone (IANA)",
+      "intervalMinutes": "Elke N minuten",
+      "maxAttempts": "Max. pogingen",
+      "backoffBaseMs": "Backoff-basis (ms)",
+      "backoffMaxMs": "Backoff-maximum (ms)",
+      "submit": "Taak aanmaken",
+      "cancel": "Annuleren",
+      "validation": {
+        "nameRequired": "Naam is verplicht.",
+        "kindRequired": "Kies een handler-type.",
+        "cronEmpty": "Cron-expressie is verplicht.",
+        "cronShape": "Cron-expressie moet uit vijf door spaties gescheiden velden bestaan.",
+        "cronTimezoneRequired": "Tijdzone is verplicht.",
+        "intervalPositive": "Interval moet minimaal 1 minuut zijn.",
+        "maxAttemptsPositive": "Max. pogingen moet een positief geheel getal zijn.",
+        "backoffBasePositive": "Backoff-basis moet een positief geheel getal (ms) zijn.",
+        "backoffMaxPositive": "Backoff-maximum moet een positief geheel getal (ms) zijn.",
+        "backoffOrder": "Backoff-maximum moet groter dan of gelijk aan de basis zijn."
+      }
+    },
+    "actions": {
+      "runNow": "Nu uitvoeren",
+      "pause": "Pauzeren",
+      "resume": "Hervatten",
+      "delete": "Verwijderen",
+      "refresh": "Vernieuwen"
+    },
+    "deleteConfirm": {
+      "title": "Deze geplande taak verwijderen?",
+      "body": "“{{name}}” wordt uit deze laag verwijderd. De run-historie blijft bewaard voor audit.",
+      "cta": "Taak verwijderen"
+    },
+    "toast": {
+      "created": "Geplande taak aangemaakt.",
+      "runQueued": "Run in de wachtrij gezet.",
+      "paused": "Taak gepauzeerd.",
+      "resumed": "Taak hervat.",
+      "deleted": "Taak verwijderd."
+    },
+    "dashboard": {
+      "recentRunsTitle": "Recente runs",
+      "empty": "Nog geen geplande runs in deze laag."
     }
   }
 }

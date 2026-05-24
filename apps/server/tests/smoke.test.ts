@@ -92,6 +92,13 @@ import {
   createTodoModule,
   todoEnrichmentJobs,
 } from '../src/entities/todos';
+import {
+  __resetScheduledTaskRegistryForTests,
+  createScheduledTasksRepo,
+  createScheduledRunSubscriber,
+  createScheduler,
+  registerScheduledTaskHandler,
+} from '../src/scheduled';
 import { createSecretsService, generateEncryptionKey } from '../src/storage/secrets';
 import { createLayerAttachmentsRepo } from '../src/repos/layer-attachments-repo';
 import type { ChatRequest, ChatResponse, LlmClient } from '../src/llm';
@@ -2835,6 +2842,89 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       todosEnrichmentRunner.stop();
       todoProjection.stop();
       __resetEntityRegistryForTests();
+    }
+
+    // -----------------------------------------------------------------
+    // 16. Phase 5.7 — scheduled-task spine. Registers a one-shot
+    //     fixture handler, inserts a task row whose `next_run_at` is
+    //     in the past, drives `scheduler.tickOnce()` against the
+    //     synchronous in-memory bus, and asserts a
+    //     `scheduled_task_runs` row landed with `status='succeeded'`.
+    //
+    //     This is the smallest end-to-end proof that the phase-5
+    //     wiring (registry → scheduler tick → bus publish → run
+    //     subscriber → handler) holds together against the smoke
+    //     harness. The durable-bus variant lives in
+    //     `apps/server/tests/smoke-worker.test.ts` and re-uses the
+    //     same shape via `DurableSqliteMessageBus`.
+    // -----------------------------------------------------------------
+    {
+      __resetScheduledTaskRegistryForTests();
+      let handlerInvocations = 0;
+      registerScheduledTaskHandler({
+        kind: 'smoke.scheduled.one-shot',
+        async run(): Promise<void> {
+          handlerInvocations += 1;
+        },
+      });
+      const scheduledRepo = createScheduledTasksRepo(database);
+      const scheduledRunSubscriber = createScheduledRunSubscriber({
+        db: database,
+        bus,
+        repo: scheduledRepo,
+        llm: llmClient,
+      });
+      scheduledRunSubscriber.start();
+      const scheduler = createScheduler({
+        db: database,
+        bus,
+        repo: scheduledRepo,
+        role: 'worker',
+        // Suppress boot-recovery so the tick publishes a `requested`
+        // row rather than a `skipped_offline` row on the seeded
+        // system tasks (which we did not seed here anyway, but the
+        // sweep is still skipped for clarity).
+        bootRecoveryGraceMultiplier: 1_000_000,
+      });
+      try {
+        const everyoneLayer = database
+          .query<
+            { id: string },
+            []
+          >("SELECT id FROM layers WHERE slug = 'everyone' AND deleted_at IS NULL")
+          .get();
+        if (everyoneLayer === null) throw new Error('smoke: everyone layer missing');
+        // `next_run_at` deliberately one minute in the past so the
+        // tick's due-set scan picks the row up.
+        const pastIso = new Date(Date.now() - 60_000).toISOString();
+        const inserted = scheduledRepo.insertTask({
+          id: crypto.randomUUID(),
+          layerId: everyoneLayer.id,
+          slug: 'smoke-one-shot',
+          kind: 'smoke.scheduled.one-shot',
+          name: 'Smoke one-shot',
+          schedule: { kind: 'interval', intervalMinutes: 1 },
+          nextRunAt: pastIso,
+          createdBy: admin.userId,
+          now: new Date().toISOString(),
+        });
+        const emitted = await scheduler.tickOnce();
+        expect(emitted).toBe(1);
+        // `InMemoryMessageBus` dispatches synchronously, so by the
+        // time `tickOnce()` resolves the run subscriber has already
+        // mutated the run row.
+        expect(handlerInvocations).toBe(1);
+        const runs = scheduledRepo.listRunsForTask(inserted.id);
+        expect(runs.length).toBeGreaterThanOrEqual(1);
+        expect(runs.some((r) => r.status === 'succeeded')).toBe(true);
+        const refreshed = scheduledRepo.getTaskById(inserted.id);
+        expect(refreshed?.attempt).toBe(0);
+        expect(refreshed?.nextRunAt).not.toBe(pastIso);
+      } finally {
+        scheduledRunSubscriber.stop();
+        scheduler.stop();
+        __resetScheduledTaskRegistryForTests();
+      }
     }
   });
 });
