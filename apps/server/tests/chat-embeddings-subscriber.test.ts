@@ -46,7 +46,9 @@ function companyModule(): EntityModule<unknown> {
   return {
     kind: 'company',
     tableName: 'companies',
-    payloadSchema: z.object({ name: z.string() }) as unknown as EntityModule<unknown>['payloadSchema'],
+    payloadSchema: z.object({
+      name: z.string(),
+    }) as unknown as EntityModule<unknown>['payloadSchema'],
     toSummary({ ref, meta, payload, title }) {
       const text = ((payload as { name?: string }).name ?? '').toLowerCase();
       return {
@@ -107,9 +109,7 @@ describe('phase 6.2 — embedding subscriber', () => {
     // a Map and goes with it.
   });
 
-  function startSubscriber(
-    fetchEntity: EmbeddingSubscriberDeps['fetchEntity'] = () => null,
-  ): void {
+  function startSubscriber(fetchEntity: EmbeddingSubscriberDeps['fetchEntity'] = () => null): void {
     const sub = createEmbeddingSubscriber({
       bus,
       embedder,

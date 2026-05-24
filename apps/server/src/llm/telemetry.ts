@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResponse, LlmClient } from './types';
+import type { ChatChunk, ChatRequest, ChatResponse, LlmClient } from './types';
 import type { LlmCallLog, LlmCallRow } from './call-log';
 import { estimateCostUsd, type PricingMap } from './pricing';
 import { redact } from './redaction';
@@ -37,7 +37,7 @@ export function withTelemetry(client: LlmClient, opts: TelemetryOpts): LlmClient
   const clock = opts.clock ?? ((): Date => new Date());
   const pricing = opts.pricing ?? {};
 
-  return {
+  const wrapped: LlmClient = {
     endpoint: client.endpoint,
     defaultModel: client.defaultModel,
     async chat(req: ChatRequest): Promise<ChatResponse> {
@@ -108,6 +108,127 @@ export function withTelemetry(client: LlmClient, opts: TelemetryOpts): LlmClient
       }
     },
   };
+
+  // Phase 6.4 — Surface `chatStream` on the wrapper only when the
+  // upstream client declared it. The wrapper accumulates chunks,
+  // forwards them to the caller via `yield`, and writes EXACTLY ONE
+  // `llm_calls` row when the stream finishes — success, hard error,
+  // or client abort. Aborted calls use `error = 'aborted'` (no new
+  // column) and persist the partial assistant text in `response`.
+  if (typeof client.chatStream === 'function') {
+    const upstreamStream = client.chatStream.bind(client);
+    const telemetryStream = async function* telemetryStream(
+      req: ChatRequest,
+    ): AsyncIterable<ChatChunk> {
+      const id = crypto.randomUUID();
+      if (opts.onCall !== undefined) {
+        try {
+          opts.onCall(id);
+        } catch {
+          // Swallow — telemetry must never break a model call.
+        }
+      }
+      const start = clock();
+      const startMs = start.getTime();
+      const model = req.model ?? client.defaultModel;
+      const meta = req.metadata ?? {};
+      const correlationId = stringOrNull(meta.correlationId);
+      const flowId = stringOrNull(meta.flowId);
+      const layerId = stringOrNull(meta.layerId);
+      const userId = stringOrNull(meta.userId);
+
+      const requestJson = JSON.stringify(redact(req));
+
+      let accumulated = '';
+      let finalModel = model;
+      let tokensIn: number | null = null;
+      let tokensOut: number | null = null;
+      let caughtError: unknown = null;
+      let aborted = false;
+
+      try {
+        const it = upstreamStream(req);
+        for await (const chunk of it) {
+          if (chunk.done === true) {
+            if (typeof chunk.delta === 'string' && chunk.delta.length > 0) {
+              accumulated += chunk.delta;
+            }
+            if (typeof chunk.model === 'string') finalModel = chunk.model;
+            if (typeof chunk.tokensIn === 'number') tokensIn = chunk.tokensIn;
+            if (typeof chunk.tokensOut === 'number') tokensOut = chunk.tokensOut;
+            yield chunk;
+            continue;
+          }
+          accumulated += chunk.delta;
+          yield chunk;
+        }
+      } catch (err) {
+        caughtError = err;
+        aborted = isAbortError(err) || req.signal?.aborted === true;
+        // fall through to logging block
+      }
+
+      const end = clock();
+      const latencyMs = Math.max(0, end.getTime() - startMs);
+
+      // Estimate token counts if the upstream did not report them
+      // — same `chars/4` heuristic used by the mock provider.
+      if (tokensOut === null) {
+        tokensOut = Math.max(0, Math.floor(accumulated.length / 4));
+      }
+      if (tokensIn === null) {
+        const inChars = req.messages.reduce((acc, m) => acc + m.content.length, 0);
+        tokensIn = Math.max(0, Math.floor(inChars / 4));
+      }
+
+      const responseForLog = {
+        id,
+        model: finalModel,
+        content: accumulated,
+        tokensIn,
+        tokensOut,
+        streamed: true,
+        aborted,
+      };
+
+      const row: LlmCallRow = {
+        id,
+        startedAt: start.toISOString(),
+        endedAt: end.toISOString(),
+        model: finalModel,
+        endpoint: client.endpoint,
+        request: requestJson,
+        response: JSON.stringify(redact(responseForLog)),
+        tokensIn,
+        tokensOut,
+        costUsd:
+          caughtError === null ? estimateCostUsd(finalModel, tokensIn, tokensOut, pricing) : null,
+        latencyMs,
+        correlationId,
+        flowId,
+        layerId,
+        userId,
+        error: caughtError === null ? null : aborted ? 'aborted' : stringifyError(caughtError),
+      };
+      opts.log.write(row);
+
+      if (caughtError !== null) {
+        throw caughtError;
+      }
+    };
+    (wrapped as { chatStream?: LlmClient['chatStream'] }).chatStream = telemetryStream;
+  }
+
+  return wrapped;
+}
+
+function isAbortError(err: unknown): boolean {
+  if (err instanceof Error) {
+    if (err.name === 'AbortError') return true;
+    // Bun + node surface `DOMException` for fetch aborts.
+    if ((err as { code?: string }).code === 'ABORT_ERR') return true;
+  }
+  return false;
 }
 
 function stringOrNull(value: unknown): string | null {

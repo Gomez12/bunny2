@@ -19,6 +19,7 @@ export {
   COMMAND_NOT_SUPPORTED_MESSAGE,
   SMALLTALK_FALLBACK_MESSAGE,
   AnswerTimeoutError,
+  AnswerAbortedError,
 } from './answer-step';
 
 export { InvalidStepOutputError, extractJsonObject } from './step-utils';
@@ -51,6 +52,10 @@ export {
   type PipelineLogger,
   type PipelineCounters,
   type PipelineLlm,
+  type PipelineLlmStreamChunk,
+  type PipelineChunkSink,
+  type PipelineStepEvent,
+  type PipelineStepEventSink,
 } from './types';
 
 export {

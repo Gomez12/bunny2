@@ -162,7 +162,10 @@ export function createLanceDbWriter(lance: LanceConnection): LanceWriter {
       if (!existing.includes(name)) return null;
       const table = tableCache.get(name) ?? (await lance.openTable(name));
       tableCache.set(name, table);
-      const iter = table.query().where(`id = '${sqlEscape(id)}'`).limit(1);
+      const iter = table
+        .query()
+        .where(`id = '${sqlEscape(id)}'`)
+        .limit(1);
       const rows: Array<Record<string, unknown>> = await iter.toArray();
       const first = rows[0];
       if (first === undefined) return null;

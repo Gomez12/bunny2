@@ -36,6 +36,14 @@ import { createScheduledTasksRepo } from '../scheduled/repo';
 import { registerScheduledTasksRoutes } from './routes/scheduled-tasks';
 import { registerAdminScheduledTasksRoutes } from './routes/admin-scheduled-tasks';
 import { registerAdminBusRoutes } from './routes/admin-bus';
+import { registerLayerChatRoutes } from './routes/layer-chat';
+import { createSqliteLlmCallLog } from '../llm/call-log';
+import {
+  createEntityStore as createGenericEntityStore,
+  getEntityModule,
+  type EntityModule,
+} from '../entities';
+import type { EntityKind, EntityStoreForRetrieval } from '../chat/pipeline';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -255,6 +263,54 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     bus: deps.bus,
     db: deps.db,
     ...(deps.replayDlq === undefined ? {} : { replayDlq: deps.replayDlq }),
+  });
+
+  // Phase 6.4 — per-layer chat HTTP routes (conversations CRUD +
+  // SSE answerer + feedback). `getEntityStore` is built lazily per
+  // kind on first call so a kind whose module was registered late
+  // (or never) returns `null` cleanly — the retrieval step then
+  // marks itself `skipped` for that kind without crashing.
+  const llmCallLog = createSqliteLlmCallLog(deps.db);
+  const entityStoreCache = new Map<EntityKind, EntityStoreForRetrieval | null>();
+  const getEntityStoreForChat = (kind: EntityKind): EntityStoreForRetrieval | null => {
+    const cached = entityStoreCache.get(kind);
+    if (cached !== undefined) return cached;
+    const module = getEntityModule(kind);
+    if (module === null) {
+      entityStoreCache.set(kind, null);
+      return null;
+    }
+    const store = createGenericEntityStore({
+      module: module as EntityModule<unknown>,
+      db: deps.db,
+      bus: deps.bus,
+      llm: deps.llmClient,
+    });
+    // Adapt the production store to the orchestrator's narrow
+    // interface; only `searchSummaries` is needed for retrieval.
+    const adapter: EntityStoreForRetrieval = {
+      searchSummaries(layerIds, query, opts) {
+        const rows = store.searchSummaries(layerIds, query, opts);
+        return rows.map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          layerId: r.layerId,
+          slug: r.slug,
+          title: r.title,
+          searchableText: r.searchableText,
+        }));
+      },
+    };
+    entityStoreCache.set(kind, adapter);
+    return adapter;
+  };
+  registerLayerChatRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
+    llm: deps.llmClient,
+    llmCallLog,
+    locales: deps.locales,
+    getEntityStore: getEntityStoreForChat,
   });
 
   // Phase 4d.6 — todo → calendar projection bridge. The READ side is

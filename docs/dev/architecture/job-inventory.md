@@ -33,13 +33,13 @@ Reference: [`scheduled-tasks.md`](./scheduled-tasks.md),
 
 <!-- job-inventory:start -->
 
-| kind                   | layer scope | default cadence | owner module                                             | touches LLM? |
-| ---------------------- | ----------- | --------------- | -------------------------------------------------------- | ------------ |
-| `llm.calls.prune`      | `everyone`  | every 24 h      | `apps/server/src/scheduled/built-in/llm-prune.ts`        | no           |
-| `system.healthcheck`   | `everyone`  | every 5 min     | `apps/server/src/scheduled/built-in/healthcheck.ts`      | no           |
-| `scheduled.runs.prune` | `everyone`  | every 24 h      | `apps/server/src/scheduled/built-in/runs-prune.ts`       | no           |
-| `bus.outbox.prune`     | `everyone`  | every 24 h      | `apps/server/src/scheduled/built-in/bus-outbox-prune.ts` | no           |
-| `chat.embeddings.backfill` | `everyone` | every 24 h  | `apps/server/src/chat/embeddings/backfill-handler.ts` | no           |
+| kind                       | layer scope | default cadence | owner module                                             | touches LLM? |
+| -------------------------- | ----------- | --------------- | -------------------------------------------------------- | ------------ |
+| `llm.calls.prune`          | `everyone`  | every 24 h      | `apps/server/src/scheduled/built-in/llm-prune.ts`        | no           |
+| `system.healthcheck`       | `everyone`  | every 5 min     | `apps/server/src/scheduled/built-in/healthcheck.ts`      | no           |
+| `scheduled.runs.prune`     | `everyone`  | every 24 h      | `apps/server/src/scheduled/built-in/runs-prune.ts`       | no           |
+| `bus.outbox.prune`         | `everyone`  | every 24 h      | `apps/server/src/scheduled/built-in/bus-outbox-prune.ts` | no           |
+| `chat.embeddings.backfill` | `everyone`  | every 24 h      | `apps/server/src/chat/embeddings/backfill-handler.ts`    | no           |
 
 <!-- job-inventory:end -->
 

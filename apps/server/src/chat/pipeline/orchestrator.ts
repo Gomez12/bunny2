@@ -49,6 +49,7 @@ import { createEntitiesStep, type EntitiesStepInput } from './entities-step';
 import { createRetrievalStep, type RetrievalStepInput } from './retrieval-step';
 import {
   createAnswerStep,
+  AnswerAbortedError,
   COMMAND_NOT_SUPPORTED_MESSAGE,
   SMALLTALK_FALLBACK_MESSAGE,
   type AnswerStepInput,
@@ -62,11 +63,13 @@ import {
   type EntityKind,
   type EntityStoreForRetrieval,
   type IntentOutput,
+  type PipelineChunkSink,
   type PipelineContext,
   type PipelineDeps,
   type PipelineLogger,
   type PipelineCounters,
   type PipelineStep,
+  type PipelineStepEventSink,
   type PipelineStepKind,
   type PipelineStepResult,
   type PipelineStepStatus,
@@ -115,6 +118,26 @@ export interface RunPipelineDeps {
   readonly counters?: PipelineCounters;
   readonly clock?: () => Date;
   readonly idFactory?: () => string;
+  /**
+   * Phase 6.4 — chunk sink the SSE route hands in. When omitted,
+   * the answerer falls back to non-streaming `chat()`. Existing 6.3
+   * orchestrator tests omit it and stay green.
+   */
+  readonly chunkSink?: PipelineChunkSink;
+  /**
+   * Phase 6.4 — HTTP request lifecycle signal. Wired into the
+   * answerer via the per-step LLM call. Mid-stream abort persists
+   * partial assistant content and marks the message `failed`.
+   */
+  readonly abortSignal?: AbortSignal;
+  /**
+   * Phase 6.4 — per-step lifecycle hook fired synchronously after
+   * each `chat.step.*` bus publish. The SSE route uses it to write
+   * `event: step` without subscribing to the in-process bus
+   * adapter. Receives the same `(kind, status, attempt, …)` tuple
+   * the bus event carries.
+   */
+  readonly onStepEvent?: PipelineStepEventSink;
 }
 
 export interface RunPipelineResult {
@@ -122,6 +145,15 @@ export interface RunPipelineResult {
   readonly assistantContent: string;
   readonly status: 'done' | 'failed';
   readonly runId: string;
+  /**
+   * Phase 6.4 — present when the answer step terminated because the
+   * upstream stream was cancelled (client disconnect or hard
+   * timeout). The route uses this to emit a `event: error` /
+   * `event: done` frame with the appropriate marker.
+   */
+  readonly aborted?: boolean;
+  /** Stable error code on the terminal failure path. */
+  readonly errorCode?: string;
 }
 
 /**
@@ -440,6 +472,12 @@ async function runStepWithPersistence<TIn, TOut>(
       correlationId: ctx.correlationId,
       flowId: ctx.flowId,
     });
+    safeStepEvent(deps.onStepEvent, {
+      kind: step.kind,
+      status: 'running',
+      attempt,
+      stepId,
+    });
 
     // Build a per-call telemetry wrapper for LLM-backed steps so we
     // capture the row id `withTelemetry` mints. The wrapper writes
@@ -461,6 +499,14 @@ async function runStepWithPersistence<TIn, TOut>(
       ...(deps.logger !== undefined ? { logger: deps.logger } : {}),
       ...(deps.counters !== undefined ? { counters: deps.counters } : {}),
       ...(deps.clock !== undefined ? { clock: deps.clock } : {}),
+      // Phase 6.4 — only the answer step actually consults these,
+      // but threading them through every step keeps the
+      // `PipelineDeps` shape uniform. The chunk sink is treated as
+      // an opt-in capability; absent → non-streaming.
+      ...(deps.chunkSink !== undefined && step.kind === 'answer'
+        ? { chunkSink: deps.chunkSink }
+        : {}),
+      ...(deps.abortSignal !== undefined ? { abortSignal: deps.abortSignal } : {}),
     };
 
     try {
@@ -493,6 +539,13 @@ async function runStepWithPersistence<TIn, TOut>(
         correlationId: ctx.correlationId,
         flowId: ctx.flowId,
       });
+      safeStepEvent(deps.onStepEvent, {
+        kind: step.kind,
+        status: result.status,
+        attempt,
+        stepId,
+        durationMs,
+      });
 
       counters.observeMs('chat.pipeline.step.duration_ms', durationMs, {
         kind: step.kind,
@@ -510,12 +563,19 @@ async function runStepWithPersistence<TIn, TOut>(
     } catch (err) {
       const endIso = clock().toISOString();
       const isZodFailure = err instanceof InvalidStepOutputError;
-      const errorCode = isZodFailure ? ERROR_CODES.InvalidStepOutput : errorCodeForStep(step.kind);
+      const isAbort = err instanceof AnswerAbortedError;
+      const errorCode = isZodFailure
+        ? ERROR_CODES.InvalidStepOutput
+        : isAbort
+          ? ERROR_CODES.AnswerAborted
+          : errorCodeForStep(step.kind);
       lastError = err;
       lastErrorCode = errorCode;
 
       const cap = isZodFailure ? zodMaxAttempts : maxAttempts;
-      const isFinal = attempt >= cap || (isZodFailure && !zodRetry);
+      // Aborts (client disconnect or upstream cancel) are terminal:
+      // the caller has gone, retrying would just waste tokens.
+      const isFinal = attempt >= cap || isAbort || (isZodFailure && !zodRetry);
 
       deps.stepsRepo.updateStep(stepId, {
         status: 'failed',
@@ -539,6 +599,13 @@ async function runStepWithPersistence<TIn, TOut>(
         },
         correlationId: ctx.correlationId,
         flowId: ctx.flowId,
+      });
+      safeStepEvent(deps.onStepEvent, {
+        kind: step.kind,
+        status: 'failed',
+        attempt,
+        stepId,
+        errorCode,
       });
 
       counters.inc('chat.pipeline.step.failed', 1, {
@@ -614,9 +681,23 @@ async function failPipelineWithFallback(
   const errorCode = err instanceof StepFailure ? err.errorCode : 'unknown_failure';
   const finishedAt = clock().toISOString();
 
+  // Phase 6.4 — if the answer step was aborted mid-stream the cause
+  // is an `AnswerAbortedError` carrying whatever partial content was
+  // streamed. Persist that on the message row so the user sees what
+  // the LLM had written so far. Other failures keep the canned
+  // fallback message.
+  let content = HARDFAIL_FALLBACK_MESSAGE;
+  let aborted = false;
+  if (err instanceof StepFailure && err.stepCause instanceof AnswerAbortedError) {
+    aborted = true;
+    if (err.stepCause.partial.length > 0) {
+      content = err.stepCause.partial;
+    }
+  }
+
   deps.messagesRepo.updateMessage(assistantMessageId, {
     status: 'failed',
-    content: HARDFAIL_FALLBACK_MESSAGE,
+    content,
     finishedAt,
   });
   deps.runsRepo.updateRun(runId, { status: 'failed', endedAt: finishedAt });
@@ -645,9 +726,11 @@ async function failPipelineWithFallback(
 
   return {
     assistantMessageId,
-    assistantContent: HARDFAIL_FALLBACK_MESSAGE,
+    assistantContent: content,
     status: 'failed',
     runId,
+    ...(aborted ? { aborted: true } : {}),
+    errorCode,
   };
 }
 
@@ -703,6 +786,28 @@ function safeStringify(value: unknown): string {
 function stringMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+/**
+ * Invoke the optional `onStepEvent` callback without letting a
+ * misbehaving consumer break the orchestrator. The HTTP SSE route is
+ * the primary consumer — we don't want a writer-side bug to mark a
+ * pipeline step as failed.
+ */
+function safeStepEvent(
+  sink: PipelineStepEventSink | undefined,
+  event: Parameters<PipelineStepEventSink>[0],
+): void {
+  if (sink === undefined) return;
+  try {
+    sink(event);
+  } catch (err) {
+    console.warn('[chat.pipeline] onStepEvent threw — swallowing', {
+      kind: event.kind,
+      status: event.status,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 // Re-export the topic registry so callers can wire subscribers in

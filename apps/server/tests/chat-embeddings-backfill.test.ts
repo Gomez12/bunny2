@@ -22,11 +22,7 @@ import {
 } from '../src/chat/embeddings/lance-tables';
 import { createMockEmbedder } from '../src/chat/embeddings/embedder';
 import type { EntityModule } from '../src/entities';
-import type {
-  ScheduledTask,
-  ScheduledTaskRun,
-  ScheduledTaskRunContext,
-} from '../src/scheduled';
+import type { ScheduledTask, ScheduledTaskRun, ScheduledTaskRunContext } from '../src/scheduled';
 
 function fakeModule(kind: string): EntityModule<unknown> {
   return {

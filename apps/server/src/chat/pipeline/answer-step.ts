@@ -1,5 +1,5 @@
 /**
- * Phase 6.3 — answer step (LLM, NON-STREAMED).
+ * Phase 6.3/6.4 — answer step.
  *
  * Composes the final assistant reply using:
  *   - a hard system prompt locking the model to retrieval output
@@ -10,9 +10,17 @@
  *   - the retrieval JSON,
  *   - the user message.
  *
- * Streaming variant lands in phase 6.4. Hard 60-second timeout is
- * enforced via `Promise.race`; the LLM client does NOT take an
- * AbortSignal today.
+ * Phase 6.4 changes:
+ *  - Streaming variant: when `deps.chunkSink` is provided AND
+ *    `deps.llm.chatStream` is a function, the answerer streams
+ *    chunks through `chunkSink` for the SSE route to forward as
+ *    `event: token`. Otherwise it falls back to the non-streaming
+ *    `chat()` path (keeps the 6.3 orchestrator tests green).
+ *  - 60s timeout is now an `AbortSignal` combined with any
+ *    caller-supplied signal (`deps.abortSignal` — wired from the
+ *    HTTP request lifecycle). Mid-stream abort surfaces as
+ *    `AnswerAbortedError`; the orchestrator marks the message
+ *    `failed` and persists whatever partial content was streamed.
  *
  * `command.*` intents short-circuit upstream in the orchestrator —
  * the answer step is `skipped` with a hard-coded "not yet supported
@@ -21,6 +29,7 @@
 
 import {
   AnswerOutputSchema,
+  ERROR_CODES,
   type AnswerOutput,
   type IntentOutput,
   type PipelineContext,
@@ -53,6 +62,24 @@ const SYSTEM_PROMPT = [
 export interface AnswerStepInput {
   readonly intent: IntentOutput;
   readonly retrieval: RetrievalOutput;
+}
+
+export class AnswerTimeoutError extends Error {
+  readonly errorCode = ERROR_CODES.AnswerTimeout;
+  constructor(timeoutMs: number) {
+    super(`answer step timed out after ${timeoutMs}ms`);
+    this.name = 'AnswerTimeoutError';
+  }
+}
+
+export class AnswerAbortedError extends Error {
+  readonly errorCode = ERROR_CODES.AnswerAborted;
+  readonly partial: string;
+  constructor(partial: string) {
+    super('answer step aborted (client disconnect or upstream cancel)');
+    this.name = 'AnswerAbortedError';
+    this.partial = partial;
+  }
 }
 
 export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> {
@@ -102,64 +129,210 @@ export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> 
         { role: 'user', content: ctx.userContent },
       ];
 
-      const callPromise = deps.llm.chat({
-        messages,
-        temperature: 0.1,
-        metadata: {
-          correlationId: ctx.correlationId,
-          flowId: ctx.flowId,
-          layerId: ctx.layerId,
-          userId: ctx.userId,
-          step: 'answer',
-        },
-      });
+      const metadata = {
+        correlationId: ctx.correlationId,
+        flowId: ctx.flowId,
+        layerId: ctx.layerId,
+        userId: ctx.userId,
+        step: 'answer',
+      } as const;
 
-      const res = await raceWithTimeout(callPromise, ANSWER_TIMEOUT_MS);
+      // Build a linked signal: combine the request signal (HTTP
+      // client disconnect) with the answerer's hard 60s timeout.
+      const timeoutController = new AbortController();
+      const timer = setTimeout(() => {
+        timeoutController.abort(new AnswerTimeoutError(ANSWER_TIMEOUT_MS));
+      }, ANSWER_TIMEOUT_MS);
 
-      const value: AnswerOutput = {
-        content: res.content,
-        tokensIn: res.tokensIn,
-        tokensOut: res.tokensOut,
-        model: res.model,
-        skipped: false,
-      };
-      const parsed = AnswerOutputSchema.parse(value);
-      return {
-        value: parsed,
-        // Persist only token counts + model + truncated marker to
-        // `chat_pipeline_steps.output_json`. The full assistant text
-        // already lands on `chat_messages.content`; duplicating it
-        // bloats the step log and complicates retention.
-        outputJson: JSON.stringify({
-          model: parsed.model,
-          tokensIn: parsed.tokensIn,
-          tokensOut: parsed.tokensOut,
-          contentBytes: parsed.content.length,
-          skipped: false,
-        }),
-        llmCallId: null,
-        status: 'succeeded',
-      };
+      const linkedSignal = linkSignals(deps.abortSignal, timeoutController.signal);
+
+      try {
+        const streamingPossible =
+          deps.chunkSink !== undefined && typeof deps.llm.chatStream === 'function';
+
+        if (streamingPossible) {
+          return await runStreaming(messages, metadata, linkedSignal, deps, timeoutController);
+        }
+        return await runNonStreaming(messages, metadata, linkedSignal, deps, timeoutController);
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }
 
-export class AnswerTimeoutError extends Error {
-  readonly errorCode = 'answer_timeout';
-  constructor(timeoutMs: number) {
-    super(`answer step timed out after ${timeoutMs}ms`);
-    this.name = 'AnswerTimeoutError';
+async function runNonStreaming(
+  messages: readonly { readonly role: 'system' | 'user' | 'assistant'; readonly content: string }[],
+  metadata: Readonly<Record<string, unknown>>,
+  signal: AbortSignal,
+  deps: PipelineDeps,
+  timeoutController: AbortController,
+): Promise<PipelineStepResult<AnswerOutput>> {
+  try {
+    const res = await deps.llm.chat({
+      messages,
+      temperature: 0.1,
+      metadata,
+      signal,
+    });
+    const value: AnswerOutput = {
+      content: res.content,
+      tokensIn: res.tokensIn,
+      tokensOut: res.tokensOut,
+      model: res.model,
+      skipped: false,
+      streamed: false,
+    };
+    const parsed = AnswerOutputSchema.parse(value);
+    return {
+      value: parsed,
+      outputJson: JSON.stringify({
+        model: parsed.model,
+        tokensIn: parsed.tokensIn,
+        tokensOut: parsed.tokensOut,
+        contentBytes: parsed.content.length,
+        skipped: false,
+        streamed: false,
+      }),
+      llmCallId: null,
+      status: 'succeeded',
+    };
+  } catch (err) {
+    throw translateAnswerError(err, '', timeoutController);
   }
 }
 
-async function raceWithTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => reject(new AnswerTimeoutError(timeoutMs)), timeoutMs);
-  });
-  try {
-    return await Promise.race([p, timeout]);
-  } finally {
-    if (timer !== null) clearTimeout(timer);
+async function runStreaming(
+  messages: readonly { readonly role: 'system' | 'user' | 'assistant'; readonly content: string }[],
+  metadata: Readonly<Record<string, unknown>>,
+  signal: AbortSignal,
+  deps: PipelineDeps,
+  timeoutController: AbortController,
+): Promise<PipelineStepResult<AnswerOutput>> {
+  const chatStream = deps.llm.chatStream;
+  if (chatStream === undefined) {
+    throw new Error('runStreaming called without chatStream — defensive branch');
   }
+  const sink = deps.chunkSink;
+  if (sink === undefined) {
+    throw new Error('runStreaming called without chunkSink — defensive branch');
+  }
+
+  let accumulated = '';
+  let tokensIn: number | null = null;
+  let tokensOut: number | null = null;
+  let finalModel: string = deps.llm.defaultModel;
+
+  try {
+    const iter = chatStream({
+      messages,
+      temperature: 0.1,
+      metadata,
+      signal,
+    });
+    for await (const chunk of iter) {
+      if (chunk.done === true) {
+        if (typeof chunk.delta === 'string' && chunk.delta.length > 0) {
+          accumulated += chunk.delta;
+          sink({ delta: chunk.delta });
+        }
+        if (typeof chunk.tokensIn === 'number') tokensIn = chunk.tokensIn;
+        if (typeof chunk.tokensOut === 'number') tokensOut = chunk.tokensOut;
+        if (typeof chunk.model === 'string' && chunk.model.length > 0) finalModel = chunk.model;
+        continue;
+      }
+      const delta = chunk.delta ?? '';
+      if (delta.length > 0) {
+        accumulated += delta;
+        sink({ delta });
+      }
+    }
+  } catch (err) {
+    throw translateAnswerError(err, accumulated, timeoutController);
+  }
+
+  // Fall back to char-count estimates when the upstream did not
+  // report `usage` — keeps the assertion that token counts are
+  // present on the assistant message row.
+  if (tokensOut === null) tokensOut = Math.max(0, Math.floor(accumulated.length / 4));
+  if (tokensIn === null) {
+    const inChars = messages.reduce((acc, m) => acc + m.content.length, 0);
+    tokensIn = Math.max(0, Math.floor(inChars / 4));
+  }
+
+  const value: AnswerOutput = {
+    content: accumulated,
+    tokensIn,
+    tokensOut,
+    model: finalModel,
+    skipped: false,
+    streamed: true,
+  };
+  const parsed = AnswerOutputSchema.parse(value);
+  return {
+    value: parsed,
+    outputJson: JSON.stringify({
+      model: parsed.model,
+      tokensIn: parsed.tokensIn,
+      tokensOut: parsed.tokensOut,
+      contentBytes: parsed.content.length,
+      skipped: false,
+      streamed: true,
+    }),
+    llmCallId: null,
+    status: 'succeeded',
+  };
+}
+
+function translateAnswerError(
+  err: unknown,
+  partial: string,
+  timeoutController: AbortController,
+): Error {
+  // The hard 60s timeout AbortController aborts with our typed
+  // `AnswerTimeoutError`; signal.reason carries it. Distinguishing
+  // timeout from caller-abort matters because timeout is a hard
+  // failure while caller-abort is "client disconnected mid-stream".
+  if (timeoutController.signal.aborted === true) {
+    const reason = timeoutController.signal.reason;
+    if (reason instanceof AnswerTimeoutError) return reason;
+    return new AnswerTimeoutError(ANSWER_TIMEOUT_MS);
+  }
+  if (err instanceof Error) {
+    if (err.name === 'AbortError' || (err as { code?: string }).code === 'ABORT_ERR') {
+      return new AnswerAbortedError(partial);
+    }
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+/**
+ * Combine zero or more `AbortSignal`s into one that aborts when any
+ * input aborts. Falls back to a pass-through when only one input is
+ * present. `AbortSignal.any(...)` is the standard one-liner, but
+ * Bun's older runtimes do not always expose it on the global; this
+ * helper degrades gracefully.
+ */
+function linkSignals(...signals: readonly (AbortSignal | undefined)[]): AbortSignal {
+  const real = signals.filter((s): s is AbortSignal => s !== undefined);
+  if (real.length === 0) {
+    return new AbortController().signal;
+  }
+  if (real.length === 1) {
+    const onlySignal = real[0];
+    if (onlySignal !== undefined) return onlySignal;
+  }
+  const anyFn = (AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal }).any;
+  if (typeof anyFn === 'function') {
+    return anyFn.call(AbortSignal, [...real]);
+  }
+  const combined = new AbortController();
+  for (const sig of real) {
+    if (sig.aborted) {
+      combined.abort(sig.reason);
+      break;
+    }
+    sig.addEventListener('abort', () => combined.abort(sig.reason), { once: true });
+  }
+  return combined.signal;
 }

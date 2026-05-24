@@ -449,9 +449,7 @@ console.log(
   `[${appName}] llm:         ${llmClient.endpoint} (default=${llmClient.defaultModel}, calls=${llmCallLog.count()})`,
 );
 console.log(`[${appName}] scheduler:   ${role === 'web' ? 'disabled, role=web' : 'enabled'}`);
-console.log(
-  `[${appName}] embeddings:  ${embedder.id} (dims=${embedder.dimensions})`,
-);
+console.log(`[${appName}] embeddings:  ${embedder.id} (dims=${embedder.dimensions})`);
 console.log(
   `[${appName}] system-tasks: ${systemTasksSeedResult.seeded ? `${systemTasksSeedResult.created} seeded` : 'already seeded'}`,
 );

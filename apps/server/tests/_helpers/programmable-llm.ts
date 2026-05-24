@@ -14,7 +14,7 @@
  * still pass.
  */
 
-import type { ChatRequest, ChatResponse, LlmClient } from '../../src/llm/types';
+import type { ChatChunk, ChatRequest, ChatResponse, LlmClient } from '../../src/llm/types';
 
 export interface ProgrammableLlmReply {
   /** Free-form content sent back to the orchestrator. */
@@ -26,6 +26,23 @@ export interface ProgrammableLlmReply {
   readonly tokensOut?: number;
   /** Throw this instead of returning a reply. */
   readonly throwError?: Error;
+  /**
+   * Phase 6.4 — emit `content` as N chunks when the answer step
+   * calls `chatStream`. Default chunkCount = 4. Used by the SSE
+   * route tests.
+   */
+  readonly streamChunkCount?: number;
+  /**
+   * Phase 6.4 — when set, abort the stream after this many
+   * non-terminal chunks have been delivered (simulates a server
+   * upstream failing mid-stream). Throws an `AbortError`.
+   */
+  readonly abortAfterChunks?: number;
+  /**
+   * Phase 6.4 — when set, sleep for N ms between chunks. Lets the
+   * client-abort test cancel the request mid-stream.
+   */
+  readonly chunkDelayMs?: number;
 }
 
 export interface ProgrammableLlmCall {
@@ -75,6 +92,79 @@ export function createProgrammableLlm(opts: ProgrammableLlmOpts = {}): Programma
   const client: ProgrammableLlmClient = {
     endpoint,
     defaultModel,
+    async *chatStream(req: ChatRequest): AsyncIterable<ChatChunk> {
+      const step =
+        typeof req.metadata?.step === 'string' && req.metadata.step.length > 0
+          ? req.metadata.step
+          : null;
+      let response: ChatResponse | null = null;
+      let error: Error | null = null;
+
+      const reply = pop(step);
+      const chunkCount = reply.streamChunkCount ?? 4;
+      const inChars = req.messages.reduce((acc, m) => acc + m.content.length, 0);
+      const tokensIn = reply.tokensIn ?? Math.max(0, Math.floor(inChars / 4));
+      const tokensOut = reply.tokensOut ?? Math.max(0, Math.floor(reply.content.length / 4));
+
+      try {
+        if (reply.throwError) {
+          error = reply.throwError;
+          throw error;
+        }
+        const chunkLen = Math.max(1, Math.ceil(reply.content.length / chunkCount));
+        const pieces: string[] = [];
+        for (let i = 0; i < reply.content.length; i += chunkLen) {
+          pieces.push(reply.content.slice(i, i + chunkLen));
+        }
+        for (let i = 0; i < pieces.length; i += 1) {
+          if (req.signal?.aborted === true) {
+            const abortErr = new Error('aborted');
+            abortErr.name = 'AbortError';
+            error = abortErr;
+            throw abortErr;
+          }
+          if (reply.abortAfterChunks !== undefined && i >= reply.abortAfterChunks) {
+            const abortErr = new Error('upstream aborted');
+            abortErr.name = 'AbortError';
+            error = abortErr;
+            throw abortErr;
+          }
+          if (reply.chunkDelayMs !== undefined && reply.chunkDelayMs > 0) {
+            await new Promise<void>((resolve, reject) => {
+              const timer = setTimeout(resolve, reply.chunkDelayMs);
+              const sig = req.signal;
+              if (sig !== undefined) {
+                const onAbort = (): void => {
+                  clearTimeout(timer);
+                  const abortErr = new Error('aborted');
+                  abortErr.name = 'AbortError';
+                  reject(abortErr);
+                };
+                if (sig.aborted) onAbort();
+                else sig.addEventListener('abort', onAbort, { once: true });
+              }
+            });
+          }
+          yield { delta: pieces[i] ?? '' };
+        }
+        response = {
+          id: crypto.randomUUID(),
+          model: reply.model ?? defaultModel,
+          content: reply.content,
+          tokensIn,
+          tokensOut,
+          raw: { provider: 'programmable', endpoint },
+        };
+        yield { done: true, tokensIn, tokensOut, model: reply.model ?? defaultModel };
+      } finally {
+        calls.push({
+          step,
+          messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+          response,
+          error,
+        });
+      }
+    },
     async chat(req: ChatRequest): Promise<ChatResponse> {
       const step =
         typeof req.metadata?.step === 'string' && req.metadata.step.length > 0

@@ -8,6 +8,7 @@ import { InMemoryMessageBus } from '@bunny2/bus/test-utils';
 import { createApp } from '../../src/http/router';
 import type { StatusBody } from '../../src/http/router';
 import { createLlmClient } from '../../src/llm/client';
+import type { LlmClient } from '../../src/llm/types';
 import { createSqliteEventLog } from '../../src/bus/event-log';
 import { openDatabase } from '../../src/storage/sqlite';
 import { AuthConfigSchema, LocalesConfigSchema } from '../../src/config/schema';
@@ -50,6 +51,12 @@ export interface MakeTestAppOptions {
   readonly prefix?: string;
   /** Run the admin seed before constructing `createApp`. Default `false`. */
   readonly seedAdmin?: boolean;
+  /**
+   * Phase 6.4 — override the default `mock://echo` client. Used by
+   * the chat-route tests to inject a programmable / streaming LLM
+   * so SSE assertions are deterministic.
+   */
+  readonly llmClient?: LlmClient;
 }
 
 export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): TestApp {
@@ -66,11 +73,13 @@ export function makeTestApp(prefixOrOptions: string | MakeTestAppOptions = {}): 
       errorCaptureMiddleware(),
     ],
   });
-  const llmClient = createLlmClient({
-    endpoint: 'mock://echo',
-    apiKey: '',
-    defaultModel: 'mock-default',
-  });
+  const llmClient =
+    opts.llmClient ??
+    createLlmClient({
+      endpoint: 'mock://echo',
+      apiKey: '',
+      defaultModel: 'mock-default',
+    });
 
   // The seed must run BEFORE the resolver and the app so the
   // `requireAdmin` middleware factory observes the seeded

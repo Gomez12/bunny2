@@ -116,6 +116,10 @@ export const AnswerOutputSchema = z
     model: z.string(),
     /** True when the answerer was skipped (command.* short-circuit). */
     skipped: z.boolean(),
+    /** Phase 6.4 — true when the stream was cancelled mid-response. */
+    aborted: z.boolean().optional(),
+    /** Phase 6.4 — true when the answer was streamed (vs. non-stream). */
+    streamed: z.boolean().optional(),
   })
   .strict();
 export type AnswerOutput = z.infer<typeof AnswerOutputSchema>;
@@ -171,13 +175,42 @@ export interface PipelineDeps {
   readonly counters?: PipelineCounters;
   /** Override now() in tests. */
   readonly clock?: () => Date;
+  /**
+   * Phase 6.4 — chunk sink for the answer step. When provided AND
+   * the step's wrapped LLM exposes `chatStream`, the answerer
+   * streams; otherwise it falls back to non-streaming `chat()`.
+   */
+  readonly chunkSink?: PipelineChunkSink;
+  /**
+   * Phase 6.4 — caller abort signal (HTTP client disconnect). The
+   * orchestrator combines it with the per-step 60 s timeout into a
+   * single linked signal handed to `chatStream`/`chat`. Mid-stream
+   * abort surfaces as an `AbortError` from the iterator, persists
+   * the partial assistant content, and marks the message `failed`.
+   */
+  readonly abortSignal?: AbortSignal;
 }
 
 /**
  * Narrow `LlmClient` shape — same as the production interface but
  * declared here so the step files don't import from `../../llm` in
  * test fixtures.
+ *
+ * Phase 6.4 — `chatStream` is the optional streaming counterpart to
+ * `chat`. The answer step uses it when (a) the upstream client
+ * exposes it AND (b) the orchestrator was handed a chunk sink. The
+ * fall-back to `chat()` keeps non-streaming environments (the
+ * existing 6.3 integration test, the programmable-LLM fixture)
+ * working unchanged.
  */
+export interface PipelineLlmStreamChunk {
+  readonly delta?: string;
+  readonly done?: boolean;
+  readonly tokensIn?: number;
+  readonly tokensOut?: number;
+  readonly model?: string;
+}
+
 export interface PipelineLlm {
   readonly endpoint: string;
   readonly defaultModel: string;
@@ -190,6 +223,7 @@ export interface PipelineLlm {
     readonly temperature?: number;
     readonly maxTokens?: number;
     readonly metadata?: Readonly<Record<string, unknown>>;
+    readonly signal?: AbortSignal;
   }): Promise<{
     readonly id: string;
     readonly model: string;
@@ -197,7 +231,43 @@ export interface PipelineLlm {
     readonly tokensIn: number;
     readonly tokensOut: number;
   }>;
+  chatStream?(req: {
+    readonly model?: string;
+    readonly messages: readonly {
+      readonly role: 'system' | 'user' | 'assistant';
+      readonly content: string;
+    }[];
+    readonly temperature?: number;
+    readonly maxTokens?: number;
+    readonly metadata?: Readonly<Record<string, unknown>>;
+    readonly signal?: AbortSignal;
+  }): AsyncIterable<PipelineLlmStreamChunk>;
 }
+
+/**
+ * Phase 6.4 — chunk sink the SSE route hands the orchestrator. One
+ * call per non-terminal `delta` from the answerer; the route writes
+ * `event: token` to the SSE stream. Terminal frames are NOT passed
+ * here — the orchestrator emits its own `done` event after the step
+ * row is persisted.
+ */
+export type PipelineChunkSink = (chunk: { readonly delta: string }) => void;
+
+/**
+ * Phase 6.4 — per-step lifecycle hook for the SSE route. Fires
+ * synchronously after the orchestrator publishes the corresponding
+ * `chat.step.*` bus event so the SSE writer can emit `event: step`
+ * without subscribing to the in-process bus adapter.
+ */
+export interface PipelineStepEvent {
+  readonly kind: PipelineStepKind;
+  readonly status: 'running' | PipelineStepStatus;
+  readonly attempt: number;
+  readonly stepId: string;
+  readonly durationMs?: number;
+  readonly errorCode?: string;
+}
+export type PipelineStepEventSink = (event: PipelineStepEvent) => void;
 
 export interface EntityStoreForRetrieval {
   /**
@@ -257,6 +327,7 @@ export const ERROR_CODES = Object.freeze({
   InvalidStepOutput: 'invalid_step_output',
   AnswerTimeout: 'answer_timeout',
   AnswerLlmFailed: 'answer_llm_failed',
+  AnswerAborted: 'answer_aborted',
   IntentLlmFailed: 'intent_llm_failed',
   EntitiesLlmFailed: 'entities_llm_failed',
   RetrievalFailed: 'retrieval_failed',

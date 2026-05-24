@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResponse, LlmClient, LlmProvider } from './types';
+import type { ChatChunk, ChatRequest, ChatResponse, LlmClient, LlmProvider } from './types';
 import { createMockProvider } from './providers/mock';
 import { createOpenAiCompatibleProvider } from './providers/openai-compatible';
 
@@ -23,7 +23,7 @@ export interface CreateLlmClientOpts {
 export function createLlmClient(opts: CreateLlmClientOpts): LlmClient {
   const provider = pickProvider(opts);
 
-  return {
+  const client: LlmClient = {
     endpoint: provider.endpoint,
     defaultModel: opts.defaultModel,
     async chat(req: ChatRequest): Promise<ChatResponse> {
@@ -31,6 +31,21 @@ export function createLlmClient(opts: CreateLlmClientOpts): LlmClient {
       return provider.chat({ ...req, model });
     },
   };
+
+  // Surface `chatStream` only when the underlying provider declared
+  // it — keeps `'chatStream' in client` a faithful capability check
+  // for the answer step / SSE route.
+  if (typeof provider.chatStream === 'function') {
+    const providerStream = provider.chatStream.bind(provider);
+    (client as { chatStream?: LlmClient['chatStream'] }).chatStream = function chatStream(
+      req: ChatRequest,
+    ): AsyncIterable<ChatChunk> {
+      const model = req.model ?? opts.defaultModel;
+      return providerStream({ ...req, model });
+    };
+  }
+
+  return client;
 }
 
 function pickProvider(opts: CreateLlmClientOpts): LlmProvider {
