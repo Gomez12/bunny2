@@ -3434,3 +3434,161 @@ todoEnrichmentJobs });`. No further router change needed —
   future job needs to overwrite a non-empty field. For 4d.3 the
   "fill the blank" default is the right call — never clobber a
   user-set `priority` or `dueAt`.
+
+### 4d.3 shipped (2026-05-24)
+
+**What landed**
+
+- Two todos enrichment jobs in
+  `apps/server/src/entities/todos/enrichment.ts`:
+  - `todos.autoPriority` (runs on `created` / `updated`; NOT
+    `sync.succeeded` — no real todos connector ships in v1).
+    Strategy: keyword scan on `title + description` (en + nl) →
+    tag scan on `payload.tags` → due-date proximity against
+    `payload.dueAt` → LLM fallback at confidence ≥ 0.8. Job-level
+    gate: skip when `payload.priority !== undefined && payload.
+priority !== 3` (the user moved the priority off the default),
+    OR when `status` is `'done'` / `'cancelled'`.
+  - `todos.autoDue` (runs on `created` / `updated`). Strategy:
+    natural-language phrase scan on the lowercase title only.
+    Handles `tomorrow` / `morgen`, `today` / `vandaag`,
+    `next <weekday>` / `volgende <weekday>`, `by <weekday>` /
+    `voor <weekday>`, `this week` / `deze week`. **Deliberately
+    no LLM fallback** — date hallucination has user-visible side
+    effects. Skipped when `dueAt` is set OR `status` is `'done'` /
+    `'cancelled'`.
+- `CreateTodoModuleOptions` extended with
+  `enrichmentJobs?: readonly EnrichmentJob<TodoPayload>[]`
+  (conditional-spread; `module.enrichmentJobs` stays `undefined`
+  when omitted, matching the calendar precedent). The default
+  singleton stays enrichment-less; production wiring opts in via
+  `buildProductionTodoModule()` returning `createTodoModule({
+enrichmentJobs: todoEnrichmentJobs })`.
+- Todo module declares
+  `enrichmentOverwriteFields: ['priority']`. **This is a
+  deliberate deviation from the brief, which asked for an empty
+  list "matching the 4b.3 contacts shape".** The deviation is
+  forced by the zod schema: `priority` defaults to `3`, so every
+  stored payload has `priority: 3` even when the user did not
+  specify one. Without the slot, the runner's "do not overwrite
+  non-empty fields" rule drops the auto-priority patch. The job's
+  own gate (`priority !== undefined && priority !== 3 → skip`) is
+  the user-intent protection — STRICTER than the runner's
+  "non-empty" check. `dueAt` has no schema default and is
+  genuinely `undefined` when unset, so the slot does not need it.
+  See `docs/dev/decisions/0013-entity-enrichment.md` Update
+  (4d.3) for the rationale.
+
+**Foundation tweaks**
+
+- **None.** `enrichmentJobs` (added in 4a.3) and
+  `enrichmentOverwriteFields` (added in 4c.3) are both consumed
+  cleanly. Todos is the FOURTH consumer of `enrichmentJobs`
+  (after companies / contacts / calendar) — the slot was
+  designed to handle exactly this kind of additive consumer.
+
+**Date parsing — hand-roll vs. library**
+
+The deterministic phrase scan handles ~14 short phrases in en + nl.
+Total surface fits in ~60 lines of TypeScript. Bringing in a
+date-parsing library (`chrono-node`, `date-fns`, etc.) would:
+
+- Add a third-party dep for a small surface (AGENTS.md "no
+  dependency for trivial work").
+- Open a larger phrase set that might surprise users with
+  unexpected matches — the v1 stance is "show evidence or stay
+  silent" exactly because we DON'T want surprises.
+- Sit unused outside the enrichment job, so the dep weight has no
+  amortisation.
+
+Conclusion: hand-rolled. A future v2 can swap in a library if the
+phrase set genuinely grows; the entire scan is one private
+function (`parseDueAtFromTitle`) that is trivial to replace.
+
+**Tests**
+
+- `apps/server/tests/entities/todos-enrichment.test.ts` — twelve
+  scenarios covering both jobs:
+  1. Auto-priority via keyword scan (no LLM call).
+  2. Auto-priority via tag scan (no LLM call).
+  3. Auto-priority via due-date proximity (no LLM call).
+  4. Auto-priority LLM fallback — high confidence applied (one
+     call).
+  5. Auto-priority LLM fallback — low confidence rejected.
+  6. Auto-priority no-overwrite invariant — user-set priority 4
+     survives an "urgent" title; LLM never called.
+  7. Auto-priority skip on `status: 'done'` — urgent keyword
+     ignored.
+  8. Auto-due via Dutch "morgen" (deterministic, no LLM call).
+  9. Auto-due via English "next monday" (deterministic, no LLM
+     call; the test seeds a `p2` tag so auto-priority also
+     short-circuits and the LLM count stays at 0).
+  10. Auto-due no-overwrite invariant — user-set dueAt survives a
+      "morgen" title; no LLM call.
+  11. Auto-due no LLM fallback — title without any date phrase
+      yields no dueAt patch and no `enrichment:todos.autoDue`
+      call.
+  12. Secret-strip canary — hypothetical connector apiKey on the
+      layer's `layer_attachments.config` never appears in any LLM
+      prompt or any bus event payload.
+- `apps/server/tests/entities/todos-module.test.ts`,
+  `todos-contract.test.ts`, `todos-link-validation.test.ts` stay
+  green with no modifications.
+
+**i18n**
+
+- `entity.enrichment.todos.autoPriority.{running, applied,
+noMatch}` and `entity.enrichment.todos.autoDue.{running, applied,
+noMatch}` (en + nl). Minimal status-label-only set; the 4d.5 web
+  UI will consume these.
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10c — extended the
+  deterministic-first / LLM-fallback subsection with todos as the
+  fourth application, and added the generalisation "LLM is
+  optional, not mandatory, in the fallback chain". §10c.i — added
+  the `todo` row to the per-module overwrite-fields table.
+- `docs/dev/decisions/0013-entity-enrichment.md` — appended
+  "Update (4d.3) — LLM fallback is optional, not mandatory" plus
+  the `enrichmentOverwriteFields: ['priority']` note.
+- `docs/dev/tasklist.md` — 4d.3 row → `done`.
+- No new ADR.
+
+**Notable for 4d.4 (dashboard widget)**
+
+- Two new headline numbers fall out cleanly:
+  - "auto-priority patches applied today" — count
+    `entity.enrichment.succeeded` events where
+    `jobId === 'todos.autoPriority'` and `hasPatch === true` in a
+    24h window.
+  - "auto-due patches applied today" — symmetric to the above.
+- Same shape as the 4b.3 / 4c.3 follow-ups: a subscriber on
+  `entity.enrichment.succeeded` can derive both counts without
+  touching the todos table.
+
+**Notable for 4d.5 (web UI — kanban + list)**
+
+- `payload.priority` and `payload.dueAt` are now AI-assisted
+  surfaces. The UI should treat them as "user can edit, AI will
+  refine when empty". A small "AI suggested" badge next to a
+  priority that the runner set (visible via the recent
+  `entity.enrichment.succeeded` event for that entity + jobId)
+  would help the user discover the feature.
+- The brief's status-label-only i18n keys
+  (`entity.enrichment.todos.{autoPriority, autoDue}.{running,
+applied, noMatch}`) are the minimum surface the UI needs;
+  extend with `appliedToast` / `tooltip` strings as the design
+  fills in.
+
+**Notable for 4d.6 (calendar bridge)**
+
+- A todo with `dueAt` set by `todos.autoDue` projects identically
+  to a user-typed `dueAt` — the projection subscriber should NOT
+  read the enrichment soul-stamp; just project `payload.dueAt` as-is.
+- The bridge's "todo is now a calendar all-day entry" rule will
+  fire on `entity.todo.updated` events that include the new
+  `dueAt`. Because the runner emits `entity.todo.updated` AFTER
+  applying the auto-due patch (via `store.update`), the bridge
+  picks the new date up on the very next tick without any
+  special-casing.

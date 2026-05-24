@@ -277,6 +277,20 @@
       "addExternalLink": "Extern systeem koppelen",
       "removeExternalLink": "Koppeling verwijderen"
     },
+    "enrichment": {
+      "todos": {
+        "autoPriority": {
+          "running": "Bezig met prioriteit voorstellen…",
+          "applied": "Prioriteit voorgesteld.",
+          "noMatch": "Geen prioriteitsvoorstel."
+        },
+        "autoDue": {
+          "running": "Bezig met einddatum voorstellen…",
+          "applied": "Einddatum voorgesteld.",
+          "noMatch": "Geen einddatumvoorstel."
+        }
+      }
+    },
     "companies": {
       "subtitle": {
         "noDetails": "Nog geen KvK-nummer of website."

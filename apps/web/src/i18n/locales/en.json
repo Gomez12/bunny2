@@ -498,6 +498,20 @@
       "addExternalLink": "Link external system",
       "removeExternalLink": "Remove link"
     },
+    "enrichment": {
+      "todos": {
+        "autoPriority": {
+          "running": "Suggesting a priority…",
+          "applied": "Priority suggested.",
+          "noMatch": "No priority suggestion."
+        },
+        "autoDue": {
+          "running": "Suggesting a due date…",
+          "applied": "Due date suggested.",
+          "noMatch": "No due date suggestion."
+        }
+      }
+    },
     "companies": {
       "subtitle": {
         "noDetails": "No KvK number or website yet."

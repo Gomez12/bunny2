@@ -10,6 +10,7 @@ import { mountEntityRoutes } from '../router';
 import { getEntityModule, registerEntityModule } from '../registry';
 import type { EntityModule } from '../module';
 import { todoModule, createTodoModule } from './module';
+import { todoEnrichmentJobs } from './enrichment';
 import { validateTodoLinkedEntity } from './validate-link';
 
 export {
@@ -21,6 +22,8 @@ export {
 } from './module';
 
 export { validateTodoLinkedEntity, type ValidateLinkedEntityResult } from './validate-link';
+
+export { todoAutoPriorityJob, todoAutoDueJob, todoEnrichmentJobs } from './enrichment';
 
 /**
  * Phase 4d.1 — wire-up helper for the todos module.
@@ -99,7 +102,13 @@ export function registerTodoModule(
  * === []` as a contract assertion.
  */
 export function buildProductionTodoModule(): EntityModule<TodoPayload> {
-  return createTodoModule();
+  // Phase 4d.3 — wire the two production enrichment jobs
+  // (`todos.autoPriority`, `todos.autoDue`). Both are deterministic-
+  // first; `autoPriority` falls back to the LLM at low confidence,
+  // `autoDue` deliberately omits the LLM fallback (date hallucination
+  // has user-visible side effects). No `connectors` are wired — v1
+  // ships no real todos connector (see 4d.2 close-out).
+  return createTodoModule({ enrichmentJobs: todoEnrichmentJobs });
 }
 
 const NOT_VISIBLE = { error: 'errors.layer.notVisible' } as const;

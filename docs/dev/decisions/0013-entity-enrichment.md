@@ -337,3 +337,46 @@ contract, and the 4a.3 close-out predicted it. See
 `docs/dev/architecture/entities.md` §10c.i and
 `docs/dev/plans/phase-04-first-entities.md` §14 "4a.3 shipped"
 follow-up bullet for the prediction.
+
+## Update (4d.3) — LLM fallback is optional, not mandatory
+
+The deterministic-first / LLM-fallback pattern (this ADR section
+10, plus 4b.3 / 4c.3 applications) assumed every job ends with an
+LLM step when the deterministic chain misses. Todos enrichment
+(4d.3) introduces the first concrete job that deliberately omits
+the fallback:
+
+- `todos.autoPriority` keeps the four-step chain: keyword scan →
+  tag scan → due-date proximity → LLM fallback at confidence
+  ≥ 0.8.
+- `todos.autoDue` stops at the deterministic step. The natural-
+  language phrase scan handles a small hand-rolled set
+  (`tomorrow`, `morgen`, `today`, `vandaag`, `next <weekday>`,
+  `voor <weekday>`, …). When the scan misses, the job returns
+  `{}`. **No LLM call is made.**
+
+The rationale: a hallucinated due date has user-visible
+side effects — a wrong calendar entry, a wrong dashboard "due
+this week" bucket, a wrong missed-deadline alert — and the
+upside of guessing is small. The generalised rule:
+
+> When the cost of a wrong guess exceeds the cost of no guess,
+> a job MAY omit the LLM fallback.
+
+Concretely: priority is bounded (1-5), recoverable (the user
+just nudges the slider), and benefits from a soft suggestion;
+dates are unbounded, harder to spot-check, and the user has
+already shown they did not type one. The asymmetry justifies
+the asymmetric strategy.
+
+Also new in 4d.3: the todo module declares
+`enrichmentOverwriteFields: ['priority']`. The zod schema defaults
+`priority` to `3`, so after parse every payload has `priority: 3`
+even when the user never specified one. Without the slot the
+runner's "do not overwrite non-empty fields" rule would drop the
+auto-priority patch. The job's own gate (`priority !== undefined &&
+priority !== 3 → skip`) is the actual user-intent protection — it
+is STRICTER than the runner's check. `dueAt` has no schema default
+so the slot does not need it. See
+`docs/dev/architecture/entities.md` §10c.i for the per-module
+table.

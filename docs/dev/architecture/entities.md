@@ -750,6 +750,41 @@ below. Per-attendee merging happens INSIDE the job: attendees whose
 `contactEntityId` is already set are never modified — same hard gate
 the contacts job exposes.
 
+The fourth application is the pair of todos jobs (4d.3,
+`apps/server/src/entities/todos/enrichment.ts`):
+
+- `todos.autoPriority` walks a deterministic chain (title /
+  description keyword scan → tag scan → `dueAt` proximity → LLM
+  fallback at high confidence). Job-level gate: skip when `priority`
+  has already been moved off the schema default of 3, OR when
+  `status` is `'done'` / `'cancelled'`. Token-cost discipline
+  matches the prior three applications — the deterministic steps
+  cover most production calls and the LLM is consulted only when
+  every cheap signal misses.
+- `todos.autoDue` performs a tiny natural-language phrase scan on
+  the title (en + nl: `tomorrow`/`morgen`, `today`/`vandaag`,
+  `next <weekday>` / `volgende <weekday>`, `by <weekday>` /
+  `voor <weekday>`, `this week` / `deze week`). **No LLM
+  fallback.** This is the first job in the pattern that
+  deliberately stops at "deterministic only": date hallucination
+  has user-visible side effects (a wrong due date is worse than no
+  due date), so the rule is "show evidence or stay silent". The
+  pattern generalises to: _the LLM is an optional last step, not a
+  mandatory one_ — modules whose fallback cost outweighs the value
+  of a guess MAY omit it entirely.
+
+Both todos jobs are wired through `EntityModule.enrichmentJobs` via
+the same conditional-spread pattern 4c.3 introduced. The todo
+module declares `enrichmentOverwriteFields: ['priority']` because
+the zod schema defaults `priority` to `3` — without the slot the
+runner would treat `3` as a "set value" and drop the auto-priority
+patch. The job's own gate
+(`priority !== undefined && priority !== 3 → skip`) is the user-
+intent protection. `dueAt` has no schema default and is genuinely
+`undefined` when unset, so it relies on the runner's "fill the
+blank" default. See `docs/dev/decisions/0013-entity-enrichment.md`
+Update (4d.3) for the rationale.
+
 ### 10c.i `enrichmentOverwriteFields` — per-module overwrite slot (4c.3)
 
 The runner's default protection is "do not overwrite a non-empty
@@ -780,14 +815,15 @@ boundary where `Payload` is erased and the keyof variance does not
 survive narrowing. Modules document their entries with a short
 comment; the entries match payload field names verbatim.
 
-Per-module declarations as of 4c.3:
+Per-module declarations as of 4d.3:
 
-| Module           | `enrichmentOverwriteFields`           | Rationale                                                                                                                       |
-| ---------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `company`        | `['description']`                     | `companies.summary` refreshes the description on every trigger; matches the previously-hardcoded exception.                     |
-| `contact`        | (omitted)                             | `contacts.suggestCompany` writes `companyEntityId` only when null — empty-field default already allows it.                      |
-| `calendar_event` | `['attendees', 'meetingSummaryNote']` | `calendar.attendeeContacts` replaces attendees wholesale (per-attendee merge inside the job); `meetingSummaryNote` is AI-owned. |
-| `fixture`        | (per-test override)                   | Test modules declare the list inline to assert both branches of the slot in the contract suite.                                 |
+| Module           | `enrichmentOverwriteFields`           | Rationale                                                                                                                                                                                                                                                                  |
+| ---------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `company`        | `['description']`                     | `companies.summary` refreshes the description on every trigger; matches the previously-hardcoded exception.                                                                                                                                                                |
+| `contact`        | (omitted)                             | `contacts.suggestCompany` writes `companyEntityId` only when null — empty-field default already allows it.                                                                                                                                                                 |
+| `calendar_event` | `['attendees', 'meetingSummaryNote']` | `calendar.attendeeContacts` replaces attendees wholesale (per-attendee merge inside the job); `meetingSummaryNote` is AI-owned.                                                                                                                                            |
+| `todo`           | `['priority']`                        | `priority` has a zod default of `3`; without the slot the runner would treat the default as a set value and drop the patch. Job-level gate (`priority !== 3 → skip`) is the actual user-intent protection. `dueAt` has no schema default and uses the empty-field default. |
+| `fixture`        | (per-test override)                   | Test modules declare the list inline to assert both branches of the slot in the contract suite.                                                                                                                                                                            |
 
 This is the **sixth** foundation extension shipped on top of the
 §4.0 contract — after `indexedColumns` (4a.1), `getConnector` +

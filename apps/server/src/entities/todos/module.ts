@@ -1,6 +1,6 @@
 import type { ZodType } from 'zod';
 import { TodoPayloadSchema, type TodoPayload } from '@bunny2/shared';
-import type { EntityModule } from '../module';
+import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
 
 /**
@@ -64,6 +64,27 @@ const SUBTITLE_MAX_LENGTH = 120;
  */
 export interface CreateTodoModuleOptions {
   readonly connectors?: readonly EntityConnector<TodoPayload>[];
+  /**
+   * Phase 4d.3 — optional enrichment-job override. Mirrors the
+   * companies / contacts / calendar factory pattern. The factory
+   * threads the value through with a conditional spread so the
+   * module's `enrichmentJobs` field stays `undefined` when the slot
+   * is omitted (matching the calendar precedent — empty arrays
+   * change the registry's behaviour and the contract tests assert
+   * `enrichmentJobs === undefined` for the omitted case).
+   *
+   * Production wiring sets this via `buildProductionTodoModule()` in
+   * `index.ts` (the natural seam the 4d.2 close-out called out).
+   * Tests bypass the helper and call `createTodoModule({
+   * enrichmentJobs: [...] })` directly so they can inject fakes.
+   *
+   * No `enrichmentOverwriteFields` is declared on the module — both
+   * jobs (`todos.autoPriority`, `todos.autoDue`) are gated by "skip
+   * when the user-set field is already populated", so the runner's
+   * default "fill the blank" policy is the right behaviour. This
+   * matches the 4b.3 contacts shape.
+   */
+  readonly enrichmentJobs?: readonly EnrichmentJob<TodoPayload>[];
 }
 
 /**
@@ -84,6 +105,20 @@ export function createTodoModule(opts: CreateTodoModuleOptions = {}): EntityModu
     kind: TODO_KIND,
     tableName: TODO_TABLE,
     ...(opts.connectors === undefined ? {} : { connectors: opts.connectors }),
+    ...(opts.enrichmentJobs === undefined ? {} : { enrichmentJobs: opts.enrichmentJobs }),
+    // Phase 4d.3 — `priority` MUST appear here because the zod schema
+    // defaults `priority` to `3`. After parse, every stored payload
+    // has `priority: 3` even when the user did not specify one — the
+    // runner's `applyPatch` would otherwise see the `3` as a set
+    // value and drop the patch. The auto-priority job's own gate
+    // (`current !== undefined && current !== 3 → skip`) is the
+    // actual user-intent protection; it is STRICTER than the
+    // runner's "non-empty" check. `dueAt` has no schema default and
+    // is genuinely `undefined` when unset, so it does not need the
+    // overwrite slot — the runner's "fill the blank" default covers
+    // it. See `docs/dev/decisions/0013-entity-enrichment.md` Update
+    // (4d.3) for the rationale.
+    enrichmentOverwriteFields: ['priority'],
     // The shared schema has `status: z.enum(...).default('open')` and
     // `priority: z.number().int().min(1).max(5).default(3)`, so its
     // INPUT type is `{ status?, priority?, ... }` while the PARSED
