@@ -16,6 +16,7 @@
     "@bunny2/shared": "workspace:*",
     "@lancedb/lancedb": "^0.10.0",
     "@node-rs/argon2": "^2.0.2",
+    "croner": "^10.0.1",
     "hono": "^4.12.22",
     "zod": "^3.23.0"
   }

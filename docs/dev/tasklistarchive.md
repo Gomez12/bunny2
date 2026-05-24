@@ -14,3 +14,4 @@ and rules. Newest archived rows are appended at the bottom.
 | done   | -                                                 |           0.1h | Chore: gitignore local tooling dirs (`.claude/`, `.understand-anything/`)                         |
 | done   | docs/dev/plans/done/phase-01-system-foundation.md |             8h | Phase 1.3: MessageBus interface + in-memory adapter + event-log persistence + replay + middleware |
 | done   | docs/dev/plans/done/phase-01-system-foundation.md |             6h | Phase 1.4: OpenAI-compatible LLM client + 100% logging + cost/tokens + retention prune            |
+| done   | docs/dev/plans/done/phase-01-system-foundation.md |             8h | Phase 1.5: HTTP API + Vite/React/Tailwind/shadcn frontend + i18n + status + chat round-trip       |

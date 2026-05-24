@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0011_calendar_projection_todos');
+      expect(currentSchemaVersion(db)).toBe('0012_scheduled_tasks');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -57,6 +57,9 @@ describe('migrations', () => {
       // `entity_*` namespace because it has no version chain, no
       // translations, no soul.
       expect(tables).toContain('calendar_projection_todos');
+      // 0012 — generic scheduled tasks + run history (phase 5.0).
+      expect(tables).toContain('scheduled_tasks');
+      expect(tables).toContain('scheduled_task_runs');
 
       const indexes = db
         .query<{ name: string }, []>(
@@ -105,6 +108,12 @@ describe('migrations', () => {
       // 0011 indexes — todo → calendar projection bridge.
       expect(indexes).toContain('idx_calendar_projection_todos_layer');
       expect(indexes).toContain('idx_calendar_projection_todos_due_at');
+      // 0012 indexes — scheduled tasks.
+      expect(indexes).toContain('idx_scheduled_tasks_layer');
+      expect(indexes).toContain('idx_scheduled_tasks_kind');
+      expect(indexes).toContain('idx_scheduled_tasks_due');
+      expect(indexes).toContain('idx_scheduled_task_runs_task');
+      expect(indexes).toContain('idx_scheduled_task_runs_recent');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -151,6 +160,48 @@ describe('migrations', () => {
           "INSERT INTO todos (id, layer_id, slug, title, searchable_text, original_locale, payload_json, created_at, created_by, updated_at, updated_by, linked_entity_id) VALUES (?, ?, 'p3', 't', 't', 'en', '{}', datetime('now'), ?, datetime('now'), ?, '00000000-0000-0000-0000-000000000099')",
         ).run('00000000-0000-0000-0000-0000000000b3', probeLayerId, probeUserId, probeUserId);
       }).toThrow();
+
+      // 0012 — `scheduled_tasks` CHECK constraint: `cron` rows must
+      // carry cron_expression + cron_timezone AND no interval_minutes;
+      // `interval` rows must carry interval_minutes AND neither cron
+      // column. Probe all three failure modes plus the two happy
+      // paths, mirroring the 0010 todo CHECK probe above.
+      const okCron = (): void => {
+        db.query<unknown, [string, string, string, string]>(
+          "INSERT INTO scheduled_tasks (id, layer_id, slug, kind, name, status, schedule_kind, cron_expression, cron_timezone, next_run_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, 's-cron', 'k', 'n', 'active', 'cron', '0 7 * * MON', 'Europe/Amsterdam', datetime('now'), datetime('now'), ?, datetime('now'), ?)",
+        ).run('00000000-0000-0000-0000-0000000000c1', probeLayerId, probeUserId, probeUserId);
+      };
+      okCron();
+      const okInterval = (): void => {
+        db.query<unknown, [string, string, string, string]>(
+          "INSERT INTO scheduled_tasks (id, layer_id, slug, kind, name, status, schedule_kind, interval_minutes, next_run_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, 's-int', 'k', 'n', 'active', 'interval', 60, datetime('now'), datetime('now'), ?, datetime('now'), ?)",
+        ).run('00000000-0000-0000-0000-0000000000c2', probeLayerId, probeUserId, probeUserId);
+      };
+      okInterval();
+      // cron row missing cron_expression → CHECK fails.
+      expect(() => {
+        db.query<unknown, [string, string, string, string]>(
+          "INSERT INTO scheduled_tasks (id, layer_id, slug, kind, name, status, schedule_kind, cron_timezone, next_run_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, 's-bad-cron', 'k', 'n', 'active', 'cron', 'Europe/Amsterdam', datetime('now'), datetime('now'), ?, datetime('now'), ?)",
+        ).run('00000000-0000-0000-0000-0000000000c3', probeLayerId, probeUserId, probeUserId);
+      }).toThrow();
+      // interval row carrying cron_expression → CHECK fails.
+      expect(() => {
+        db.query<unknown, [string, string, string, string]>(
+          "INSERT INTO scheduled_tasks (id, layer_id, slug, kind, name, status, schedule_kind, cron_expression, interval_minutes, next_run_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, 's-bad-int', 'k', 'n', 'active', 'interval', '0 * * * *', 60, datetime('now'), datetime('now'), ?, datetime('now'), ?)",
+        ).run('00000000-0000-0000-0000-0000000000c4', probeLayerId, probeUserId, probeUserId);
+      }).toThrow();
+      // interval row missing interval_minutes → CHECK fails.
+      expect(() => {
+        db.query<unknown, [string, string, string, string]>(
+          "INSERT INTO scheduled_tasks (id, layer_id, slug, kind, name, status, schedule_kind, next_run_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, 's-bad-int-empty', 'k', 'n', 'active', 'interval', datetime('now'), datetime('now'), ?, datetime('now'), ?)",
+        ).run('00000000-0000-0000-0000-0000000000c5', probeLayerId, probeUserId, probeUserId);
+      }).toThrow();
+      // backoff_max_ms < backoff_base_ms → CHECK fails.
+      expect(() => {
+        db.query<unknown, [string, string, string, string]>(
+          "INSERT INTO scheduled_tasks (id, layer_id, slug, kind, name, status, schedule_kind, interval_minutes, backoff_base_ms, backoff_max_ms, next_run_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, 's-bad-backoff', 'k', 'n', 'active', 'interval', 60, 1000, 500, datetime('now'), datetime('now'), ?, datetime('now'), ?)",
+        ).run('00000000-0000-0000-0000-0000000000c6', probeLayerId, probeUserId, probeUserId);
+      }).toThrow();
     } finally {
       db.close();
     }
@@ -177,6 +228,7 @@ describe('migrations', () => {
         '0009_calendar_events',
         '0010_todos',
         '0011_calendar_projection_todos',
+        '0012_scheduled_tasks',
       ]);
     } finally {
       db2.close();

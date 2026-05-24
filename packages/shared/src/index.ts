@@ -8,3 +8,4 @@ export * from './companies';
 export * from './contacts';
 export * from './calendar';
 export * from './todos';
+export * from './scheduled-tasks';
