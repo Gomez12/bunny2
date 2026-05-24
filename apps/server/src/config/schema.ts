@@ -113,6 +113,25 @@ export const EnrichmentConfigSchema = z.object({
   maxRunsPerLayerPerMinute: z.number().int().positive().default(30),
 });
 
+/**
+ * Phase 4c.2 — symmetric secrets store.
+ *
+ * `encryptionKey` is the base64 or hex encoding of a 32-byte AES-256-GCM
+ * key. Operators generate one via `openssl rand -base64 32` and either
+ * paste it into `bunny2.config.ts` OR export `BUNNY2_ENCRYPTION_KEY=` in
+ * the environment (env wins at boot — see `apps/server/src/config/index.ts`
+ * and `apps/server/src/storage/secrets.ts`).
+ *
+ * Absent in v1 deployments that don't use any OAuth connector — the
+ * helper logs a warning and refuses to encrypt new blobs (existing
+ * deployments without encrypted secrets stay alive). The Google Calendar
+ * connector's attachment form fails closed when the key is absent so an
+ * operator cannot accidentally save a plaintext refresh token.
+ */
+export const SecretsConfigSchema = z.object({
+  encryptionKey: z.string().optional(),
+});
+
 export const AppConfigSchema = z.object({
   dataDir: z.string().default('./.data'),
   http: HttpConfigSchema.default({}),
@@ -129,6 +148,7 @@ export const AppConfigSchema = z.object({
     debounceMs: 5_000,
     maxRunsPerLayerPerMinute: 30,
   }),
+  secrets: SecretsConfigSchema.default({}),
 });
 
 export type AppConfig = z.infer<typeof AppConfigSchema>;
@@ -138,4 +158,5 @@ export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type LocalesConfig = z.infer<typeof LocalesConfigSchema>;
 export type ConnectorsConfig = z.infer<typeof ConnectorsConfigSchema>;
 export type EnrichmentConfig = z.infer<typeof EnrichmentConfigSchema>;
+export type SecretsConfig = z.infer<typeof SecretsConfigSchema>;
 export type ModelPricing = z.infer<typeof ModelPricingSchema>;

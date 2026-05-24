@@ -8,7 +8,8 @@ import { createEntityStore } from '../store';
 import { mountEntityRoutes } from '../router';
 import { getEntityModule, registerEntityModule } from '../registry';
 import type { EntityModule } from '../module';
-import { calendarEventModule } from './module';
+import { calendarEventModule, createCalendarEventModule } from './module';
+import { buildProductionGoogleCalendarConnector } from './google-connector';
 
 export {
   calendarEventModule,
@@ -17,6 +18,18 @@ export {
   CALENDAR_EVENT_TABLE,
   type CreateCalendarEventModuleOptions,
 } from './module';
+export {
+  createGoogleCalendarConnector,
+  createGoogleCalendarConfigResolver,
+  buildProductionGoogleCalendarConnector,
+  GoogleCalendarConfigSchema,
+  GOOGLE_CALENDAR_CONNECTOR_ID,
+  GOOGLE_CALENDAR_CONNECTOR_KIND,
+  GOOGLE_CALENDAR_ERROR_KEYS,
+  GOOGLE_CALENDAR_INGEST_CONTENT_TYPE,
+  type GoogleCalendarConfig,
+  type CreateGoogleCalendarConnectorDeps,
+} from './google-connector';
 
 /**
  * Phase 4c.1 — wire-up helper for the calendar-event module.
@@ -40,12 +53,24 @@ export interface MountCalendarEventRoutesDeps {
   readonly bus: MessageBus;
   readonly llm: LlmClient;
   /**
-   * Optional override for tests that need a per-fixture variant. In
-   * 4c.1 there are no runtime deps to inject, but the slot mirrors
-   * the companies / contacts wiring so 4c.2 (Google Calendar
-   * connector) and 4c.3 (AI enrichment) stay additive.
+   * Optional override for tests that need a per-fixture variant.
+   * Production wiring passes `buildProductionCalendarEventModule()` so
+   * the Google Calendar connector is reachable via the registry.
    */
   readonly module?: EntityModule<CalendarEventPayload>;
+  /**
+   * Phase 4c.2 — process-wide ingest dispatcher. When provided, the
+   * generic entity router mounts
+   * `POST /l/:slug/calendar_event/_ingest/:connectorId` for the Google
+   * Calendar bulk-sync request (content-type
+   * `application/x-google-calendar-list-request`). Omitted in unit
+   * tests that exercise the contract suite only.
+   */
+  readonly ingestDispatcher?: import('../connector-dispatcher').ConnectorDispatcher;
+  /** Phase 4c.2 — max ingest body size. Production uses `config.connectors.ingestMaxBytes`. */
+  readonly ingestMaxBytes?: number;
+  /** Phase 4c.2 — default locale stamped on ingest-created rows. */
+  readonly defaultLocale?: string;
 }
 
 /**
@@ -63,10 +88,32 @@ export interface MountCalendarEventRoutesDeps {
  */
 export function registerCalendarEventModule(
   module: EntityModule<CalendarEventPayload> = calendarEventModule,
-): void {
+): EntityModule<CalendarEventPayload> {
   const existing = getEntityModule(module.kind);
-  if (existing !== null) return;
+  if (existing !== null) return existing as EntityModule<CalendarEventPayload>;
   registerEntityModule(module);
+  return module;
+}
+
+/**
+ * Phase 4c.2 — build the calendar module with the production Google
+ * Calendar connector wired in. Called from `apps/server/src/index.ts`
+ * BEFORE `createApp` so the dispatcher / runner see the connector on
+ * the registered module. Tests use `createCalendarEventModule` directly
+ * with a stub connector.
+ *
+ * The connector's `SecretsService` is constructed lazily inside
+ * `buildProductionGoogleCalendarConnector` — it reads
+ * `BUNNY2_ENCRYPTION_KEY` via `createSecretsService()`. When the env var
+ * is absent the service still constructs (hasKey === false); any
+ * attempt to decrypt then fails with the stable `errors.secrets.keyMissing`
+ * key. This means a deployment without OAuth connectors still boots
+ * cleanly.
+ */
+export function buildProductionCalendarEventModule(): EntityModule<CalendarEventPayload> {
+  return createCalendarEventModule({
+    connectors: [buildProductionGoogleCalendarConnector()],
+  });
 }
 
 export function mountCalendarEventRoutes(
@@ -85,5 +132,8 @@ export function mountCalendarEventRoutes(
     store,
     bus: deps.bus,
     db: deps.db,
+    ...(deps.ingestDispatcher === undefined ? {} : { ingestDispatcher: deps.ingestDispatcher }),
+    ...(deps.ingestMaxBytes === undefined ? {} : { ingestMaxBytes: deps.ingestMaxBytes }),
+    ...(deps.defaultLocale === undefined ? {} : { defaultLocale: deps.defaultLocale }),
   });
 }

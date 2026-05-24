@@ -21,7 +21,11 @@ import { registerSystemLocalesRoute } from './routes/system-locales';
 // helper exported from `apps/server/src/entities/<kind>/index.ts`.
 import { mountCompanyRoutes, registerCompanyModule } from '../entities/companies';
 import { mountContactRoutes, registerContactModule } from '../entities/contacts';
-import { mountCalendarEventRoutes, registerCalendarEventModule } from '../entities/calendar';
+import {
+  mountCalendarEventRoutes,
+  registerCalendarEventModule,
+  buildProductionCalendarEventModule,
+} from '../entities/calendar';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -166,14 +170,33 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
   // Phase 4c.1 — calendar-event entity. Same idempotent registration
   // pattern as companies / contacts so `makeTestApp`-driven tests can
   // rebuild the app any number of times without resetting the
-  // registry; see `apps/server/src/entities/calendar/index.ts`. No
-  // connector / enrichment / stats provider in 4c.1 — those land in
-  // 4c.2 / 4c.3 / 4c.4 respectively.
-  registerCalendarEventModule();
+  // registry; see `apps/server/src/entities/calendar/index.ts`.
+  //
+  // Phase 4c.2 — production module includes the Google Calendar
+  // connector (via `buildProductionCalendarEventModule`). The connector
+  // needs a `SecretsService` which is constructed from
+  // `BUNNY2_ENCRYPTION_KEY`; absent key → `hasKey === false` and any
+  // attempt to encrypt/decrypt fails with `errors.secrets.keyMissing`.
+  // Tests pre-register a fixture variant before calling `createApp` —
+  // the idempotent `registerCalendarEventModule` short-circuits.
+  // The factory build is cheap (no DB / fetch calls); the SecretsService
+  // it constructs reads `BUNNY2_ENCRYPTION_KEY` lazily on first use.
+  const productionCalendarModule = buildProductionCalendarEventModule();
+  // `registerCalendarEventModule` returns whatever ends up registered:
+  // the just-built production module the first time, or the
+  // pre-registered fixture variant on subsequent calls (tests). The
+  // mount path always uses the registered module so the connector
+  // visible to the dispatcher matches the one the entity-store inserts
+  // through.
+  const registeredCalendarModule = registerCalendarEventModule(productionCalendarModule);
   mountCalendarEventRoutes(app, {
     db: deps.db,
     bus: deps.bus,
     llm: deps.llmClient,
+    module: registeredCalendarModule,
+    ...(deps.ingestDispatcher === undefined ? {} : { ingestDispatcher: deps.ingestDispatcher }),
+    ...(deps.ingestMaxBytes === undefined ? {} : { ingestMaxBytes: deps.ingestMaxBytes }),
+    defaultLocale: deps.locales.default,
   });
 
   return app;

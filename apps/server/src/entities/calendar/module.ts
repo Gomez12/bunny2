@@ -1,6 +1,7 @@
 import type { ZodType } from 'zod';
 import { CalendarEventPayloadSchema, type CalendarEventPayload } from '@bunny2/shared';
 import type { EntityModule } from '../module';
+import type { EntityConnector } from '../connectors/base';
 
 /**
  * Phase 4c.1 — third concrete `EntityModule`.
@@ -43,16 +44,17 @@ export const CALENDAR_EVENT_TABLE = 'calendar_events';
 const SUBTITLE_MAX_LENGTH = 120;
 
 /**
- * Phase 4c.1 options stub. Empty in 4c.1 by design — keeping the
- * factory shape additive so 4c.2 (Google Calendar connector) and
- * 4c.3 (meeting-summary + attendee-link enrichment) can add their
- * `connectors` / `enrichmentJobs` overrides without changing the
- * exported surface. Modeled as a `Record<string, never>` rather than
- * `interface { ... }` so the empty-interface lint rule stays
- * unbypassed — when 4c.2 lands its first key, we'll switch to an
- * `interface` with named fields.
+ * Phase 4c.2 — extended for the Google Calendar connector. The factory
+ * accepts an optional connector list (default: no connectors, because
+ * the Google connector requires a `SecretsService` dep that production
+ * wiring constructs from `config.secrets.encryptionKey`; tests inject
+ * their own list with a stubbed-fetch + stubbed-secrets connector).
+ * 4c.3 (meeting-summary + attendee-link enrichment) will extend this
+ * shape additively with `enrichmentJobs`.
  */
-export type CreateCalendarEventModuleOptions = Record<string, never>;
+export interface CreateCalendarEventModuleOptions {
+  readonly connectors?: readonly EntityConnector<CalendarEventPayload>[];
+}
 
 /**
  * Build a fresh `calendarEventModule`. Production wiring calls this
@@ -62,11 +64,12 @@ export type CreateCalendarEventModuleOptions = Record<string, never>;
  * no-deps factory call.
  */
 export function createCalendarEventModule(
-  _opts: CreateCalendarEventModuleOptions = {},
+  opts: CreateCalendarEventModuleOptions = {},
 ): EntityModule<CalendarEventPayload> {
   return {
     kind: CALENDAR_EVENT_KIND,
     tableName: CALENDAR_EVENT_TABLE,
+    ...(opts.connectors === undefined ? {} : { connectors: opts.connectors }),
     // The shared schema has `allDay: z.boolean().default(false)` so
     // its input type is `boolean | undefined` while the parsed type
     // is `boolean`. The `EntityModule<Payload>` slot wants

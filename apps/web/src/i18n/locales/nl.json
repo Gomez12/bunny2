@@ -212,7 +212,27 @@
         "parseFailed": "Het vCard-bestand kon niet worden gelezen.",
         "tooLarge": "Het vCard-bestand is te groot.",
         "invalidConfig": "De vCard-connectorconfiguratie is ongeldig."
+      },
+      "google": {
+        "calendar": {
+          "authFailed": "Aanmelden bij Google is niet gelukt. Controleer de clientgegevens.",
+          "unauthorized": "Google heeft het refresh-token geweigerd. Verbind de agenda opnieuw.",
+          "rateLimited": "De snelheidslimiet van Google Calendar is bereikt. Probeer het over enkele minuten opnieuw.",
+          "invalidConfig": "De Google Calendar-connectorconfiguratie is ongeldig. Controleer elk veld.",
+          "plaintextSecret": "Geheimen moeten versleuteld worden opgeslagen. Plak een enc:v1:-envelop.",
+          "syncFailed": "De agenda kon niet worden gesynchroniseerd. Probeer het later opnieuw.",
+          "invalidContentType": "Onverwachte payload voor de Google Calendar-synchronisatie.",
+          "cancelledIgnored": "Een geannuleerde afspraak is genegeerd — verwijderen via synchronisatie wordt nog niet ondersteund."
+        }
       }
+    },
+    "secrets": {
+      "keyMissing": "De server heeft geen versleutelingssleutel ingesteld. Stel BUNNY2_ENCRYPTION_KEY in voordat je geheimen opslaat.",
+      "keyInvalid": "De ingestelde versleutelingssleutel is ongeldig. Het moet een 32-byte base64- of hex-tekenreeks zijn.",
+      "envelopeMalformed": "De versleutelde waarde is beschadigd.",
+      "alreadyEncrypted": "Deze waarde is al versleuteld.",
+      "notEncrypted": "Deze waarde is niet versleuteld.",
+      "decryptFailed": "De versleutelde waarde kon niet worden ontsleuteld."
     }
   },
   "entity": {
@@ -383,6 +403,20 @@
       "importSuccess": "{{created}} nieuwe contacten geïmporteerd en {{updated}} bestaande bijgewerkt.",
       "importWarningsTitle": "Waarschuwingen",
       "importNoFile": "Kies eerst een .vcf-bestand."
+    },
+    "google": {
+      "calendar": {
+        "label": "Google Agenda",
+        "description": "Synchroniseer afspraken vanuit Google Agenda naar deze laag. Tokens blijven versleuteld op de server.",
+        "fieldClientId": "OAuth-client-id",
+        "fieldClientSecret": "OAuth-clientgeheim (versleuteld)",
+        "fieldRefreshToken": "OAuth-refresh-token (versleuteld)",
+        "fieldCalendarId": "Agenda-id (standaard: primary)",
+        "fieldPollInterval": "Polling-interval (minuten)",
+        "syncNowCta": "Agenda nu synchroniseren",
+        "syncSuccess": "{{created}} nieuwe afspraken geïmporteerd en {{updated}} bestaande bijgewerkt.",
+        "syncEmpty": "Sinds de vorige synchronisatie zijn er geen afspraken gewijzigd."
+      }
     }
   }
 }

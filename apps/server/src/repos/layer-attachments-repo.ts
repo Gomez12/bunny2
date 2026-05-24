@@ -34,11 +34,27 @@ export interface InsertAttachmentInput {
   readonly now: string;
 }
 
+export interface UpdateAttachmentConfigInput {
+  readonly id: string;
+  readonly config: Record<string, unknown>;
+}
+
 export interface LayerAttachmentsRepo {
   insertAttachment(input: InsertAttachmentInput): LayerAttachment;
   /** Idempotent: removing a missing attachment is a no-op. */
   removeAttachment(id: string): void;
   listAttachments(layerId: string, kind?: LayerAttachmentKind): LayerAttachment[];
+  /**
+   * Phase 4c.2 — Google Calendar's incremental sync requires persisting
+   * a per-attachment `syncToken` between polls. The connector calls
+   * `updateAttachmentConfig` after a successful `events.list` to record
+   * the new token (and any other non-secret state). Existing fields are
+   * preserved — callers pass the full config object, NOT a delta. The
+   * caller is responsible for keeping encrypted-envelope fields
+   * untouched (re-passing the same envelope is idempotent).
+   * Returns the row id when present; null when no row exists with that id.
+   */
+  updateAttachmentConfig(input: UpdateAttachmentConfigInput): string | null;
 }
 
 function rowToAttachment(row: AttachmentRow): LayerAttachment {
@@ -107,6 +123,15 @@ export function createLayerAttachmentsRepo(db: Database): LayerAttachmentsRepo {
     listAttachments(layerId, kind) {
       const rows = kind === undefined ? listAll.all(layerId) : listByKind.all(layerId, kind);
       return rows.map(rowToAttachment);
+    },
+    updateAttachmentConfig(input) {
+      const existing = findById.get(input.id);
+      if (existing === null) return null;
+      const configJson = JSON.stringify(input.config);
+      db.query<unknown, [string, string]>(
+        `UPDATE layer_attachments SET config_json = ? WHERE id = ?`,
+      ).run(configJson, input.id);
+      return input.id;
     },
   };
 }

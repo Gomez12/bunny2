@@ -2276,3 +2276,146 @@ polling)**
 contract changes. ADR 0011 already governs the entity contract; 4c.2
 will likely earn ADR 0015 for the Google Calendar OAuth token
 choice.
+
+### 4c.2 shipped (2026-05-24)
+
+**What landed**
+
+- Google Calendar connector
+  (`apps/server/src/entities/calendar/google-connector.ts`). The first
+  connector to implement BOTH `pull` (per-event refresh via
+  `events.get`) and `ingest` (bulk sync via `events.list`).
+  `createGoogleCalendarConnector(deps)` exposes:
+  - `verify(config)` — strict zod over
+    `{ clientId, clientSecret, refreshToken, calendarId,
+pollIntervalMinutes, syncToken?, attachmentId? }`. Encrypted-envelope
+    strings (`enc:v1:...`) are validated by shape; plaintext refresh /
+    client secrets are rejected with
+    `errors.connectors.google.calendar.plaintextSecret`.
+  - `pull(ctx, { externalId })` — decrypts the refresh token via the
+    injected `SecretsService`, exchanges for an access token (cached
+    per `(clientId, refreshToken envelope)` with a 60-second clock-skew
+    margin), `GET .../calendars/{calendarId}/events/{externalId}`,
+    maps onto a `Partial<CalendarEventPayload>` (start/end, all-day,
+    rruleString, attendees with deduped email + Google response-status
+    → our enum, conferenceUrl with hangoutLink first then
+    `conferenceData.entryPoints[0].uri`, `externalCalendarId`). The
+    patch flows through `ctx.onPayloadPatch` → the existing 4a.3
+    `persistConnectorPayloadPatch` helper, which scrubs known-secret
+    keys before writing to `entity_external_links.payload_json`.
+  - `ingest(ctx, { contentType, bytes })` — accepts the synthetic
+    `application/x-google-calendar-list-request` MIME, decrypts +
+    refreshes access token, `GET .../events?…&syncToken=…` (or
+    `…&singleEvents=false&showDeleted=true&timeMin=−7d&timeMax=+90d`
+    when no syncToken), maps each event to a
+    `ConnectorIngestEntity<CalendarEventPayload>` with
+    `matchKey: { kind: 'externalId', value: googleEventId }`.
+    Cancelled events surface as warnings (the 4b.2 ingest contract
+    has no delete path yet — see follow-up below).
+  - No `push` — v1 is read-only.
+- Symmetric secret encryption helper
+  (`apps/server/src/storage/secrets.ts`). AES-256-GCM via
+  `node:crypto`, self-describing envelope
+  `enc:v1:<iv>:<ct>:<tag>`, 32-byte key (base64 or hex). Refuses to
+  re-encrypt an envelope, refuses to decrypt plaintext, refuses
+  malformed envelopes / wrong version. When no key is configured the
+  service still constructs (`hasKey === false`) and any call throws
+  `errors.secrets.keyMissing` — the production module's connector path
+  fails closed, but existing deployments without OAuth connectors still
+  boot.
+- `config.secrets.encryptionKey` slot in `AppConfigSchema`, populated
+  from `BUNNY2_ENCRYPTION_KEY` env via the existing env-override path
+  in `apps/server/src/config/index.ts`.
+- `LayerAttachmentsRepo.updateAttachmentConfig(input)` — new repo
+  method used by the connector to persist `nextSyncToken` after a
+  successful `events.list`. Preserves every other field (encrypted
+  envelopes untouched).
+- `createCalendarEventModule(opts)` factory gained a `connectors?` slot
+  (mirrors the contacts factory pattern). The default singleton
+  `calendarEventModule` stays connector-less. Production wiring builds
+  the production variant via `buildProductionCalendarEventModule()` in
+  `apps/server/src/http/router.ts` — this constructs the
+  `SecretsService` lazily from `BUNNY2_ENCRYPTION_KEY` so a deployment
+  without the env var still boots cleanly (only the per-attachment
+  save path fails until the key is set).
+- `mountCalendarEventRoutes` accepts the same `ingestDispatcher /
+ingestMaxBytes / defaultLocale` slots the contacts wiring has, so the
+  ingest route mounts at `POST /l/:slug/calendar_event/_ingest/google.calendar`.
+- `createGoogleCalendarConfigResolver(db)` — bespoke
+  `ConnectorConfigResolver` that decorates the resolved attachment with
+  its row id (`attachmentId`) so `ingest` knows which row to write
+  `syncToken` back to.
+
+**Foundation tweaks (extending §4.0 inline in this commit)**
+
+- **`EntityModule` / `EntityStore` / `EntityConnector` contract: no
+  changes.** Every existing slot composes additively. The connector
+  uses `pull?` + `ingest?` together for the first time.
+- New shared infrastructure (NOT an entity-contract extension):
+  `apps/server/src/storage/secrets.ts` + `config.secrets.encryptionKey`
+  - `LayerAttachmentsRepo.updateAttachmentConfig`. These are reusable
+    by every future OAuth connector and by any future feature that needs
+    to persist encrypted secrets — see ADR 0015.
+
+**Tests**
+
+- `apps/server/tests/storage/secrets.test.ts` — round-trip, envelope
+  shape, idempotency (refuses to re-encrypt), key-absence semantics,
+  forward-compatible version prefix, authenticated-encryption tamper
+  detection.
+- `apps/server/tests/entities/calendar-google-connector.test.ts` —
+  happy-path pull (mapping assertions including attendees, conference
+  URL, all-day events), happy-path ingest (3 events → 2 entities + 1
+  cancelled-warning, `syncToken` persisted onto the attachment),
+  syncToken-mode URL assertion (no `timeMin` / `showDeleted` when token
+  is set), access-token cache (one token-endpoint call across two
+  pulls), auth-error path (401 from `events.get` → link `error` with
+  `unauthorized`, no `succeeded`), `verify` config validation (missing
+  fields, plaintext clientSecret + plaintext refreshToken both rejected
+  with `plaintextSecret`), and a comprehensive **leak canary** that
+  confirms neither the configured client-secret string nor the
+  refresh-token string ever appears in any bus event payload, any
+  `entity_external_links.payload_json` row, or any captured `console.log
+/ console.error` output across a full pull + ingest run.
+
+**ADRs**
+
+- `0015-secret-encryption.md` — accepted. Covers the envelope shape, the
+  key-absence-fail-closed semantics, and the rotation seam.
+- `0016-google-calendar-connector.md` — accepted. Covers token storage,
+  per-event vs. per-layer link split, sync-token persistence, MVP
+  "paste refresh token" UX decision.
+
+**i18n**
+
+- `errors.connectors.google.calendar.{authFailed, unauthorized,
+rateLimited, invalidConfig, plaintextSecret, syncFailed,
+invalidContentType, cancelledIgnored}` (en + nl).
+- `errors.secrets.{keyMissing, keyInvalid, envelopeMalformed,
+alreadyEncrypted, notEncrypted, decryptFailed}` (en + nl).
+- `connectors.google.calendar.{label, description, fieldClientId,
+fieldClientSecret, fieldRefreshToken, fieldCalendarId,
+fieldPollInterval, syncNowCta, syncSuccess, syncEmpty}` (en + nl).
+
+**Docs**
+
+- `docs/dev/architecture/entities.md` §10h "OAuth connector (4c.2) —
+  Google Calendar with `pull` + `ingest`" documents the dual-slot
+  implementation, the token storage model, sync-token persistence,
+  cancelled-event handling, and the absence of foundation tweaks.
+- `docs/dev/decisions/0015-secret-encryption.md` (new ADR).
+- `docs/dev/decisions/0016-google-calendar-connector.md` (new ADR).
+- `docs/dev/tasklist.md` 4c.2 row → `done`.
+
+**Follow-ups noted**
+
+- `docs/dev/follow-ups/google-calendar-oauth-ui.md` — the OAuth dance
+  UI + per-field attachment form land in 4c.5 (or a sibling sub-task)
+  rather than 4c.2. Today operators construct the attachment row
+  manually with pre-encrypted secrets.
+- `docs/dev/follow-ups/ingest-delete-semantics.md` — Google's cancelled
+  events currently surface as warnings; the proper soft-delete path
+  needs a `deletes` field on `ConnectorIngestResult` + a dispatcher
+  call to `store.softDelete`. Track for 4c.3 or later.
+- A future sub-phase that needs key rotation will land the `v2`
+  envelope + multi-key decrypt in `apps/server/src/storage/secrets.ts`.

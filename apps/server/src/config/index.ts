@@ -35,6 +35,19 @@ function applyHttpEnvOverrides(parsed: AppConfig): AppConfig {
   return { ...parsed, http };
 }
 
+/**
+ * Phase 4c.2 — secrets-block env overrides. `BUNNY2_ENCRYPTION_KEY` wins
+ * over a value in `bunny2.config.ts` so operators can rotate the key
+ * without editing the file. Validation of the key shape happens lazily
+ * in `apps/server/src/storage/secrets.ts` so an absent / malformed key
+ * does NOT block boot — only attempts to encrypt fail.
+ */
+function applySecretsEnvOverrides(parsed: AppConfig): AppConfig {
+  const key = process.env['BUNNY2_ENCRYPTION_KEY'];
+  if (key === undefined || key.length === 0) return parsed;
+  return { ...parsed, secrets: { ...parsed.secrets, encryptionKey: key } };
+}
+
 export function loadConfig(opts: { cwd?: string } = {}): LoadedConfig {
   const cwd = opts.cwd ?? process.cwd();
   const configFile = resolveConfigFile(cwd);
@@ -46,7 +59,8 @@ export function loadConfig(opts: { cwd?: string } = {}): LoadedConfig {
   }
 
   const parsedRaw = AppConfigSchema.parse(raw);
-  const parsed = applyHttpEnvOverrides(parsedRaw);
+  const parsedHttp = applyHttpEnvOverrides(parsedRaw);
+  const parsed = applySecretsEnvOverrides(parsedHttp);
   const dataDir = resolveDataDir(parsed.dataDir, cwd);
   fs.mkdirSync(dataDir, { recursive: true });
 

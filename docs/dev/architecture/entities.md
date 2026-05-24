@@ -1001,6 +1001,90 @@ those sub-phases stays additive.
 
 ---
 
+## 10h. OAuth connector (4c.2) — Google Calendar with `pull` + `ingest`
+
+Phase 4c.2 is the first connector to implement BOTH halves of the
+foundation:
+
+- `pull(ctx, { externalId })` — fetches a single event by id via
+  `events.get` (used by the interval runner for periodic re-sync).
+- `ingest(ctx, { contentType, bytes })` — performs a bulk
+  `events.list` sync (triggered by a "Sync now" button or a future
+  scheduled task).
+
+The 4b.2 ADR (`0014-connector-ingest.md`) predicted this composition.
+4c.2 confirmed it empirically: zero contract changes were needed
+between the two slots. The connector's `id` is `'google.calendar'`,
+its `kind` is `'calendar_event'`. See
+`apps/server/src/entities/calendar/google-connector.ts`.
+
+### Token storage model
+
+OAuth credentials live on a single per-layer attachment row
+(`kind='connector'`, `ref_id='google.calendar'`), with the
+`clientSecret` and `refreshToken` fields stored as encrypted envelopes
+(see ADR 0015):
+
+```
+config = {
+  clientId,
+  clientSecret: 'enc:v1:<iv>:<ct>:<tag>',
+  refreshToken: 'enc:v1:<iv>:<ct>:<tag>',
+  calendarId,
+  pollIntervalMinutes,
+  syncToken?,        // non-secret; written back after a successful list
+  attachmentId,      // injected by the dispatcher's resolver
+}
+```
+
+Per-event link state (`entity_external_links.payload_json`) carries
+ONLY the non-secret `lastPatch` + `lastPatchedAt` written by the
+existing `persistConnectorPayloadPatch` helper. Refresh + client
+secrets NEVER appear in the link payload or in any bus event — the
+`scrubConnectorPayload` whitelist covers it, and the
+`calendar-google-connector.test.ts` leak canary asserts the invariant
+across a full pull + ingest run.
+
+Access tokens are held in an in-memory cache, keyed by
+`(clientId, refreshToken envelope)`, with a 60-second clock-skew
+margin. The runner's stale-link iteration therefore reuses one access
+token per minute of polling against the same attachment.
+
+### Sync-token persistence
+
+Google's `events.list` returns a `nextSyncToken` that scopes future
+calls to the delta. The connector persists it directly into the
+attachment via the new `layer_attachments.updateAttachmentConfig` repo
+method, preserving every other field (encrypted envelopes untouched).
+A 410 response — "syncToken expired" — surfaces as a warning, and the
+next call falls back to the full time-window sync.
+
+### Cancelled events
+
+The ingest contract has create + update only (no delete path). The
+connector surfaces Google's `status='cancelled'` events as warnings
+(`errors.connectors.google.calendar.cancelledIgnored:<eventId>`) so an
+operator can see them. The follow-up
+`docs/dev/follow-ups/ingest-delete-semantics.md` tracks the proper
+soft-delete extension.
+
+### Foundation tweaks
+
+- New shared infra: `apps/server/src/storage/secrets.ts` and
+  `config.secrets.encryptionKey` (see ADR 0015). This is shared
+  infrastructure, NOT an entity-contract extension — no
+  `EntityModule`, `EntityStore`, or `EntityConnector` slot was added.
+- New repo method: `LayerAttachmentsRepo.updateAttachmentConfig`. Used
+  by the connector to write `syncToken` back after a successful list.
+  Future stateful-list connectors (Google Contacts, Microsoft 365)
+  inherit it for free.
+- `CreateCalendarEventModuleOptions` gained the `connectors?` slot
+  (mirrors the contacts factory pattern). The default singleton
+  `calendarEventModule` stays connector-less; production wiring builds
+  the production variant via `buildProductionCalendarEventModule()`.
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit
@@ -1016,6 +1100,11 @@ those sub-phases stays additive.
 - `docs/dev/decisions/0013-entity-enrichment.md` — enrichment runner
   shape, rate limit + coalescing, per-job declaration on
   `EntityModule`, secret-strip invariants.
+- `docs/dev/decisions/0015-secret-encryption.md` — symmetric secret
+  envelope, AES-256-GCM, version prefix, key-absence semantics.
+- `docs/dev/decisions/0016-google-calendar-connector.md` — token
+  storage model, per-event vs. per-layer link split, sync-token
+  persistence, MVP "paste refresh token" UX decision.
 - `docs/dev/decisions/0014-connector-ingest.md` — second connector
   method (`ingest`), synchronous HTTP dispatch, dedup-by-matchKey,
   ingest event taxonomy, anti-leak invariants for upload bytes.

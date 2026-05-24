@@ -432,7 +432,27 @@
         "parseFailed": "The vCard file could not be parsed.",
         "tooLarge": "The vCard file is too large.",
         "invalidConfig": "The vCard connector configuration is invalid."
+      },
+      "google": {
+        "calendar": {
+          "authFailed": "Authentication with Google could not be completed. Please verify the client credentials.",
+          "unauthorized": "Google rejected the refresh token. Please reconnect the calendar.",
+          "rateLimited": "Google Calendar rate-limit was reached. Please retry in a few minutes.",
+          "invalidConfig": "The Google Calendar connector configuration is invalid. Please verify every field.",
+          "plaintextSecret": "Secrets must be encrypted before they are saved. Please paste an enc:v1: envelope.",
+          "syncFailed": "The calendar could not be synced. Please try again later.",
+          "invalidContentType": "Unexpected request payload for the Google Calendar sync.",
+          "cancelledIgnored": "A cancelled event was ignored — deletion through sync is not supported yet."
+        }
       }
+    },
+    "secrets": {
+      "keyMissing": "The server has no encryption key configured. Set BUNNY2_ENCRYPTION_KEY before saving secrets.",
+      "keyInvalid": "The configured encryption key is invalid. It must be a 32-byte base64 or hex string.",
+      "envelopeMalformed": "The encrypted value is malformed.",
+      "alreadyEncrypted": "This value is already encrypted.",
+      "notEncrypted": "This value is not encrypted.",
+      "decryptFailed": "The encrypted value could not be decrypted."
     }
   },
   "entity": {
@@ -603,6 +623,20 @@
       "importSuccess": "Imported {{created}} new and updated {{updated}} existing contacts.",
       "importWarningsTitle": "Warnings",
       "importNoFile": "Please choose a .vcf file first."
+    },
+    "google": {
+      "calendar": {
+        "label": "Google Calendar",
+        "description": "Sync events from Google Calendar into this layer. Tokens stay encrypted on the server.",
+        "fieldClientId": "OAuth client id",
+        "fieldClientSecret": "OAuth client secret (encrypted)",
+        "fieldRefreshToken": "OAuth refresh token (encrypted)",
+        "fieldCalendarId": "Calendar id (default: primary)",
+        "fieldPollInterval": "Poll every (minutes)",
+        "syncNowCta": "Sync calendar now",
+        "syncSuccess": "Synced {{created}} new and updated {{updated}} events.",
+        "syncEmpty": "No events were changed since the last sync."
+      }
     }
   }
 }
