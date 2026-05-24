@@ -1,8 +1,32 @@
 # Follow-up — Phase-7 LanceDB read swap
 
-- Status: open
+- Status: done (closed by phase 7.1 — 2026-05-24)
 - Created: 2026-05-24 (phase 6 close-out, ADR 0021 §4)
-- Phases referencing it: 6.2 (write path), 7 (read path)
+- Phases referencing it: 6.2 (write path), 7.1 (read path)
+
+## Resolution
+
+Phase 7.1 landed the read swap behind the chat pipeline's
+`EntityStoreForRetrieval` adapter (Option B in the sub-phase
+brief — the per-kind `EntityStore.searchSummaries` stays
+synchronous + SQLite-only; the orchestrator's narrow retrieval
+interface gained an async wrapper that consults LanceDB first
+and falls back to the LIKE primitive when the helper signals
+`no-embedder` / `mock-embedder` / `corpus-empty` / `error`).
+
+Auth boundary (`overall.md` §5 invariant 8 / ADR 0021 §1) is
+pinned by `apps/server/tests/retrieval-auth-boundary.test.ts`,
+which seeds two layers + two LanceDB rows (the cross-layer row
+gets the closer vector on purpose) and asserts only the
+layer-visible row surfaces under BOTH the vector path and the
+LIKE fallback.
+
+Embedding model default: `OpenAiEmbedder` when
+`config.embeddings.endpoint` AND `config.embeddings.model` are
+configured (v1 recommendation is `text-embedding-3-small`);
+`MockEmbedder` otherwise, which keeps the read path on the
+LIKE fallback for CI / offline dev. No new config surface beyond
+the phase-6 `EmbeddingsConfigSchema` was added.
 
 ## What remains
 

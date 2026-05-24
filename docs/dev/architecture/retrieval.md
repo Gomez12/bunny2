@@ -1,11 +1,20 @@
 # Retrieval
 
 > Status: living document.
-> Owners: phase 6 introduced this; phase 7 swaps the read path from
-> LIKE to vector search behind the same `searchSummaries` interface.
-> Source code: `apps/server/src/entities/entity-store.ts`
-> (`searchSummaries`), `apps/server/src/chat/pipeline/retrieval-step.ts`
-> (consumer), `apps/server/src/chat/embeddings/` (LanceDB write path),
+> Owners: phase 6 introduced this; phase 7.1 swapped the chat
+> retrieval read path from LIKE to vector search behind the
+> orchestrator's `EntityStoreForRetrieval` adapter (the per-kind
+> `EntityStore.searchSummaries` primitive stays SQLite-only).
+> Source code: `apps/server/src/entities/store.ts`
+> (`searchSummaries` — LIKE primitive, sync),
+> `apps/server/src/chat/embeddings/vector-search.ts`
+> (vector-vs-fallback decision),
+> `apps/server/src/http/router.ts` (per-kind retrieval adapter
+> the chat orchestrator hands the pipeline),
+> `apps/server/src/chat/pipeline/retrieval-step.ts` (consumer;
+> awaits the now-async `EntityStoreForRetrieval`),
+> `apps/server/src/chat/embeddings/` (LanceDB write path +
+> `LanceWriter.searchByVector`),
 > `apps/server/src/layers/resolver.ts` (effective-layer set).
 
 This is the single-page tour of how bunny2 finds the entity rows
@@ -32,12 +41,14 @@ That call goes through the per-kind module's primary store
 a LIKE filter on the search term and a hard `layer_id IN (?)`
 filter on the caller's effective layers.
 
-There is **no LanceDB read in phase 6**. The vector store
-receives writes only. Reads stay on LIKE until phase 7's read swap
-flips them behind the same interface.
+In phase 6 there was **no LanceDB read**; the vector store
+received writes only. Phase 7.1 swapped the chat read path
+over — the vector path is now consulted first, with LIKE
+remaining as the fallback. See §5 for the live shape.
 
 ADR [`0021`](../decisions/0021-embedding-and-lance-auth-tag.md)
-records the read/write asymmetry as a deliberate phasing decision.
+recorded the original read/write asymmetry as a deliberate
+phasing decision; phase 7.1 closed the gap.
 
 ---
 
@@ -84,11 +95,14 @@ pins it.
 
 ---
 
-## 3. The LIKE path (phase 6 today)
+## 3. The LIKE path (still the fallback)
 
 `EntityStore.searchSummaries(layerIds, term, opts)` lives in
-`apps/server/src/entities/entity-store.ts`. Each entity kind's
-per-table SQL store provides:
+`apps/server/src/entities/store.ts` and is the synchronous
+SQLite primitive every per-kind store exposes. Phase 7.1's
+read swap keeps it untouched: the chat orchestrator's adapter
+drops to it whenever the vector path returns `null`. Each
+entity kind's per-table SQL store provides:
 
 ```sql
 SELECT id, slug, title, snippet
@@ -119,7 +133,7 @@ id). Hits are returned as a small JSON shape
 (`{ kind, id, slug, title, snippet }`) so the answerer's prompt
 stays compact.
 
-### 3.1 Why LIKE is fine in phase 6
+### 3.1 Why LIKE is still useful as the fallback
 
 - Entity volumes are small in v1 (single-user / single-tenant per
   server; phase 4 shipped four kinds).
@@ -245,42 +259,91 @@ yet created; planned when a real model is picked).
 
 ---
 
-## 5. The forward contract: phase 7 read swap
+## 5. The vector read path (phase 7.1 — live)
 
-Phase 7's first sub-phase will replace the LIKE path with a vector
-read **behind the same `searchSummaries(layerIds, term)`
-interface**:
+Phase 7.1 landed the read swap. The chat pipeline's retrieval
+step still calls `store.searchSummaries(layerIds, term, { limit })`,
+but the seam it sees — `EntityStoreForRetrieval` in
+`apps/server/src/chat/pipeline/types.ts` — became `async` so the
+chat orchestrator's per-kind adapter
+(`apps/server/src/http/router.ts`) can consult LanceDB before
+falling back to the SQLite LIKE path. The per-kind
+`EntityStore.searchSummaries` primitive stays synchronous +
+SQLite-only — the entity contract suite + every per-kind test
+runs unchanged.
+
+The decision lives in
+`apps/server/src/chat/embeddings/vector-search.ts`:
 
 ```ts
-// Phase-7 sketch (this file documents the contract; the code
-// lands in phase 7).
-async function searchSummariesVector(
-  layerIds: readonly string[],
-  term: string,
-  opts: { limit: number },
-): Promise<readonly EntitySummary[]> {
-  const queryVec = await embedder.encode(term);
-  const hits = await lanceTable
-    .search(queryVec)
-    .where(`layer_id IN (${layerIds.map(quote).join(',')})`) // PRE-filter
-    .limit(opts.limit)
-    .toArray();
-  return hits.map(toSummary);
+// Production shape (simplified).
+async searchByKind(kind, layerIds, term, limit) {
+  if (!embedder)              return fallback('no-embedder');
+  if (embedder.id === 'mock') return fallback('mock-embedder');
+  if (await reader.countRows(table) === 0) return fallback('corpus-empty');
+  try {
+    const vec = await embedder.encode(term);
+    const hits = await reader.searchByVector(table, vec, layerIds, limit);
+    if (hits === null) return fallback('corpus-empty'); // cold table
+    return hits; // `[]` is a real answer — NOT a fallback.
+  } catch (err) {
+    return fallback('error');
+  }
 }
 ```
 
-The `where` clause is a **pre-search predicate**, not a
-post-filter. LanceDB applies it before the vector neighbour scan,
-so the answerer never even sees a row from a non-visible layer.
+The `reader.searchByVector` implementation runs
+`table.search(vec).where(\`layer_id IN (...)\`).limit(...)`.
+`@lancedb/lancedb`0.10 pre-filters by default unless`.postfilter()`is called — we never do. The`where` clause is
+therefore a **pre-search predicate**: LanceDB applies it before
+the vector neighbour scan, so the answerer never even sees a
+row from a non-visible layer (`overall.md` §5 invariant 8 /
+ADR [`0021`](../decisions/0021-embedding-and-lance-auth-tag.md)
+§1).
 
-LIKE stays as a fallback when LanceDB is offline (e.g. degraded
-mode); the dispatcher chooses based on `lancedb.ready`. Callers do
-not change — the chat pipeline's retrieval step still calls
-`searchSummaries(layerIds, term, { limit: 5 })`.
+Fallback contract (closed enum, surfaced as the
+`entity.search.vector.fallback.reason` telemetry dimension):
+
+| Reason          | Trigger                                                                            |
+| --------------- | ---------------------------------------------------------------------------------- |
+| `no-embedder`   | No embedder wired (unusual boot).                                                  |
+| `mock-embedder` | `MockEmbedder` is the active embedder. Keeps CI / offline dev deterministic.       |
+| `corpus-empty`  | Per-kind LanceDB table is missing OR has zero rows. Fresh deployment + cold start. |
+| `error`         | Embedder threw OR `searchByVector` threw. The vector path is never load-bearing.   |
+
+A populated corpus that genuinely has nothing close to the
+query returns `[]` — **not** a fallback. Falling back to LIKE
+on every vector miss would silently re-introduce the very
+behaviour phase 7 replaces.
+
+The chat orchestrator's adapter at
+`apps/server/src/http/router.ts` defensively re-checks the
+`layerIds` filter on every hit before dehydrating IDs back via
+the underlying store's `getById`, so the answerer never trusts
+a single layer of filtering — the LanceDB pre-filter + the
+adapter re-check + the underlying store both enforce the same
+visibility contract.
+
+Observability:
+
+- `event: 'entity.search.vector'` on every successful query,
+  with `{ kind, layerCount, hitCount, latencyMs }`.
+- `event: 'entity.search.vector.fallback'` on every fallback,
+  with `{ kind, reason }`.
+- `entity.search.vector.duration_ms` metric, dimensioned by
+  `kind` only (no layer id, no query text — keeps cardinality
+  bounded).
+
+The auth-boundary regression test at
+`apps/server/tests/retrieval-auth-boundary.test.ts` pins the
+contract in both directions: a cross-layer LanceDB row whose
+vector is **closer** to the query than every visible row never
+surfaces, both via the vector path AND via the LIKE fallback
+(forced via `MockEmbedder`).
 
 ADR [`0021`](../decisions/0021-embedding-and-lance-auth-tag.md) §4
-records the deliberate deferral; the corpus exists in phase 6
-exactly so phase 7 needs no backfill step.
+recorded the deliberate phase-6 deferral; the corpus existed in
+phase 6 exactly so phase 7.1 needed no backfill step.
 
 ---
 
@@ -305,7 +368,13 @@ For phase 6's LIKE path and phase 7's vector path alike:
 Tests pinning these invariants:
 
 - `apps/server/tests/chat-pipeline/orchestrator.test.ts` —
-  auth-boundary across layers.
+  auth-boundary across layers (chat pipeline integration).
+- `apps/server/tests/retrieval-auth-boundary.test.ts` —
+  phase-7.1 regression: cross-layer LanceDB row whose vector is
+  closer to the query than the visible row stays hidden, under
+  both the vector path and the LIKE fallback.
+- `apps/server/tests/entity-store-vector.test.ts` — vector
+  helper happy path, fallback enumeration, telemetry shape.
 - `apps/server/tests/chat-embeddings-subscriber.test.ts` —
   soft-delete removes the vector row.
 - `apps/server/tests/smoke.test.ts` — end-to-end calendar event:
@@ -315,11 +384,10 @@ Tests pinning these invariants:
 
 ## 7. Future extensions
 
-- **Phase 7 read swap** — see §5 above. The corpus is ready; the
-  swap is a code change behind the same interface.
 - **Hybrid search** — combining LIKE recall with vector ranking
-  for the long tail. Phase 7+ once both paths exist behind one
-  facade.
+  for the long tail. Both paths now coexist behind the
+  orchestrator adapter; a phase-7+ follow-up could merge their
+  rankings instead of strictly preferring vector.
 - **Per-layer embedding budget** — the OpenAI embedder costs real
   tokens. Phase 7 will need a per-layer budget knob;
   `docs/dev/follow-ups/chat-per-layer-embedding-budget.md`.

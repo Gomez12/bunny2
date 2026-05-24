@@ -288,8 +288,65 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     });
     // Adapt the production store to the orchestrator's narrow
     // interface; only `searchSummaries` is needed for retrieval.
+    //
+    // Phase 7.1 — the adapter consults the LanceDB vector path FIRST
+    // (when `deps.vectorSearch` is wired and the helper does not
+    // fall back). The vector hits are dehydrated back into entity
+    // summaries via the underlying store's `getById`, so the
+    // retrieval step sees the same row shape on both paths. On any
+    // fallback signal (no embedder, mock embedder, cold corpus,
+    // error, vector miss returns `null`) we drop straight to the
+    // sync SQLite LIKE path — preserving the phase-6 behaviour
+    // byte-for-byte.
+    //
+    // Auth boundary (`overall.md` §5 invariant 8 / ADR 0021 §1):
+    // both paths filter by `layerIds` BEFORE candidate selection.
+    // The vector hits carry `layer_id`; we still apply a defensive
+    // re-check against `layerIds` so the orchestrator never trusts a
+    // single layer of filtering blindly.
+    const allowedKinds = new Set<string>([kind]);
     const adapter: EntityStoreForRetrieval = {
-      searchSummaries(layerIds, query, opts) {
+      async searchSummaries(layerIds, query, opts) {
+        const limit = opts?.limit ?? 50;
+        if (deps.vectorSearch !== undefined) {
+          const hits = await deps.vectorSearch.searchByKind(kind, layerIds, query, limit);
+          if (hits !== null) {
+            const allowedLayers = new Set(layerIds);
+            const out: Array<{
+              readonly id: string;
+              readonly kind: string;
+              readonly layerId: string;
+              readonly slug: string;
+              readonly title: string;
+              readonly searchableText: string;
+            }> = [];
+            for (const hit of hits) {
+              if (!allowedLayers.has(hit.layer_id)) continue; // defensive
+              if (!allowedKinds.has(hit.kind)) continue; // defensive
+              const entity = store.getById(hit.id);
+              if (entity === null) continue; // hard-deleted
+              // `overall.md` §5 invariant 5 — soft-deleted rows must
+              // stay invisible. The embedding subscriber removes the
+              // LanceDB row on `entity.deleted` (phase-6 contract),
+              // but the durable bus's at-least-once delivery leaves a
+              // race window between the soft-delete commit and the
+              // LanceDB write. The SQLite LIKE path filters
+              // `deleted_at IS NULL`; mirror that here so the vector
+              // path can never surface a tombstoned row that the LIKE
+              // path would hide.
+              if (entity.meta.deletedAt !== null) continue;
+              out.push({
+                id: entity.id,
+                kind: entity.kind,
+                layerId: entity.layerId,
+                slug: entity.slug,
+                title: entity.title,
+                searchableText: entity.searchableText,
+              });
+            }
+            return out;
+          }
+        }
         const rows = store.searchSummaries(layerIds, query, opts);
         return rows.map((r) => ({
           id: r.id,

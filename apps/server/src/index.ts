@@ -44,6 +44,7 @@ import {
   createOpenAiEmbedder,
   createLanceDbWriter,
   createEmbeddingSubscriber,
+  createVectorSearch,
   type Embedder,
 } from './chat';
 
@@ -238,6 +239,39 @@ connectorDispatcher.start();
 // `createApp`, so a manual `POST .../runs` lands in the same table
 // the scheduler tick writes to.
 const scheduledRepo = createScheduledTasksRepo(db);
+
+// Phase 7.1 — embedder + LanceDB writer + vector-search helper are
+// constructed BEFORE `createApp` so the chat route's
+// `EntityStoreForRetrieval` adapter can consult LanceDB on every
+// retrieval call. The embedding subscriber (which DOES depend on
+// `listEntityModules()` being non-empty) is still started AFTER
+// `createApp` further down. The vector helper itself has no
+// dependency on the entity module registry.
+//
+// `MockEmbedder` is the default when `config.embeddings.endpoint` is
+// absent — keeps tests / CI / offline dev free of network deps and
+// of the `OPENAI_API_KEY` cargo cult. When the endpoint IS set we
+// build an `OpenAiEmbedder` against the same secret machinery as
+// the chat LLM (the api key lives in the config file, never logged).
+function buildEmbedder(): Embedder {
+  const cfg = config.embeddings;
+  if (cfg.endpoint !== undefined && cfg.endpoint.length > 0) {
+    if (cfg.model === undefined || cfg.model.length === 0) {
+      throw new Error('config.embeddings.endpoint is set but config.embeddings.model is missing');
+    }
+    return createOpenAiEmbedder({
+      endpoint: cfg.endpoint,
+      apiKey: cfg.apiKey ?? '',
+      model: cfg.model,
+      dimensions: cfg.dimensions,
+    });
+  }
+  return createMockEmbedder();
+}
+const embedder = buildEmbedder();
+const lanceWriter = createLanceDbWriter(lance);
+const vectorSearch = createVectorSearch({ embedder, reader: lanceWriter });
+
 const app = createApp({
   bus,
   llmClient,
@@ -254,6 +288,11 @@ const app = createApp({
   // durable adapter's method. Bound here so the route file never has
   // to import `DurableSqliteMessageBus` (keeps the seam minimal).
   replayDlq: (outboxId) => bus.replayDlq(outboxId),
+  // Phase 7.1 — vector read path for the chat pipeline. The helper
+  // decides per-call whether to use LanceDB or fall back to the
+  // per-kind SQLite LIKE primitive (no embedder, mock embedder, cold
+  // corpus, error → LIKE).
+  vectorSearch,
 });
 // Phase 5.2 — the periodic connector poll runner is background work,
 // so the `web` role skips `start()`. The runner is still constructed
@@ -352,40 +391,16 @@ registerBuiltInScheduledTaskHandlers({
 
 // Phase 6.2 — chat embeddings (write-only LanceDB scaffold).
 //
-// `MockEmbedder` is the default when `config.embeddings.endpoint` is
-// absent — keeps tests / CI / offline dev free of network deps and
-// of the `OPENAI_API_KEY` cargo cult. When the endpoint IS set we
-// build an `OpenAiEmbedder` against the same secret machinery as
-// the chat LLM (the api key lives in the config file, never logged).
-//
 // The subscriber is started AFTER `createApp` so every entity module
 // has registered itself (per-kind `mountXRoutes` calls register
 // inside `createApp`). It runs on every role: the durable bus's
 // atomic outbox claim ensures at-most-one delivery, the same logic
 // as the connector dispatcher's role comment above.
 //
-// Read path stays on the per-kind LIKE search via `searchSummaries`
-// (phase 6). The phase-7 read swap will filter `layer_id IN (?)`
-// BEFORE the vector query so the corpus respects the same
-// authorization invariants the SQLite path enforces today
-// (`overall.md` §5 invariant 8 / ADR 0021).
-function buildEmbedder(): Embedder {
-  const cfg = config.embeddings;
-  if (cfg.endpoint !== undefined && cfg.endpoint.length > 0) {
-    if (cfg.model === undefined || cfg.model.length === 0) {
-      throw new Error('config.embeddings.endpoint is set but config.embeddings.model is missing');
-    }
-    return createOpenAiEmbedder({
-      endpoint: cfg.endpoint,
-      apiKey: cfg.apiKey ?? '',
-      model: cfg.model,
-      dimensions: cfg.dimensions,
-    });
-  }
-  return createMockEmbedder();
-}
-const embedder = buildEmbedder();
-const lanceWriter = createLanceDbWriter(lance);
+// Phase 7.1 — `embedder` + `lanceWriter` + `vectorSearch` are now
+// constructed above `createApp` (the chat route's retrieval adapter
+// uses them); the subscriber wiring stays here so the entity-module
+// registry has its full set before subscribers attach.
 registerChatScheduledTaskHandlers({ embedder, writer: lanceWriter });
 
 const embeddingSubscriber = createEmbeddingSubscriber({

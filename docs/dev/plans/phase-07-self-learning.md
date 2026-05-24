@@ -264,39 +264,72 @@ one commit.
 
 ## 4. Approach
 
-### 4.1 Retrieval read swap (lands in 7.1)
+### 4.1 Retrieval read swap (landed in 7.1)
+
+7.1 picked **Option B** from the sub-phase brief: the per-kind
+`EntityStore.searchSummaries` stays synchronous + SQLite-only
+(no churn through the entity contract suite + every per-kind
+test that runs it). The vector path lives one layer up, inside
+the chat orchestrator's `EntityStoreForRetrieval` adapter at
+`apps/server/src/http/router.ts`. The narrow retrieval interface
+became async; the chat pipeline's retrieval step
+(`retrieval-step.ts`) awaits it. The actual decision is made by
+`apps/server/src/chat/embeddings/vector-search.ts`:
 
 ```ts
-// apps/server/src/entities/store.ts — pseudo-shape
-async searchSummaries(layerIds, term, opts) {
-  if (lancedb.ready && this.embedder && this.embedder.kind !== 'mock') {
-    const queryVec = await this.embedder.encode(term);
-    const rows = await this.lance.table(this.kind).search(queryVec)
-      .where(`layer_id IN (${quoted(layerIds)})`)   // PRE-FILTER (auth)
-      .limit(opts.limit ?? 5)
-      .toArray();
-    if (rows.length > 0) return mapToSummaries(rows);
+// apps/server/src/chat/embeddings/vector-search.ts — pseudo-shape
+async searchByKind(kind, layerIds, term, limit) {
+  if (!embedder)             return fallback('no-embedder');
+  if (embedder.id === 'mock') return fallback('mock-embedder');
+  if (await reader.countRows(table) === 0) return fallback('corpus-empty');
+  try {
+    const vec = await embedder.encode(term);
+    const rows = await reader.searchByVector(table, vec, layerIds, limit);
+    if (rows === null) return fallback('corpus-empty'); // cold table
+    return rows; // [] is a real answer; NOT a fallback
+  } catch (err) {
+    return fallback('error');
   }
-  return this.sqliteLike(layerIds, term, opts);   // existing fallback
 }
 ```
+
+`reader.searchByVector` is the new method on `LanceWriter`. The
+production implementation runs `table.search(vec).where(...).limit(...)`;
+`@lancedb/lancedb` 0.10 pre-filters by default unless
+`.postfilter()` is called (which we never do). The in-memory
+test writer enforces the same pre-filter order in pure JS so
+the auth-boundary regression test runs offline.
 
 - The `where(...)` clause runs **before** the vector neighbour
   scan (per [ADR 0021 §1](../decisions/0021-embedding-and-lance-auth-tag.md)).
   Without this we'd violate `overall.md` §5 invariant 8.
-- The signature does not change — the chat pipeline's retrieval
-  step keeps working byte-for-byte; the swap is observable only
-  in latency and recall.
-- `MockEmbedder` is **not** swapped in (the `kind !== 'mock'`
-  guard preserves the test path; tests stay deterministic on
-  LIKE).
+- `EntityStore.searchSummaries` (the per-kind primitive) keeps
+  its synchronous SQLite signature; only the narrow
+  `EntityStoreForRetrieval` seen by the chat pipeline became
+  `async`. Closes the sub-phase brief's "design tension" with
+  Option B.
+- `MockEmbedder` is **not** swapped in (the `embedder.id ===
+'mock'` guard preserves the test path; tests stay
+  deterministic on LIKE).
+- Fallback contract is **explicit**: only `no-embedder`,
+  `mock-embedder`, `corpus-empty`, and `error` drop to LIKE.
+  A populated corpus with a genuine vector miss returns `[]` —
+  falling back on every miss would silently re-introduce LIKE
+  for queries the swap is meant to improve.
 - A regression test (`apps/server/tests/retrieval-auth-boundary.test.ts`)
-  asserts: insert two entities in different layers, embed both,
-  query for a term matching both — caller in layer X must
-  receive only the layer-X row, both via LanceDB and via LIKE
-  fallback.
-- Closes the `chat-lancedb-read-swap.md` follow-up (move to
-  `docs/dev/follow-ups/done/` at 7.7).
+  asserts: insert two entities in different layers, embed both
+  (the cross-layer row gets the closer vector), query for a
+  term matching both — caller in layer X must receive only the
+  layer-X row, both via LanceDB and via LIKE fallback.
+- Observability: every vector call logs
+  `event: 'entity.search.vector'` with `{ kind, layerCount,
+hitCount, latencyMs }` and emits the
+  `entity.search.vector.duration_ms` metric (dimensioned by
+  `kind` only — no layer id, no query text). Fallbacks log
+  `event: 'entity.search.vector.fallback'` with a closed-enum
+  `reason` dimension.
+- Closes the `chat-lancedb-read-swap.md` follow-up (moved to
+  `docs/dev/follow-ups/done/` at 7.1 close).
 
 ### 4.2 Proposal data model (lands in 7.2)
 

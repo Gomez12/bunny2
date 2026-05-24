@@ -27,7 +27,17 @@ export {
   createLanceDbWriter,
   type LanceWriter,
   type EmbeddingRow,
+  type VectorSearchHit,
 } from './lance-tables';
+
+export {
+  createVectorSearch,
+  type VectorSearchHelper,
+  type VectorSearchFallbackReason,
+  type VectorSearchLogger,
+  type VectorSearchCounters,
+  type CreateVectorSearchDeps,
+} from './vector-search';
 
 export {
   createEmbeddingSubscriber,

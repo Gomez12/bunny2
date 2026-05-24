@@ -149,6 +149,18 @@ export interface AppDeps {
    * `errors.bus.dlqReplayFailed` rather than crashing.
    */
   readonly replayDlq?: (outboxId: string) => boolean;
+  /**
+   * Phase 7.1 — LanceDB vector read path. When provided, the chat
+   * pipeline's retrieval step calls the helper before falling back to
+   * the per-kind SQLite LIKE path. Optional so the existing test
+   * fixtures keep working byte-for-byte: when omitted, retrieval
+   * stays on LIKE exactly like phase 6.
+   *
+   * The helper itself decides when to fall back (no embedder, mock
+   * embedder, cold corpus, error); see
+   * `apps/server/src/chat/embeddings/vector-search.ts`.
+   */
+  readonly vectorSearch?: import('../chat/embeddings').VectorSearchHelper;
 }
 
 /**

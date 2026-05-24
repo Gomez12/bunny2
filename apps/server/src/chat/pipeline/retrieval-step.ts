@@ -77,7 +77,11 @@ export function createRetrievalStep(): PipelineStep<RetrievalStepInput, Retrieva
           if (store === null) continue;
           const term = hint.term.trim();
           if (term.length === 0) continue;
-          const summaries = store.searchSummaries(ctx.effectiveLayerIds, term, {
+          // Phase 7.1 — `searchSummaries` is async now: the orchestrator
+          // adapter may consult LanceDB before falling back to LIKE.
+          // The auth-boundary contract is unchanged (the `layerIds`
+          // filter runs pre-search on both paths — ADR 0021 §1).
+          const summaries = await store.searchSummaries(ctx.effectiveLayerIds, term, {
             limit: PER_QUERY_LIMIT,
           });
           for (const s of summaries) {

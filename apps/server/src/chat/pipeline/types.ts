@@ -274,19 +274,29 @@ export interface EntityStoreForRetrieval {
    * Same shape as `EntityStore.searchSummaries` — duplicated here so
    * the pipeline doesn't depend on the generic `Entity<Payload>`
    * surface. The orchestrator builds a per-kind adapter at boot.
+   *
+   * Phase 7.1 made this async: the orchestrator's adapter may consult
+   * a LanceDB vector path before falling back to the underlying
+   * synchronous SQLite LIKE path. The chat pipeline's retrieval step
+   * awaits this call. The auth boundary
+   * (`overall.md` §5 invariant 8 / ADR 0021 §1) is unchanged — the
+   * `layerIds` filter still runs BEFORE any candidate selection,
+   * vector or LIKE.
    */
   searchSummaries(
     layerIds: readonly string[],
     query: string,
     opts?: { readonly limit?: number },
-  ): readonly {
-    readonly id: string;
-    readonly kind: string;
-    readonly layerId: string;
-    readonly slug: string;
-    readonly title: string;
-    readonly searchableText: string;
-  }[];
+  ): Promise<
+    readonly {
+      readonly id: string;
+      readonly kind: string;
+      readonly layerId: string;
+      readonly slug: string;
+      readonly title: string;
+      readonly searchableText: string;
+    }[]
+  >;
 }
 
 export interface PipelineLogger {

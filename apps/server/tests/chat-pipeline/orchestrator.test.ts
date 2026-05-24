@@ -113,7 +113,11 @@ interface SeededEntity {
  */
 function createStubEntityStore(kind: EntityKind, rows: SeededEntity[]): EntityStoreForRetrieval {
   return {
-    searchSummaries(layerIds, query, opts) {
+    // Phase 7.1 — `searchSummaries` is async on the narrow interface;
+    // the orchestrator's production adapter awaits a LanceDB vector
+    // path before falling back to LIKE. The stub stays in-memory
+    // sync — the `async` keyword just satisfies the new signature.
+    async searchSummaries(layerIds, query, opts) {
       const limit = opts?.limit ?? 50;
       const needle = query.toLowerCase();
       return rows
