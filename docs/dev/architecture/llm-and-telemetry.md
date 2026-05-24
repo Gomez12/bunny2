@@ -198,24 +198,24 @@ until the user populates it — which is the right behaviour for
 
 ## 7. Retention prune
 
-`apps/server/src/llm/prune.ts::startLlmRetentionPrune({ log, retentionDays, intervalMs, clock, logger })`.
+Since phase 5.5, the `llm_calls` retention prune runs through the
+generic scheduled-task registry as the `llm.calls.prune` handler
+kind (see plan §15 hand-off and `phase-05-scheduled-tasks.md`). The
+bespoke `setInterval`-based `startLlmRetentionPrune` is gone; the
+pure `pruneLlmCalls({ log, retentionDays, now, logger })` helper in
+`apps/server/src/llm/prune.ts` is what the handler invokes on every
+tick.
 
-Defaults: 180-day retention, one pass every 24h. The job:
+Defaults: 180-day retention, daily cadence (`intervalMinutes = 24 *
+60`). On first boot the handler's row is seeded into the `everyone`
+layer; admins can pause / resume / change cadence via the layer
+settings page (5.6 UI). Per-row config:
+`config.retentionDays` overrides the boot default without a code
+change.
 
-- runs one pass **immediately** on startup so a long-lived process
-  doesn't wait a full day before the first prune,
-- schedules a `setInterval` for steady-state passes — chosen over a
-  self-rescheduling `setTimeout` because the work is cheap (one
-  indexed `DELETE`) and we want predictable cadence,
-- compares `started_at < cutoff.toISOString()`, which sorts
-  lexicographically because both sides are ISO-8601,
-- returns a `stop()` handle that calls `clearInterval`, plus a
-  `runOnce()` handle for tests and manual operator use,
-- calls `timer.unref()` when available so the prune does not keep
-  the Bun process alive on its own.
-
-`retentionDays` is configurable via `llm.retentionDays` in the project
-config; tests inject `clock` to make the cutoff deterministic.
+`retentionDays` boot default still comes from `llm.retentionDays` in
+the project config. Tests inject `now` to make the cutoff
+deterministic; the `pruneLlmCalls` helper has no timer of its own.
 
 ---
 
@@ -227,7 +227,8 @@ config; tests inject `clock` to make the cutoff deterministic.
 createSqliteLlmCallLog(db)
   → createLlmClient({ endpoint, apiKey, defaultModel })
     → withTelemetry(rawClient, { log, pricing })
-      → startLlmRetentionPrune({ log, retentionDays })
+      → registerBuiltInScheduledTaskHandlers({ llmCallLog, llmRetentionDays, ... })
+        → seedSystemScheduledTasksIfNeeded({ db, bus, repo })
 ```
 
 The wrapped client is held at module scope so phase 1.5's chat handler

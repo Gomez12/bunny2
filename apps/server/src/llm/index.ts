@@ -13,6 +13,6 @@ export { createSqliteLlmCallLog } from './call-log';
 export type { LlmCallLog, LlmCallRow } from './call-log';
 export { estimateCostUsd } from './pricing';
 export type { ModelPricing, PricingMap } from './pricing';
-export { startLlmRetentionPrune } from './prune';
-export type { PruneHandle, PruneOpts } from './prune';
+export { pruneLlmCalls } from './prune';
+export type { PruneLlmCallsOpts } from './prune';
 export { redact } from './redaction';

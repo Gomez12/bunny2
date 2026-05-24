@@ -10,12 +10,7 @@ import { openDatabase } from './storage/sqlite';
 import { currentSchemaVersion } from './storage/migrations';
 import { openLanceDB } from './storage/lancedb';
 import { createSqliteEventLog, writeEventRow } from './bus/event-log';
-import {
-  createLlmClient,
-  createSqliteLlmCallLog,
-  startLlmRetentionPrune,
-  withTelemetry,
-} from './llm';
+import { createLlmClient, createSqliteLlmCallLog, withTelemetry } from './llm';
 import { createApp } from './http/router';
 import type { StatusBody } from './http/router';
 import { createUsersRepo } from './repos/users-repo';
@@ -41,6 +36,7 @@ import {
   createScheduler,
   createScheduledRunSubscriber,
   registerBuiltInScheduledTaskHandlers,
+  seedSystemScheduledTasksIfNeeded,
 } from './scheduled';
 
 // Phase 5.2 — process role split. `parseRole` accepts the CLI flag
@@ -113,16 +109,13 @@ const llmClient = withTelemetry(rawLlmClient, {
   log: llmCallLog,
   pricing: config.llm.pricing,
 });
-// Phase 5.2 — LLM-call retention prune is a periodic background job, so
-// it only runs on roles that do background work (`worker` / `all`).
-// Phase 5.5 will move this onto the generic scheduled-tasks registry.
-const llmPrune =
-  role === 'web'
-    ? null
-    : startLlmRetentionPrune({
-        log: llmCallLog,
-        retentionDays: config.llm.retentionDays,
-      });
+// Phase 5.5 — LLM-call retention prune used to spawn a bespoke
+// `setInterval`. It now runs through the generic scheduler as the
+// `llm.calls.prune` handler (registered just below, seeded once into
+// the `everyone` layer by `seedSystemScheduledTasksIfNeeded`). The
+// run-cadence is governed by the seeded `scheduled_tasks` row and
+// `worker` / `all` processes execute it; the old role-gate is gone
+// because the scheduler's role-gate already covers it.
 
 const usersRepo = createUsersRepo(db);
 const groupsRepo = createGroupsRepo(db);
@@ -327,7 +320,10 @@ if (role !== 'web') {
 // Phase 5.3 — scheduled-tasks runtime.
 //   - `registerBuiltInScheduledTaskHandlers()` is idempotent and runs
 //     on every role so a `web` process can list the registered
-//     handler set if a future admin route needs it.
+//     handler set if a future admin route needs it. Phase 5.5 added
+//     deps to this call: the LLM prune handler needs `llmCallLog` +
+//     the retention default, and the healthcheck handler stamps
+//     `schemaVersion` / `busAdapterName` into its bus payload.
 //   - The run subscriber listens on every role: the worker actually
 //     executes the handler, but a `web` process owning the
 //     subscription is correctness-safe because the durable outbox
@@ -339,7 +335,24 @@ if (role !== 'web') {
 //     `start()` itself checks `role` and no-ops on `web`. The web
 //     role keeps the scheduler object around so the same shape ships
 //     across every role (review-clarity).
-registerBuiltInScheduledTaskHandlers();
+registerBuiltInScheduledTaskHandlers({
+  llmCallLog,
+  llmRetentionDays: config.llm.retentionDays,
+  schemaVersion,
+  busAdapter: busAdapterName,
+});
+// Phase 5.5 — seed the four system scheduled tasks into the
+// `everyone` layer. Runs on EVERY role (one-shot row insert; the
+// worker/all role owns execution via the scheduler tick). MUST run
+// AFTER `seedLayersIfNeeded` (needs the everyone layer id) and AFTER
+// `seedAdminIfNeeded` (needs `admin_user_id` from kv_meta for the
+// `created_by` FK), and AFTER `registerBuiltInScheduledTaskHandlers`
+// above (needs each handler's `defaultSchedule`).
+const systemTasksSeedResult = await seedSystemScheduledTasksIfNeeded({
+  db,
+  bus,
+  repo: scheduledRepo,
+});
 const scheduledRunSubscriber = createScheduledRunSubscriber({
   db,
   bus,
@@ -365,12 +378,13 @@ console.log(
   `[${appName}] llm:         ${llmClient.endpoint} (default=${llmClient.defaultModel}, calls=${llmCallLog.count()})`,
 );
 console.log(`[${appName}] scheduler:   ${role === 'web' ? 'disabled, role=web' : 'enabled'}`);
+console.log(
+  `[${appName}] system-tasks: ${systemTasksSeedResult.seeded ? `${systemTasksSeedResult.created} seeded` : 'already seeded'}`,
+);
 
-// Keep the prune handle reachable so the GC does not collect its interval.
-void llmPrune;
-// Same for the runner / dispatcher / enrichment runner — they own
-// subscriptions / timers that must outlive boot. The lint rule complains
-// about unused locals; `void` keeps them alive without weakening the type.
+// The runner / dispatcher / enrichment runner own subscriptions /
+// timers that must outlive boot. The lint rule complains about
+// unused locals; `void` keeps them alive without weakening the type.
 void connectorDispatcher;
 void connectorRunner;
 void enrichmentRunner;

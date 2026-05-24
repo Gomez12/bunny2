@@ -24,6 +24,32 @@ export const BUS_EVENT_TYPES = ['bus.dlq.added', 'bus.dlq.replayed'] as const;
 export type BusEventType = (typeof BUS_EVENT_TYPES)[number];
 
 /**
+ * Phase 5.5 — `system.*` event taxonomy. Lives alongside the bus
+ * events because they are both infrastructure-level signals (the
+ * scheduled-tasks domain handles its own `scheduledtask.*` family).
+ * The healthcheck handler publishes `system.healthcheck.tick` on
+ * every successful run; the payload is intentionally cheap so a
+ * dashboard "is the worker alive?" subscriber can light up without
+ * a join.
+ */
+export const SYSTEM_EVENT_TYPES = ['system.healthcheck.tick'] as const;
+
+export type SystemEventType = (typeof SYSTEM_EVENT_TYPES)[number];
+
+export interface SystemHealthcheckTickPayload {
+  /** ISO wallclock at handler invocation. */
+  readonly now: string;
+  /**
+   * Migration name the process booted on (matches the `/status`
+   * payload — see `currentSchemaVersion`), or `null` on a fresh DB
+   * with no migrations applied yet.
+   */
+  readonly schemaVersion: string | null;
+  /** Stable label for the bus adapter, e.g. `'durable-sqlite'`. */
+  readonly busAdapter: string;
+}
+
+/**
  * Fired AFTER the durable adapter commits a `bus_dlq` row. Emitted
  * from `apps/server/src/index.ts` via the adapter's `onDlqAdded`
  * hook so the publish never races the in-progress transaction.
