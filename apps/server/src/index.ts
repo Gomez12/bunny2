@@ -5,6 +5,7 @@ import {
   errorCaptureMiddleware,
 } from '@bunny2/bus';
 import { loadConfig } from './config';
+import { parseRole } from './role';
 import { openDatabase } from './storage/sqlite';
 import { currentSchemaVersion } from './storage/migrations';
 import { openLanceDB } from './storage/lancedb';
@@ -35,6 +36,15 @@ import {
   type EntityStore,
 } from './entities';
 import { createTodoCalendarProjection } from './entities/todos';
+
+// Phase 5.2 — process role split. `parseRole` accepts the CLI flag
+// (`--role=web|worker|all`) and falls back to the `BUNNY2_ROLE` env
+// var when the flag is absent (helpful for Docker / PM2 deployments
+// that inject the role via the environment). Unknown values throw
+// here so a misconfigured deployment fails fast. Default is `all`
+// per the plan §4.3 decision #7 — keeps dev runs and the Electron
+// sidecar on a single process.
+const role = parseRole({ argv: Bun.argv.slice(2), env: process.env });
 
 const { config, configFile, dataDir } = loadConfig();
 const db = openDatabase(dataDir);
@@ -72,10 +82,16 @@ const llmClient = withTelemetry(rawLlmClient, {
   log: llmCallLog,
   pricing: config.llm.pricing,
 });
-const llmPrune = startLlmRetentionPrune({
-  log: llmCallLog,
-  retentionDays: config.llm.retentionDays,
-});
+// Phase 5.2 — LLM-call retention prune is a periodic background job, so
+// it only runs on roles that do background work (`worker` / `all`).
+// Phase 5.5 will move this onto the generic scheduled-tasks registry.
+const llmPrune =
+  role === 'web'
+    ? null
+    : startLlmRetentionPrune({
+        log: llmCallLog,
+        retentionDays: config.llm.retentionDays,
+      });
 
 const usersRepo = createUsersRepo(db);
 const groupsRepo = createGroupsRepo(db);
@@ -128,6 +144,7 @@ const status = (): StatusBody => {
     app: appName,
     version: appVersion,
     phase: '3.6',
+    role,
     ok: true,
     dataDir,
     configFile,
@@ -164,6 +181,23 @@ const status = (): StatusBody => {
 // the first time `ingest` runs for that kind. Built BEFORE `createApp`
 // so the contacts router can mount the ingest route with this same
 // instance.
+//
+// Phase 5.2 — the dispatcher is constructed and `start()`-ed on every
+// role (`web`, `worker`, `all`). The web role needs the synchronous
+// `ingest(...)` method available in-process for
+// `POST /l/:slug/<kind>/_ingest/:connectorId`, and `start()` currently
+// bundles two responsibilities behind one call: registering the
+// `sync.requested` subscriber AND making the `ingest()` method
+// reachable. The subscriber on web is correctness-safe because the
+// durable outbox claim is atomic — at most one process delivers each
+// row, so subscribing on both web and worker cannot double-execute
+// work. The trade-off: a `web`-role process MAY end up handling some
+// connector pulls (whichever process wins the outbox claim first), so
+// the role split is not yet a strict CPU-isolation boundary for
+// connector work. TODO(phase 5.3): disentangle `start()` into a
+// dedicated `subscribeSyncRequested()` so web can skip the subscriber
+// and only the worker handles `sync.requested` deliveries — that's
+// when the role split becomes a hard isolation line for connectors.
 const connectorDispatcher = createConnectorDispatcher({ db, bus, llm: llmClient });
 connectorDispatcher.start();
 
@@ -179,12 +213,17 @@ const app = createApp({
   ingestDispatcher: connectorDispatcher,
   ingestMaxBytes: config.connectors.ingestMaxBytes,
 });
+// Phase 5.2 — the periodic connector poll runner is background work,
+// so the `web` role skips `start()`. The runner is still constructed
+// (kept as a single shape across roles for review-clarity) but its
+// timer never arms. `connectors.runnerEnabled = false` overrides this
+// on every role (offline / smoke runs).
 const connectorRunner = createConnectorRunner({
   db,
   bus,
   intervalMs: config.connectors.tickMs,
 });
-if (config.connectors.runnerEnabled) {
+if (config.connectors.runnerEnabled && role !== 'web') {
   connectorRunner.start();
 }
 
@@ -217,7 +256,9 @@ const enrichmentRunner = createEnrichmentRunner({
   },
   resolveStore: resolveStoreForModule,
 });
-if (config.enrichment.runnerEnabled) {
+// Phase 5.2 — enrichment is event-driven background work; the `web`
+// role does not run it. Worker / `all` start the runner as before.
+if (config.enrichment.runnerEnabled && role !== 'web') {
   enrichmentRunner.start();
 }
 
@@ -232,12 +273,22 @@ if (config.enrichment.runnerEnabled) {
 // between the previous shutdown and this boot. Upserts are
 // idempotent so the order vs. concurrent in-flight events does not
 // matter.
+// Phase 5.2 — the projection subscriber is background work and lives
+// on the worker / `all` roles only. The web role serves the read side
+// (`mountTodoCalendarProjectionRoutes` in `createApp`) from the
+// already-projected table the worker maintains.
+//
+// Phase 5.3 will add the scheduler tick here (also worker / `all`
+// only) — placeholder reserved.
 const todoCalendarProjection = createTodoCalendarProjection({ db, bus });
-todoCalendarProjection.start();
-todoCalendarProjection.rebuild();
+if (role !== 'web') {
+  todoCalendarProjection.start();
+  todoCalendarProjection.rebuild();
+}
 
 console.log(`[${appName}] data-dir:    ${dataDir}`);
 console.log(`[${appName}] config-file: ${configFile ?? '(defaults)'}`);
+console.log(`[${appName}] role:        ${role}`);
 console.log(`[${appName}] sqlite:      schema=${schemaVersion ?? '(none)'}`);
 console.log(`[${appName}] lancedb:     ${lanceTables.length} table(s)`);
 console.log(`[${appName}] bus:         ${busAdapterName} (events=${eventLog.count()})`);
@@ -255,10 +306,18 @@ void connectorRunner;
 void enrichmentRunner;
 void todoCalendarProjection;
 
-const server = Bun.serve({
-  port: config.http.port,
-  hostname: config.http.host,
-  fetch: app.fetch,
-});
-
-console.log(`[${appName}] listening on http://${server.hostname}:${server.port}`);
+// Phase 5.2 — the `worker` role does background work only and binds
+// no TCP port. The `web` and `all` roles serve HTTP as before. The
+// durable bus runs on every role (the `bus.start()` call above) so a
+// worker-only process still drains the outbox, and a web-only
+// process still publishes into it for a worker to pick up.
+if (role === 'worker') {
+  console.log(`[${appName}] worker mode — no HTTP listener`);
+} else {
+  const server = Bun.serve({
+    port: config.http.port,
+    hostname: config.http.host,
+    fetch: app.fetch,
+  });
+  console.log(`[${appName}] listening on http://${server.hostname}:${server.port}`);
+}

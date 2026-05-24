@@ -26,6 +26,7 @@ describe('GET /status', () => {
         app: 'bunny2',
         version: '0.0.0',
         phase: '2.2',
+        role: 'all',
         ok: true,
         dataDir: '/tmp/example',
         configFile: null,

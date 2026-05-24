@@ -233,6 +233,7 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       app: 'bunny2',
       version: '0.0.0',
       phase: '3.6',
+      role: 'all',
       ok: true,
       dataDir: loaded.dataDir,
       configFile: loaded.configFile,

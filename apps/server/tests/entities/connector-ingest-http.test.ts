@@ -62,6 +62,7 @@ function makeIngestFixture(opts: { readonly ingestMaxBytes?: number } = {}): Ing
     app: 'bunny2',
     version: '0.0.0',
     phase: '4b.2',
+    role: 'all',
     ok: true,
     dataDir: dir,
     configFile: null,

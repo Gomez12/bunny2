@@ -27,6 +27,7 @@ function mkAppFixture() {
     app: 'bunny2',
     version: '0.0.0',
     phase: '2.3',
+    role: 'all',
     ok: true,
     dataDir: '/tmp/test',
     configFile: null,

@@ -39,6 +39,7 @@ const STATUS_STUB = (): StatusBody => ({
   app: 'bunny2',
   version: '0.0.0',
   phase: '3.3',
+  role: 'all',
   ok: true,
   dataDir: '/tmp/test',
   configFile: null,

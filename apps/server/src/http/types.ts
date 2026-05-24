@@ -7,6 +7,7 @@ import type { Session } from '../repos/sessions-repo';
 import type { GroupResolver } from '../auth/group-resolver';
 import type { Layer } from '../repos/layers-repo';
 import type { LayerResolver } from '../layers/resolver';
+import type { ProcessRole } from '../role';
 
 /**
  * Snapshot returned by `GET /status`. Built by `index.ts` and passed as a
@@ -20,6 +21,13 @@ export interface StatusBody {
   readonly ok: boolean;
   readonly dataDir: string;
   readonly configFile: string | null;
+  /**
+   * Phase 5.2 — which role this process booted in (`web` / `worker` /
+   * `all`). Surfaced so an operator hitting `/status` on a deployment
+   * can confirm the process-split topology without grepping the boot
+   * log.
+   */
+  readonly role: ProcessRole;
   readonly sqlite: { readonly schemaVersion: string | null };
   readonly lancedb: { readonly ready: boolean; readonly tables: readonly string[] };
   readonly bus: { readonly adapter: string; readonly events: number };
