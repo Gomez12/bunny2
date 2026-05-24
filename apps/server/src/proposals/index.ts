@@ -107,6 +107,14 @@ export {
   type RegisterProposalsScheduledTaskHandlersDeps,
 } from './scheduled';
 
+// Phase 8.2 — pure auto-activation gate function consumed by the
+// hourly `proposals.auto-activate` job (lands in 8.3).
+export {
+  evaluateAutoActivation,
+  AUTO_ACTIVATION_GATE_NAMES,
+  type EvaluateAutoActivationInput,
+} from './auto-activate';
+
 // Phase 7.6 — repo factories surfaced for the HTTP routes.
 export {
   createImprovementProposalsRepo,
