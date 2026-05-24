@@ -47,6 +47,8 @@ import {
   createVectorSearch,
   type Embedder,
 } from './chat';
+import { createCapabilityRegistry } from './proposals';
+import { createLayerCapabilitiesRepo } from './proposals/repos/layer-capabilities-repo';
 
 // Phase 5.2 — process role split. `parseRole` accepts the CLI flag
 // (`--role=web|worker|all`) and falls back to the `BUNNY2_ROLE` env
@@ -402,6 +404,19 @@ registerBuiltInScheduledTaskHandlers({
 // uses them); the subscriber wiring stays here so the entity-module
 // registry has its full set before subscribers attach.
 registerChatScheduledTaskHandlers({ embedder, writer: lanceWriter });
+
+// Phase 7.4 — per-process capability registry. Reads + writes
+// `layer_capabilities`; consulted by the sandbox runner during replay
+// (via in-memory overlay) and by the approval re-plan path. Per-kind
+// activation consumers (answerer skill-fragment load; bus subscriber
+// for `agent` kind; tool registry surface) attach in phase 7.5; 7.4
+// only needs the registry surface itself + the activate(...) write
+// path so the route handlers landing in 7.6 have it ready.
+const capabilityRegistry = createCapabilityRegistry({
+  repo: createLayerCapabilitiesRepo(db),
+  bus,
+});
+void capabilityRegistry;
 
 const embeddingSubscriber = createEmbeddingSubscriber({
   bus,

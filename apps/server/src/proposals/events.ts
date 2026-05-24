@@ -26,7 +26,11 @@
 
 import type { ArtifactKind } from '@bunny2/shared';
 
-export const PROPOSAL_EVENT_TYPES = ['proposal.minted'] as const;
+export const PROPOSAL_EVENT_TYPES = [
+  'proposal.minted',
+  'proposal.activated',
+  'proposal.superseded',
+] as const;
 
 export type ProposalEventType = (typeof PROPOSAL_EVENT_TYPES)[number];
 
@@ -44,3 +48,37 @@ export interface ProposalMintedPayload {
 }
 
 export const PROPOSAL_MINTED_EVENT_TYPE: ProposalEventType = 'proposal.minted';
+
+/**
+ * Fired once per `layer_capabilities` insert from the activation path
+ * (phase 7.4 `replanOnApproval` or future phase-8 threshold-gated
+ * automation). Carries IDs only (anti-leak invariant — no spec body).
+ *
+ * `proposalId` is optional because the activation surface accepts
+ * `origin='builtin'` rows too (phase 7.5 + boot path will use it).
+ * For proposal-driven activations the field is always set.
+ */
+export interface ProposalActivatedPayload {
+  readonly layerId: string;
+  readonly artifactKind: ArtifactKind;
+  readonly capabilityId: string;
+  readonly origin: string;
+  readonly proposalId?: string;
+}
+
+export const PROPOSAL_ACTIVATED_EVENT_TYPE: ProposalEventType = 'proposal.activated';
+
+/**
+ * Fired when the re-plan path determines that the gap is already
+ * covered by a newer capability (drift, gap covered) OR the
+ * re-planned spec didn't help (superseded-after-replan).
+ * `outcome` lets subscribers distinguish without re-reading the
+ * proposal row.
+ */
+export interface ProposalSupersededPayload {
+  readonly proposalId: string;
+  readonly layerId: string;
+  readonly outcome: 'superseded' | 'superseded-after-replan';
+}
+
+export const PROPOSAL_SUPERSEDED_EVENT_TYPE: ProposalEventType = 'proposal.superseded';
