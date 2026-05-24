@@ -20,4 +20,6 @@ export {
   type DurableSqliteMessageBusOptions,
   type EventRowWriter,
   type HandlerErrorLogger,
+  type DlqAddedInfo,
+  type DlqAddedListener,
 } from './adapters/durable-sqlite';

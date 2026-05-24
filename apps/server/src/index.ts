@@ -70,10 +70,35 @@ const schemaVersion = currentSchemaVersion(db);
 // counter that the `/status` page reads — its `writer` is unused on
 // the production path (the durable adapter inlines that write).
 const eventLog = createSqliteEventLog(db);
+// Phase 5.4 — `onDlqAdded` is the after-commit hook the durable
+// adapter exposes so the server can publish `bus.dlq.added` without
+// publishing from inside the bus's own dispatch loop (which would
+// race the in-progress transaction). The publish is fire-and-forget;
+// a throw here is logged and swallowed by the adapter so a misbehaving
+// notifier never starves the consume loop.
+//
+// Note on scope: the durable adapter only routes MIDDLEWARE-chain
+// errors into `bus_dlq`. Per-handler errors are caught inside the
+// adapter's `dispatch` and logged via `onHandlerError`. Application-
+// level failures from scheduled-task handlers therefore land in
+// `scheduledtask.run.failed` (via the run subscriber's own try/catch),
+// not in the DLQ. The DLQ is reserved for infrastructure failures.
 const bus = new DurableSqliteMessageBus(db, {
   writeEvent: (event) => writeEventRow(db, event),
   middlewares: [correlationIdMiddleware, errorCaptureMiddleware()],
   subscriberKey: 'server-main',
+  onDlqAdded: (info) => {
+    void bus.publish({
+      type: 'bus.dlq.added',
+      payload: {
+        outboxId: info.outboxId,
+        subscriberKey: info.subscriberKey,
+        type: info.type,
+        attempts: info.attempts,
+        error: info.error,
+      },
+    });
+  },
 });
 bus.start();
 const busAdapterName = 'durable-sqlite';
@@ -207,6 +232,11 @@ const status = (): StatusBody => {
 const connectorDispatcher = createConnectorDispatcher({ db, bus, llm: llmClient });
 connectorDispatcher.start();
 
+// Phase 5.4 — scheduled-tasks repo is shared between the scheduler /
+// run-subscriber wiring below and the HTTP routes mounted in
+// `createApp`, so a manual `POST .../runs` lands in the same table
+// the scheduler tick writes to.
+const scheduledRepo = createScheduledTasksRepo(db);
 const app = createApp({
   bus,
   llmClient,
@@ -218,6 +248,11 @@ const app = createApp({
   locales: config.locales,
   ingestDispatcher: connectorDispatcher,
   ingestMaxBytes: config.connectors.ingestMaxBytes,
+  scheduledRepo,
+  // Hand the admin DLQ-replay route a typed function pointing at the
+  // durable adapter's method. Bound here so the route file never has
+  // to import `DurableSqliteMessageBus` (keeps the seam minimal).
+  replayDlq: (outboxId) => bus.replayDlq(outboxId),
 });
 // Phase 5.2 — the periodic connector poll runner is background work,
 // so the `web` role skips `start()`. The runner is still constructed
@@ -305,7 +340,6 @@ if (role !== 'web') {
 //     role keeps the scheduler object around so the same shape ships
 //     across every role (review-clarity).
 registerBuiltInScheduledTaskHandlers();
-const scheduledRepo = createScheduledTasksRepo(db);
 const scheduledRunSubscriber = createScheduledRunSubscriber({
   db,
   bus,

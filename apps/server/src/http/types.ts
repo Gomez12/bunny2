@@ -8,6 +8,7 @@ import type { GroupResolver } from '../auth/group-resolver';
 import type { Layer } from '../repos/layers-repo';
 import type { LayerResolver } from '../layers/resolver';
 import type { ProcessRole } from '../role';
+import type { ScheduledTasksRepo } from '../scheduled/repo';
 
 /**
  * Snapshot returned by `GET /status`. Built by `index.ts` and passed as a
@@ -131,6 +132,23 @@ export interface AppDeps {
    * value to exercise the oversize path.
    */
   readonly ingestMaxBytes?: number;
+  /**
+   * Phase 5.4 — scheduled-tasks repository, shared with the in-process
+   * scheduler / run-subscriber. Optional so the existing test wiring
+   * (which does not exercise the scheduled-tasks routes) keeps
+   * compiling; production wiring in `apps/server/src/index.ts` always
+   * passes the singleton repo built off the production DB. When
+   * omitted, the routes still mount but `repo` is built on demand
+   * from `db` — same shape, just lazy.
+   */
+  readonly scheduledRepo?: ScheduledTasksRepo;
+  /**
+   * Phase 5.4 — hook to the durable bus's DLQ replay surface. Optional
+   * because the in-memory bus fixture used by most tests has no
+   * concept of a DLQ. When omitted, the admin replay route 503s with
+   * `errors.bus.dlqReplayFailed` rather than crashing.
+   */
+  readonly replayDlq?: (outboxId: string) => boolean;
 }
 
 /**

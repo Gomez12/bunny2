@@ -499,6 +499,19 @@
       "alreadyEncrypted": "This value is already encrypted.",
       "notEncrypted": "This value is not encrypted.",
       "decryptFailed": "The encrypted value could not be decrypted."
+    },
+    "scheduledTasks": {
+      "badRequest": "The request could not be processed. Please check the input and try again.",
+      "notFound": "Scheduled task not found.",
+      "notInLayer": "Scheduled task not found in this layer.",
+      "slugTaken": "A scheduled task with this slug already exists in this layer.",
+      "handlerUnknown": "The selected scheduled-task handler is not available on this server.",
+      "invalidCron": "The cron expression is invalid. Please check the syntax and timezone.",
+      "invalidInterval": "The interval is invalid. Please specify a positive number of minutes."
+    },
+    "bus": {
+      "dlqReplayFailed": "The dead-letter row could not be replayed.",
+      "outboxClaimRace": "Another process already claimed this outbox row."
     }
   },
   "entity": {

@@ -13,6 +13,27 @@ import type {
 export type HandlerErrorLogger = (error: unknown, event: BusEvent) => void;
 
 /**
+ * Phase 5.4 — invoked AFTER the DLQ transaction commits so the bus
+ * stays decoupled from the events-taxonomy. Production wiring in
+ * `apps/server/src/index.ts` uses this to publish `bus.dlq.added`
+ * without publishing from inside the bus's own dispatch loop (a
+ * publish from inside dispatch would race the in-progress
+ * transaction). Errors thrown by the callback are caught and logged
+ * via {@link HandlerErrorLogger} — a misbehaving notifier must not
+ * crash the consume loop or starve the next pump.
+ */
+export interface DlqAddedInfo {
+  readonly outboxId: string;
+  readonly subscriberKey: string;
+  readonly type: string;
+  readonly attempts: number;
+  readonly error: string;
+  readonly failedAt: string;
+}
+
+export type DlqAddedListener = (info: DlqAddedInfo) => void;
+
+/**
  * Writes the canonical `events` row that the in-memory adapter would
  * normally publish via `telemetryMiddleware`. The durable adapter
  * invokes this INSIDE the same SQLite transaction that inserts the
@@ -68,6 +89,13 @@ export interface DurableSqliteMessageBusOptions {
   readonly leaseMs?: number;
   /** PID used for the `claimed_by_pid` column. Default `process.pid`. */
   readonly pid?: number;
+  /**
+   * Phase 5.4 — fires AFTER a `bus_dlq` row is committed. Lets the
+   * server publish `bus.dlq.added` without coupling the bus package
+   * to the event-types taxonomy and without publishing from inside
+   * dispatch (which would race the in-progress transaction).
+   */
+  readonly onDlqAdded?: DlqAddedListener;
 }
 
 interface OutboxRow {
@@ -157,6 +185,7 @@ export class DurableSqliteMessageBus implements MessageBus {
   private readonly leaseMs: number;
   private readonly pid: number;
   private readonly writeEvent: EventRowWriter;
+  private readonly onDlqAdded: DlqAddedListener | null;
 
   private timer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
@@ -187,6 +216,7 @@ export class DurableSqliteMessageBus implements MessageBus {
     this.batchSize = opts.batchSize ?? 50;
     this.leaseMs = opts.leaseMs ?? 5 * 60 * 1000;
     this.pid = opts.pid ?? (typeof process !== 'undefined' ? process.pid : 0);
+    this.onDlqAdded = opts.onDlqAdded ?? null;
     const middlewares = opts.middlewares ?? [];
     this.run = composeMiddleware(middlewares, (event) => this.dispatch(event));
   }
@@ -564,6 +594,25 @@ export class DurableSqliteMessageBus implements MessageBus {
       this.upsertOffset(row.id, now);
     });
     tx();
+    // After-commit notifier so the server can publish `bus.dlq.added`
+    // without coupling the bus package to the events taxonomy and
+    // without publishing from inside dispatch. A throw from the
+    // listener is caught and logged via the same per-handler sink so
+    // a misbehaving notifier cannot starve the consume loop.
+    if (this.onDlqAdded !== null) {
+      try {
+        this.onDlqAdded({
+          outboxId: row.id,
+          subscriberKey: this.subscriberKey,
+          type: row.type,
+          attempts: nextAttempt,
+          error: errorMsg,
+          failedAt: now,
+        });
+      } catch (notifyErr) {
+        this.onHandlerError(notifyErr, rowToEvent(row));
+      }
+    }
     return true;
   }
 

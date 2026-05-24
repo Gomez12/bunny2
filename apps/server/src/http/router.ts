@@ -32,6 +32,10 @@ import {
   mountTodoRoutes,
   registerTodoModule,
 } from '../entities/todos';
+import { createScheduledTasksRepo } from '../scheduled/repo';
+import { registerScheduledTasksRoutes } from './routes/scheduled-tasks';
+import { registerAdminScheduledTasksRoutes } from './routes/admin-scheduled-tasks';
+import { registerAdminBusRoutes } from './routes/admin-bus';
 
 /**
  * Builds the HTTP app for `apps/server`.
@@ -228,6 +232,29 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     bus: deps.bus,
     llm: deps.llmClient,
     module: registeredTodoModule,
+  });
+
+  // Phase 5.4 — scheduled-tasks HTTP surface (per-layer CRUD + admin
+  // cross-layer overview + admin DLQ). The repo is shared with the
+  // in-process scheduler / run-subscriber so a manual run-now hits
+  // the same row the tick path would have inserted; `createApp`
+  // accepts the repo to support that sharing but builds one on the
+  // fly when callers (tests) omit it.
+  const scheduledRepo = deps.scheduledRepo ?? createScheduledTasksRepo(deps.db);
+  registerScheduledTasksRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
+    repo: scheduledRepo,
+    resolver: deps.resolver,
+  });
+  registerAdminScheduledTasksRoutes(app, {
+    db: deps.db,
+    repo: scheduledRepo,
+  });
+  registerAdminBusRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
+    ...(deps.replayDlq === undefined ? {} : { replayDlq: deps.replayDlq }),
   });
 
   // Phase 4d.6 — todo → calendar projection bridge. The READ side is
