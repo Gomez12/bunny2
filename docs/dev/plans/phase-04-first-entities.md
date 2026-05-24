@@ -2691,3 +2691,179 @@ contract changes.
   404 (the widget's empty-state CTA path already accepts that —
   empty layers also have nothing to ingest from a Google
   connector yet).
+
+### 4c.5 shipped (2026-05-24)
+
+**Goal** — Web UI for calendar events (list grid, detail, create,
+edit, soft-delete, attendee editor with contact deep-links, read-only
+external-links and AI-owned meeting summary) at
+`/l/:layerSlug/calendar/*`, mirroring the 4a.5 / 4b.5 vertical so the
+calendar surface feels identical to companies / contacts. Driven by
+`react-big-calendar` per `overall.md` §10.5.
+
+**Files added**
+
+- `apps/web/src/lib/calendar-routes.ts` — singular↔plural URL helper
+  plus `slugifyCalendarEventTitle`, which reserves `new` so a
+  user-created event titled "New" cannot shadow the
+  `/calendar/new` dialog deep-link route.
+- `apps/web/src/pages/CalendarPage.tsx` — the grid page. Mounts
+  `react-big-calendar` with `dateFnsLocalizer`, `views=['month', 'week', 'day']`,
+  defaults to week. Toolbar buttons: "New event" (opens the inline
+  dialog) and "Sync Google now" (POSTs the synthetic
+  `application/x-google-calendar-list-request` payload to the
+  existing 4b.2 ingest endpoint). The `/calendar/new` route auto-
+  opens the dialog on first paint (same pattern as Companies /
+  Contacts).
+- `apps/web/src/pages/CalendarEventDetailPage.tsx` — detail/edit
+  page. Includes the attendee array editor (value / displayName /
+  status select / contact deep-link chip), all-day toggle, datetime-
+  local / date inputs, read-only `rruleString` /
+  `externalCalendarId` displays, the AI-generated
+  `meetingSummaryNote` read-only block with the "AI-generated"
+  badge, and the read-only external-links card.
+- `apps/web/src/pages/calendar-page-state.ts` — pure reducers,
+  draft↔payload bridge, validators, attendee array editor reducers,
+  the backend → react-big-calendar mapper
+  (`mapEventsToCalendarItems`), and the load-bearing
+  `buildUpdateCalendarEventRequest` invariant that preserves
+  `meetingSummaryNote` from the loaded event so an editor save does
+  not wipe AI-generated summaries (the 4c.3 enrichment runner owns
+  the field per `enrichmentOverwriteFields = ['attendees', 'meetingSummaryNote']`).
+- `apps/web/tests/calendar-page.test.ts` — pure-logic tests for the
+  list reducer, the URL helpers, the slug rule (including the `new`
+  reservation), and the mapper.
+- `apps/web/tests/calendar-event-detail-page.test.ts` — pure-logic
+  tests for the detail reducer, the allDay flip behaviour, the
+  attendee array editor, the validator branches (endsBeforeStarts,
+  allDayFormat, attendeeDuplicate), the create + update payload
+  builders, and the meetingSummaryNote preservation invariant.
+
+**Files changed**
+
+- `apps/web/package.json` — adds `react-big-calendar`, `date-fns`,
+  and `@types/react-big-calendar`. Per `AGENTS.md §Dependencies`:
+  - Bundle: `react-big-calendar` requires a localizer; we picked
+    `date-fns` over `moment` because date-fns is tree-shakeable, has
+    no global mutation side-effects, and is roughly 1/4 the
+    gzipped size of moment+moment-timezone for the locales we ship
+    (en, nl). The library itself adds ~95KB minified + ~25KB CSS
+    via `react-big-calendar/lib/css/react-big-calendar.css`.
+  - Bun support: clean Bun install; uses standard React 18 peer
+    deps; runtime is a thin shim over `dateFnsLocalizer`.
+  - Accessibility: see the audit below + the new follow-up
+    `docs/dev/follow-ups/react-big-calendar-a11y.md`.
+  - Justification: the phase-4 plan §10.5 and the overall plan §10.5
+    pre-approved this dependency for the calendar grid. We do not
+    roll our own because the week-view layout, drag handling, all-
+    day band, and localised toolbar are substantial work the library
+    handles competently; building bespoke would re-introduce the
+    same a11y gaps with less visibility.
+- `apps/web/src/lib/api-types.ts` — adds `CalendarAttendeeStatus`,
+  `CalendarAttendee`, `CalendarEventPayload`, `CalendarEvent`,
+  `CreateCalendarEventPayload`, `UpdateCalendarEventPayload`,
+  `GoogleCalendarSyncResult`. Hand-written interfaces per the
+  file-level rule (the web bundle stays zod-free).
+- `apps/web/src/lib/api.ts` — adds `listCalendarEvents`,
+  `getCalendarEvent`, `createCalendarEvent`, `updateCalendarEvent`,
+  `softDeleteCalendarEvent`, `listCalendarEventExternalLinks`, and
+  `syncGoogleCalendar`. The last sends an empty `Blob` with the
+  Google connector's expected content type through the existing
+  4b.2 multipart-ingest endpoint — no new server route.
+- `apps/web/src/App.tsx` — mounts three new routes
+  (`/calendar`, `/calendar/new`, `/calendar/:eventSlug`) and adds
+  the `calendar` subpage label to `pageTitleFor`.
+- `apps/web/src/i18n/locales/en.json` + `nl.json` — extends the
+  existing `entity.calendar.*` block (shipped partial in 4c.1) with
+  the create-dialog / detail / attendee-editor / sync / view-switcher
+  / meeting-summary / external-links keys; adds the calendar entry
+  to `layer.shell.subpages`; adds `errors.entity.calendar.syncFailed`
+  - `deleteFailed`. Every Dutch value is a real translation.
+- `bun.lock` — regenerated to lock the new transitive deps.
+
+**Foundation extension** — None. The §4.0 contract, the ingest
+endpoint from 4b.2, and the Google connector from 4c.2 cover the
+sub-phase without a single server-side tweak.
+
+**No server endpoints added.** The "Sync Google now" button uses the
+existing `_ingest/google.calendar` route from 4c.2; the list / detail
+/ create / update / delete routes are the generic §4.0 entity router.
+
+**Timezone v1 stance** — treats all events as local-to-the-user's
+browser timezone. Drafts hold `<input type="datetime-local">` strings
+and serialise to UTC ISO at submit; `draftFromCalendarEvent`
+round-trips the stored UTC back into the local form. The
+`react-big-calendar` localizer is the browser's default
+`dateFnsLocalizer`. A per-layer / per-user timezone preference is
+filed as `docs/dev/follow-ups/calendar-timezone-v1.md`.
+
+**`react-big-calendar` a11y audit (verdict for 4c.5)** — passes the
+AGENTS.md §Accessibility floor:
+
+- Semantic HTML: every form input is labelled (`<Label htmlFor>`);
+  the calendar's toolbar buttons and event chips are real
+  `<button>`s; the all-day band uses native checkbox semantics.
+- Keyboard navigation: Tab walks toolbar → view-switcher → events in
+  DOM order. The library's day-cell focus model is mouse-driven
+  (no arrow-key grid navigation between empty cells); we accept
+  this for v1 per the §12 carve-out and document the gap in
+  `docs/dev/follow-ups/react-big-calendar-a11y.md`.
+- Visible focus: shared `<Button>` focus ring + the library's
+  built-in focus CSS.
+- Labels: event chip `aria-label` falls back to the event title;
+  toolbar `messages` prop is fully translated via `t(...)`.
+- Loading: `role="status" aria-live="polite"`; error: `role="alert"`.
+- Dialog focus trap: inherited from the native `<dialog>` element
+  used by `components/ui/dialog.tsx`.
+
+Verdict: ship with the library as-is. Bespoke wrapper is parked.
+
+**Tests** — `bun test` green at 624 pass (579 baseline + 45 new
+calendar tests across 2 files):
+
+- `apps/web/tests/calendar-page.test.ts` — 18 cases.
+- `apps/web/tests/calendar-event-detail-page.test.ts` — 27 cases.
+
+The DOM-driven render coverage stays parked behind
+`docs/dev/follow-ups/web-component-tests.md`.
+
+**Docs**
+
+- `docs/dev/plans/phase-04-first-entities.md` §14 — this close-out.
+- `docs/dev/tasklist.md` 4c.5 row → `done`.
+- `docs/dev/follow-ups/calendar-list-range-filter.md` — new.
+- `docs/dev/follow-ups/calendar-timezone-v1.md` — new.
+- `docs/dev/follow-ups/react-big-calendar-a11y.md` — new.
+
+**No new ADR** — the moment-vs-date-fns localizer pick is
+documented inline here (the pre-approved dependency choice in
+`overall.md §10.5` covers the library itself, and the a11y findings
+are routine carve-outs the plan §12 explicitly authorised). If a
+future calendar feature requires a non-trivial layout change (e.g.
+the bespoke wrapper described in the a11y follow-up), it earns its
+own ADR at that point.
+
+**Notable for 4c.6 (smoke + i18n + close-out)**
+
+- The smoke test for calendar is **not** extended in this commit —
+  4c.6 owns it. The smoke template from 4a.6 / 4b.6 carries through:
+  pre-register a stub-fetched `calendarEventModule`
+  (`connectors: [stubGoogleConnector]`, `enrichmentJobs: []`) via
+  `__resetEntityRegistryForTests()`, walk create → patch → ingest →
+  enrichment tick → stats → soft-delete → cross-layer isolation,
+  assert secret-strip on every event payload.
+- The `entity.calendar.*` i18n block landed extensively in this
+  sub-phase; 4c.6 should sweep for stale keys / orphans (the 4a.6
+  sweep removed several `entity.companies.*` keys that the 4a.1
+  spec listed but the 4a.5 UI did not consume). The Calendar list
+  page uses only the keys the implementation references.
+- The widget's "View calendar" CTA from 4c.4 finally resolves now
+  that `/l/:slug/calendar` is mounted. The widget's "New event"
+  CTA also resolves to the dialog deep link.
+- Three new follow-ups filed:
+  `docs/dev/follow-ups/calendar-list-range-filter.md` — server-side
+  `?from=&to=` filter so the grid stops doing N+1 hydration calls.
+  `docs/dev/follow-ups/calendar-timezone-v1.md` — per-layer /
+  per-user timezone preference + TZ-aware localizer.
+  `docs/dev/follow-ups/react-big-calendar-a11y.md` — arrow-key
+  cell navigation + view-switch announcement.

@@ -25,8 +25,10 @@ import type {
   AdminUserDetailResponse,
   AdminUserListResponse,
   AdminUserRow,
+  CalendarEvent,
   Company,
   Contact,
+  CreateCalendarEventPayload,
   CreateCompanyPayload,
   CreateContactPayload,
   CreateGroupPayload,
@@ -34,6 +36,7 @@ import type {
   CreateUserPayload,
   EntityExternalLink,
   EntitySummary,
+  GoogleCalendarSyncResult,
   Layer,
   LayerAttachment,
   LayerDetailResponse,
@@ -47,12 +50,18 @@ import type {
   SafeUser,
   SetLayerLocalesPayload,
   SystemLocalesResponse,
+  UpdateCalendarEventPayload,
   UpdateCompanyPayload,
   UpdateContactPayload,
   UpdateGroupPayload,
   UpdateLayerPayload,
   UpdateUserPayload,
 } from './api-types';
+import {
+  calendarServerBase,
+  calendarServerDetail,
+  calendarServerGoogleIngest,
+} from './calendar-routes';
 import {
   companiesServerBase,
   companyServerDetail,
@@ -723,6 +732,119 @@ export async function importContactsVcard(
     throw new ApiError(errorKeyFrom(body, res.status), res.status);
   }
   const body = await parseJson<ContactsImportVcardResult>(res);
+  if (body === null) {
+    throw new ApiError('errors.network', res.status);
+  }
+  return body;
+}
+
+// ---------- calendar events CRUD (phase 4c.5) ------------------------------
+//
+// Same singular ↔ plural seam as Companies / Contacts — see
+// `apps/web/src/lib/calendar-routes.ts`. The server router mounts the
+// singular `/l/:slug/calendar_event` segment per the §4.0 entity contract;
+// the web UI's friendlier URL is `/l/:slug/calendar`.
+
+export async function listCalendarEvents(layerSlug: string): Promise<readonly EntitySummary[]> {
+  const res = await request<{ entities: readonly EntitySummary[] }>(calendarServerBase(layerSlug));
+  return res.entities;
+}
+
+export async function getCalendarEvent(
+  layerSlug: string,
+  eventSlug: string,
+): Promise<CalendarEvent> {
+  const res = await request<{ entity: CalendarEvent }>(calendarServerDetail(layerSlug, eventSlug));
+  return res.entity;
+}
+
+export async function createCalendarEvent(
+  layerSlug: string,
+  body: CreateCalendarEventPayload,
+): Promise<CalendarEvent> {
+  const res = await request<{ entity: CalendarEvent }>(calendarServerBase(layerSlug), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function updateCalendarEvent(
+  layerSlug: string,
+  eventSlug: string,
+  body: UpdateCalendarEventPayload,
+): Promise<CalendarEvent> {
+  const res = await request<{ entity: CalendarEvent }>(calendarServerDetail(layerSlug, eventSlug), {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function softDeleteCalendarEvent(layerSlug: string, eventSlug: string): Promise<void> {
+  await request<{ ok: true }>(calendarServerDetail(layerSlug, eventSlug), {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * The full entity envelope from `getCalendarEvent` already carries the
+ * `externalLinks` array. This helper exists for symmetry with the
+ * Contacts / Companies analogues so the detail page can re-poll the
+ * provenance list without re-fetching the rest of the form draft.
+ */
+export async function listCalendarEventExternalLinks(
+  layerSlug: string,
+  eventSlug: string,
+): Promise<readonly EntityExternalLink[]> {
+  const event = await getCalendarEvent(layerSlug, eventSlug);
+  return event.externalLinks;
+}
+
+/**
+ * Phase 4c.5 — kick a Google Calendar sync for the layer. POSTs a
+ * synthetic empty file with the connector-expected content type to the
+ * existing 4b.2 multipart ingest endpoint. The server returns a numeric
+ * `{ created, updated, warnings }` summary; per ADR 0014 §7 the bus
+ * never sees the file body.
+ *
+ * Errors map to `ApiError.errorKey`:
+ *   - `errors.entity.connectorUnknown` (400) — connector not registered.
+ *   - `errors.connectors.google.calendar.invalidConfig` (400) — no
+ *     attachment configured for the layer.
+ *   - `errors.connectors.google.calendar.unauthorized` (400) — Google
+ *     rejected the stored refresh token.
+ *   - `errors.connectors.google.calendar.syncFailed` (400) — generic
+ *     upstream failure surfaced by the connector.
+ *   - `errors.entity.connectorIngestFailed` (400) — connector threw a
+ *     non-`errors.*` message (defensive default).
+ */
+export async function syncGoogleCalendar(layerSlug: string): Promise<GoogleCalendarSyncResult> {
+  const form = new FormData();
+  // The 4b.2 ingest router reads `file.type` for the content type; an
+  // empty Blob with the right MIME satisfies the Google connector's
+  // `application/x-google-calendar-list-request` gate without sending
+  // any real bytes.
+  form.append(
+    'file',
+    new Blob([], { type: 'application/x-google-calendar-list-request' }),
+    'google-calendar-list-request.empty',
+  );
+  let res: Response;
+  try {
+    res = await fetch(`${apiBase}${calendarServerGoogleIngest(layerSlug)}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form,
+    });
+  } catch {
+    throw new ApiError('errors.network', 0);
+  }
+  if (!res.ok) {
+    const body = await parseJson<ErrorEnvelope>(res);
+    throw new ApiError(errorKeyFrom(body, res.status), res.status);
+  }
+  const body = await parseJson<GoogleCalendarSyncResult>(res);
   if (body === null) {
     throw new ApiError('errors.network', res.status);
   }

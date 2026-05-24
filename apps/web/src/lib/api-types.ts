@@ -345,3 +345,48 @@ export interface UpdateContactPayload {
   readonly title?: string;
   readonly payload: ContactPayload;
 }
+
+// ---------- calendar events (phase 4c.5) ------------------------------------
+
+export type CalendarAttendeeStatus = 'accepted' | 'declined' | 'tentative' | 'needs_action';
+
+export interface CalendarAttendee {
+  readonly value: string;
+  readonly displayName?: string;
+  readonly contactEntityId?: string;
+  readonly status: CalendarAttendeeStatus;
+}
+
+export interface CalendarEventPayload {
+  readonly summary?: string;
+  readonly description?: string;
+  readonly location?: string;
+  readonly startsAt: string;
+  readonly endsAt?: string;
+  readonly allDay?: boolean;
+  readonly rruleString?: string;
+  readonly attendees?: readonly CalendarAttendee[];
+  readonly conferenceUrl?: string;
+  readonly externalCalendarId?: string;
+  readonly meetingSummaryNote?: string;
+}
+
+export type CalendarEvent = Entity<CalendarEventPayload>;
+
+export interface CreateCalendarEventPayload {
+  readonly title: string;
+  readonly slug?: string;
+  readonly originalLocale: string;
+  readonly payload: CalendarEventPayload;
+}
+
+export interface UpdateCalendarEventPayload {
+  readonly title?: string;
+  readonly payload: CalendarEventPayload;
+}
+
+export interface GoogleCalendarSyncResult {
+  readonly created: number;
+  readonly updated: number;
+  readonly warnings: readonly string[];
+}
