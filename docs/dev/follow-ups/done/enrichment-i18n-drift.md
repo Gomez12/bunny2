@@ -1,9 +1,19 @@
 # Follow-up — contacts enrichment i18n keys missing from locale files
 
-- Status: open
+- Status: done (2026-05-25 — docs-only close-out)
 - Created: 2026-05-24 (phase 4c.3 close-out)
 - Phases referencing it: 4b.3 (contacts enrichment), 4c.3 (calendar
   enrichment — discovered the drift while landing calendar enrichment)
+
+## Resolution
+
+Phase 4d is done and no UI surface ever consumed the three claimed
+keys. Per the "Next step" below, the false claim was dropped from
+the 4b.3 close-out in
+`docs/dev/plans/done/phase-04-first-entities.md` §14 rather than
+re-adding the orphan keys to the locale files. The absence is now
+documented honestly; future enrichment-UI work can re-add the keys
+alongside their consuming surface.
 
 ## What remains
 

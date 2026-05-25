@@ -1665,10 +1665,16 @@ confidence:0.92}` → link applied; exactly one LLM call.
 
 **i18n**
 
-- `entity.enrichment.contacts.suggestCompany.{running,
-appliedCompany, noMatch}` in en + nl (real Dutch translations).
-  These are kept minimal — surface labels for the future 4b.4 / 4b.5
-  UI.
+- **None.** No locale-file changes shipped with 4b.3. An earlier
+  version of this close-out claimed
+  `entity.enrichment.contacts.suggestCompany.{running,
+  appliedCompany, noMatch}` were added to en + nl as labels for a
+  future enrichment UI; this was incorrect — the keys were never
+  written to either locale, and the 4b.6 sweep separately documented
+  the absence of similarly-named keys. Corrected as part of the
+  `enrichment-i18n-drift` follow-up close-out: no UI consumer
+  materialised through 4d, so the keys stay absent. Re-add the keys
+  alongside the surface that consumes them.
 
 **Docs**
 
