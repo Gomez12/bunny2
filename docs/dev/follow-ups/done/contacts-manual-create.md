@@ -1,6 +1,6 @@
 # Follow-up — Manual contact creation is too thin to be useful
 
-- Status: open
+- Status: done
 - Created: 2026-05-24 (user request: "ik wil de entiteit contacts ook
   handmatig kunnen toevoegen")
 - Phases referencing it: 4b.2 (vCard ingest landed), 4b.5 (list page

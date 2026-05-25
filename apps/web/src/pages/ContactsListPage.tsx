@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
+import { CompanyPicker } from '../components/contacts/CompanyPicker';
+import { EmailListEditor } from '../components/contacts/EmailListEditor';
+import { PhoneListEditor } from '../components/contacts/PhoneListEditor';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Dialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { createContact, listContacts } from '../lib/api';
+import { Textarea } from '../components/ui/textarea';
+import { createContact, listCompanies, listContacts } from '../lib/api';
+import type { EntitySummary } from '../lib/api-types';
 import {
   contactDetailWebRoute,
   contactsImportWebRoute,
@@ -17,9 +22,17 @@ import { errorKeyOf } from '../lib/errors';
 import { pushToast } from '../lib/toast';
 import { useCurrentLayer } from '../lib/use-current-layer';
 import {
+  addEmail,
+  addPhone,
   buildCreateContactRequest,
   contactsListView,
   emptyContactFormDraft,
+  promotePrimaryEmail,
+  promotePrimaryPhone,
+  removeEmail,
+  removePhone,
+  updateEmail,
+  updatePhone,
   validateContactForm,
   type ContactFormDraft,
   type ContactsListInput,
@@ -240,6 +253,25 @@ function CreateContactDialog(props: CreateContactDialogProps): JSX.Element {
   const [slugTouched, setSlugTouched] = useState(false);
   const [pending, setPending] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [companies, setCompanies] = useState<readonly EntitySummary[]>([]);
+
+  // Load the layer's companies once on mount so the picker is populated
+  // before the user reaches it. Failures degrade gracefully: the picker
+  // still renders an empty list and lets the user submit without a
+  // company link (the create still succeeds — the field is optional).
+  useEffect(() => {
+    let cancelled = false;
+    listCompanies(props.layerSlug)
+      .then((cos) => {
+        if (!cancelled) setCompanies(cos);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanies([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.layerSlug]);
 
   function setField<K extends keyof ContactFormDraft>(key: K, value: ContactFormDraft[K]): void {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -282,6 +314,9 @@ function CreateContactDialog(props: CreateContactDialogProps): JSX.Element {
       closeLabel={t('common.close')}
     >
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4" noValidate>
+        {/* Above-the-fold required fields: title + slug stay visible at
+            the top of the dialog so the user sees what is mandatory before
+            scrolling into the optional rich editors below. */}
         <div className="space-y-2">
           <Label htmlFor="newc-title">{t('entity.contacts.fieldTitle')}</Label>
           <Input
@@ -310,25 +345,80 @@ function CreateContactDialog(props: CreateContactDialogProps): JSX.Element {
             {t('entity.contacts.slugHint')}
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="newc-givenName">{t('entity.contacts.fieldGivenName')}</Label>
-            <Input
-              id="newc-givenName"
-              value={draft.givenName}
-              onChange={(e) => setField('givenName', e.target.value)}
-              disabled={pending}
-              autoComplete="off"
-            />
+        {/* Scrollable body for the rich optional fields. The native
+            `<dialog>` clips to the viewport on its own; the inner
+            `max-h-[60vh]` keeps the required block above the fold even
+            when the user adds many emails / phones. */}
+        <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="newc-givenName">{t('entity.contacts.fieldGivenName')}</Label>
+              <Input
+                id="newc-givenName"
+                value={draft.givenName}
+                onChange={(e) => setField('givenName', e.target.value)}
+                disabled={pending}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newc-familyName">{t('entity.contacts.fieldFamilyName')}</Label>
+              <Input
+                id="newc-familyName"
+                value={draft.familyName}
+                onChange={(e) => setField('familyName', e.target.value)}
+                disabled={pending}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="newc-jobTitle">{t('entity.contacts.fieldJobTitle')}</Label>
+              <Input
+                id="newc-jobTitle"
+                value={draft.jobTitle}
+                onChange={(e) => setField('jobTitle', e.target.value)}
+                disabled={pending}
+                autoComplete="off"
+              />
+            </div>
           </div>
+
+          <EmailListEditor
+            drafts={draft.emails}
+            disabled={pending}
+            idPrefix="newc"
+            onAdd={() => setDraft((d) => addEmail(d))}
+            onRemove={(i) => setDraft((d) => removeEmail(d, i))}
+            onUpdate={(i, patch) => setDraft((d) => updateEmail(d, i, patch))}
+            onPromote={(i) => setDraft((d) => promotePrimaryEmail(d, i))}
+          />
+
+          <PhoneListEditor
+            drafts={draft.phones}
+            disabled={pending}
+            idPrefix="newc"
+            onAdd={() => setDraft((d) => addPhone(d))}
+            onRemove={(i) => setDraft((d) => removePhone(d, i))}
+            onUpdate={(i, patch) => setDraft((d) => updatePhone(d, i, patch))}
+            onPromote={(i) => setDraft((d) => promotePrimaryPhone(d, i))}
+          />
+
+          <CompanyPicker
+            value={draft.companyEntityId}
+            companies={companies}
+            disabled={pending}
+            idPrefix="newc"
+            onChange={(next) => setField('companyEntityId', next)}
+          />
+
           <div className="space-y-2">
-            <Label htmlFor="newc-familyName">{t('entity.contacts.fieldFamilyName')}</Label>
-            <Input
-              id="newc-familyName"
-              value={draft.familyName}
-              onChange={(e) => setField('familyName', e.target.value)}
+            <Label htmlFor="newc-notes">{t('entity.contacts.fieldNotes')}</Label>
+            <Textarea
+              id="newc-notes"
+              value={draft.notes}
+              onChange={(e) => setField('notes', e.target.value)}
               disabled={pending}
-              autoComplete="off"
+              rows={3}
             />
           </div>
         </div>
