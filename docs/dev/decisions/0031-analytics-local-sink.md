@@ -1,6 +1,6 @@
 # ADR 0031 — Local SQLite analytics sink
 
-- Status: proposed (accepted on phase 6 ship per plan §5)
+- Status: accepted
 - Date: 2026-05-25
 - Phase: 6 of `docs/dev/plans/admin-observability-viewer.md`
 - Related:
@@ -208,6 +208,44 @@ viewer contract; the audit pins the per-column reality.
 - **Skip retention and let the table grow.** Rejected — every
   other durable telemetry surface in this project has a prune job
   (`logging.md §4`); analytics should not be the exception.
+
+---
+
+## Implementation note (accepted 2026-05-25)
+
+Phase 6 shipped the ADR as written:
+
+- **D1** — `analytics_events` table landed in
+  `0022_analytics_events.sql` with the column set listed above;
+  ingest endpoint is `POST /analytics/events`; web sink is
+  `apps/web/src/lib/analytics-http-sink.ts` wired from
+  `apps/web/src/main.tsx`.
+- **D2** — ingest rejects unknown event names AND unknown property
+  keys (the property-key check is a tightening of the original
+  ADR text but is the same intent: catalogue is the contract). The
+  `analytics.events.rejected` log line records the offending name.
+  Property **values** are typechecked to `string | number |
+boolean | null` so a misbehaving client cannot smuggle nested
+  payloads through a documented key.
+- **D3** — hashing uses HMAC-SHA256 keyed off
+  `BUNNY2_ENCRYPTION_KEY`, with a SHA-256 fallback when the env
+  is absent; the raw `user_id` never reaches disk for this table.
+- **D4** — `analytics.events.prune` registered with a 90-day
+  default and a daily cadence. Overridable via
+  `ANALYTICS_RETENTION_DAYS` and per task row.
+- **D5** — admin viewer renders pre-redacted JSON only; the
+  drawer pairs the row's `properties_json` with the catalogue's
+  documented property schema and flags drift with `role="alert"`.
+
+The one ADR-adjacent decision taken during implementation that is
+not explicitly in the ADR text: when the web sink's in-memory
+queue overflows (more than 200 buffered events), the oldest
+events are dropped with a single `console.warn` line. There is
+**no** per-drop telemetry POST back to the server, because that
+would create a recursion path back into the same surface and
+would force a meta-event into the closed catalogue. The decision
+is consistent with the ADR's "never throws" guarantee for the web
+sink and is documented in the Phase 6 outcomes.
 
 ---
 

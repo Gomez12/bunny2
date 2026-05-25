@@ -1,6 +1,6 @@
 # Admin observability viewer
 
-> Status: open.
+> Status: done.
 > Owner: admin surface + observability cross-cut.
 > Mode: Large Change — new admin sections, new (small)
 > server-side analytics sink, multi-phase work.
@@ -961,6 +961,86 @@ boolean | null` — defence against nested-object payloads sneaking
 - User guide `docs/user/guides/admin-observability.md`.
 - ADR 0031 accepted.
 - Move plan to `docs/dev/plans/done/`.
+
+#### Phase 7 — outcomes
+
+Shipped 2026-05-25:
+
+- **User guide** —
+  [`docs/user/guides/admin-observability.md`](../../user/guides/admin-observability.md)
+  (~330 lines). Admin-facing walkthrough covering every
+  Observability dropdown entry, the raw-content gate on chat
+  pipeline runs (intent + entities), retention defaults, privacy
+  notes, and the "what's not here" non-goals from §2.
+- **ADR 0031 accepted** —
+  [`docs/dev/decisions/0031-analytics-local-sink.md`](../decisions/0031-analytics-local-sink.md)
+  flipped from `proposed` to `accepted`, dated 2026-05-25. An
+  "Implementation note (accepted 2026-05-25)" section records that
+  D1–D5 shipped as written. The one ADR-adjacent decision taken
+  during implementation that is not in the ADR text — the web
+  sink's overflow drop via `console.warn` only, no per-drop
+  telemetry POST — is documented in the same note.
+- **Accessibility pass** — walked AdminEventsPage, AdminLlmCallsPage,
+  AdminChatRunsPage, AdminAnalyticsPage, and the Bus ledger outbox
+  tab. Every page already shipped the §9 checklist: `<th
+scope="col">` table headers, native `<dialog>` for the drawer
+  (browser focus trap + ESC + focus return), `<form>` semantics
+  with `htmlFor`/`id` label associations and `aria-live="polite"`
+  error regions, long JSON payloads inside `<pre tabIndex={0}>`,
+  status columns carrying an icon + text so color is never the
+  only signal, and `role="alert"` on the raw-content warning in
+  AdminChatRunsPage and on drift indicators in AdminAnalyticsPage.
+  No inline patches required.
+- **i18n parity** — every namespace this plan introduced
+  (`admin.events.*`, `admin.llmCalls.*`, `admin.chatRuns.*`,
+  `admin.bus.outbox.*`, `admin.analytics.*`,
+  `admin.nav.observability` + 4 sibling entries +
+  `admin.nav.sections.observability`, `errors.analytics.*`,
+  `errors.admin.observability.*`) lands in both
+  `apps/web/src/i18n/locales/en.json` AND `nl.json`. The 167
+  pre-existing nl.json gaps reported by `bun run i18n:check`
+  predate this plan and are not in scope here; the script exits 0
+  on warnings.
+- **PR checks** (all pass):
+  - `bun install` — clean.
+  - `bun run format:check` — All matched files use Prettier code
+    style.
+  - `bun run lint` — clean.
+  - `bun run typecheck` — all 5 workspaces exit 0.
+  - `bun test` — 1505 pass, 0 fail, 4808 expect() calls across
+    190 files. The `migrations > is idempotent on reopen` failure
+    that haunted earlier phases stayed fixed.
+  - `bun run build` — every workspace built.
+  - `bun run docs:check` — OK (every active plan referenced;
+    no done plan left in `plans/`; every job kind covered).
+  - `bun run i18n:check` — OK (exit 0; 167 pre-existing
+    warnings, no plan-introduced keys missing).
+- **Plan moved** — `docs/dev/plans/admin-observability-viewer.md`
+  → `docs/dev/plans/done/admin-observability-viewer.md`.
+- **Tasklist** — the in-progress row (Related document =
+  `docs/dev/plans/admin-observability-viewer.md`) flipped to
+  `done` with the new `done/` path. After the flip the active
+  tasklist has 47 done rows out of the 50 cap; no archive move
+  required.
+- **Risks** — none referenced this plan in `docs/dev/risks/`;
+  R1–R5 from §14 were resolved in-flight by mitigations baked
+  into Phases 2/3/6 (rate-limit + auth gate; cursor pagination +
+  indexes; 200 KB payload truncation; redaction audit + tests;
+  pluggable sink). No risk docs needed updating.
+- **Follow-ups filed** — three consolidated docs, one tasklist
+  row each:
+  - `docs/dev/follow-ups/admin-uuid-resolution.md` — resolve
+    `layer_id` / `user_id` raw UUIDs to slug / display-name in
+    the observability viewers (Phase 3 + Phase 4 noted this
+    explicitly).
+  - `docs/dev/follow-ups/analytics-catalogue-tightening.md` —
+    enum-value validation + per-property typing in
+    `apps/server/src/analytics/catalogue.ts` (Phase 6 advisor
+    notes).
+  - `docs/dev/follow-ups/analytics-sink-final-flush.md` —
+    `pagehide` / `beforeunload` final-flush path for the web sink
+    plus a paired test (gated on the existing
+    `web-component-tests.md` follow-up).
 
 ## 6. Tests
 
