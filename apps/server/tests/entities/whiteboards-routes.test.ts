@@ -150,7 +150,7 @@ describe('/l/:slug/whiteboard CRUD', () => {
 
     const list = await getJson(fx, '/l/wbtest/whiteboard', intruder.token);
     expect(list.status).toBe(404);
-    expect((await list.json()).error).toBe('errors.layer.notVisible');
+    expect(((await list.json()) as { error: string }).error).toBe('errors.layer.notVisible');
 
     const lwt = await getJson(
       fx,
@@ -158,7 +158,7 @@ describe('/l/:slug/whiteboard CRUD', () => {
       intruder.token,
     );
     expect(lwt.status).toBe(404);
-    expect((await lwt.json()).error).toBe('errors.layer.notVisible');
+    expect(((await lwt.json()) as { error: string }).error).toBe('errors.layer.notVisible');
 
     const create = await sendJson(fx, '/l/wbtest/whiteboard', intruder.token, {
       title: 'attempt',
@@ -166,7 +166,7 @@ describe('/l/:slug/whiteboard CRUD', () => {
       payload: EMPTY_PAYLOAD,
     });
     expect(create.status).toBe(404);
-    expect((await create.json()).error).toBe('errors.layer.notVisible');
+    expect(((await create.json()) as { error: string }).error).toBe('errors.layer.notVisible');
   });
 
   it('rejects an over-cap POST with 413 errors.whiteboards.tooLarge', async () => {
@@ -187,7 +187,7 @@ describe('/l/:slug/whiteboard CRUD', () => {
       },
     });
     expect(res.status).toBe(413);
-    expect((await res.json()).error).toBe('errors.whiteboards.tooLarge');
+    expect(((await res.json()) as { error: string }).error).toBe('errors.whiteboards.tooLarge');
   });
 
   it('rejects an over-cap PATCH with 413 errors.whiteboards.tooLarge', async () => {
@@ -215,7 +215,7 @@ describe('/l/:slug/whiteboard CRUD', () => {
       'PATCH',
     );
     expect(res.status).toBe(413);
-    expect((await res.json()).error).toBe('errors.whiteboards.tooLarge');
+    expect(((await res.json()) as { error: string }).error).toBe('errors.whiteboards.tooLarge');
   });
 
   it('checkpoint endpoint writes thumbnail blob + etag + last_checkpoint_at', async () => {
