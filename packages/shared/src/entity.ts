@@ -39,12 +39,10 @@ export type EntitySyncState = z.infer<typeof EntitySyncStateSchema>;
  * through). That's fine — the lexicographic compare is sound either
  * way; the validator's job is to refuse SQL-noise like `'; drop --`.
  */
-export const ISO_8601_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+export const ISO_8601_DATE_RE =
+  /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
 
-export const Iso8601DateSchema = z
-  .string()
-  .min(1)
-  .regex(ISO_8601_DATE_RE, 'iso8601-date');
+export const Iso8601DateSchema = z.string().min(1).regex(ISO_8601_DATE_RE, 'iso8601-date');
 
 /**
  * Minimal pointer to an entity. Used by cross-entity references (e.g.

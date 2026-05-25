@@ -72,7 +72,10 @@ const noopCounters: SummarizeCounters = { inc: () => undefined };
 
 export type SummarizeOutcome =
   | { readonly status: 'updated'; readonly title: string; readonly messageCount: number }
-  | { readonly status: 'skipped_not_eligible'; readonly reason: 'no-conversation' | 'already-summarized' | 'too-few-messages' }
+  | {
+      readonly status: 'skipped_not_eligible';
+      readonly reason: 'no-conversation' | 'already-summarized' | 'too-few-messages';
+    }
   | { readonly status: 'failed'; readonly reason: 'empty-title' | 'llm-error' };
 
 export interface SummarizeOpts {
@@ -104,7 +107,10 @@ export async function summarizeConversation(
     if (messageCount < SUMMARIZE_GATE_INTERVAL) {
       return { status: 'skipped_not_eligible', reason: 'too-few-messages' };
     }
-    if (conv.lastSummarizedMessageCount !== null && conv.lastSummarizedMessageCount >= messageCount) {
+    if (
+      conv.lastSummarizedMessageCount !== null &&
+      conv.lastSummarizedMessageCount >= messageCount
+    ) {
       return { status: 'skipped_not_eligible', reason: 'already-summarized' };
     }
   }

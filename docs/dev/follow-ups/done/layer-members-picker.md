@@ -32,6 +32,7 @@ the two endpoints. Free-text id input replaced. Loading + empty +
 error states i18n'd in en + nl.
 
 Tests (`apps/server/tests/http-me-visible.test.ts`):
+
 - Visible peers via a shared transitive group.
 - Self excluded.
 - Soft-deleted users excluded.

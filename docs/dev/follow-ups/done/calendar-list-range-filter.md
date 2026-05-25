@@ -27,6 +27,7 @@ times — but only for events the grid actually paints, which was the
 original pain point.
 
 Tests:
+
 - §4.0 contract suite — every kind WITHOUT a `timeColumn` ignores
   `?from=&to=`; every kind 400s on a malformed ISO bound.
 - Calendar-specific test — three events at 2026-05-01, 2026-06-15,

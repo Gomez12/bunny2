@@ -24,7 +24,9 @@ import {
 } from '../src/lib/whiteboards-routes';
 import { whiteboardsListView } from '../src/pages/whiteboards-list-page-state';
 
-function item(overrides: Partial<WhiteboardListWithThumbnailItem> = {}): WhiteboardListWithThumbnailItem {
+function item(
+  overrides: Partial<WhiteboardListWithThumbnailItem> = {},
+): WhiteboardListWithThumbnailItem {
   return {
     id: '00000000-0000-0000-0000-000000000010',
     slug: 'q3-retro',
@@ -44,9 +46,10 @@ describe('whiteboardsListView', () => {
   });
 
   it('returns the error branch with the i18n key preserved', () => {
-    expect(
-      whiteboardsListView({ status: 'error', errorKey: 'errors.network' }),
-    ).toEqual({ kind: 'error', errorKey: 'errors.network' });
+    expect(whiteboardsListView({ status: 'error', errorKey: 'errors.network' })).toEqual({
+      kind: 'error',
+      errorKey: 'errors.network',
+    });
   });
 
   it('returns the empty branch when the items list is empty', () => {
@@ -78,17 +81,13 @@ describe('whiteboards-routes helpers', () => {
   it('builds web URLs with the plural segment', () => {
     expect(webWhiteboardsPath('alpha')).toBe('/l/alpha/whiteboards');
     expect(webWhiteboardNewPath('alpha')).toBe('/l/alpha/whiteboards/new');
-    expect(webWhiteboardPath('alpha', 'board-1')).toBe(
-      '/l/alpha/whiteboards/board-1',
-    );
+    expect(webWhiteboardPath('alpha', 'board-1')).toBe('/l/alpha/whiteboards/board-1');
   });
 
   it('builds server URLs with the singular segment', () => {
     expect(whiteboardServerBase('alpha')).toBe('/l/alpha/whiteboard');
     expect(whiteboardServerDetail('alpha', 'b1')).toBe('/l/alpha/whiteboard/b1');
-    expect(whiteboardServerCheckpoint('alpha', 'b1')).toBe(
-      '/l/alpha/whiteboard/b1/_checkpoint',
-    );
+    expect(whiteboardServerCheckpoint('alpha', 'b1')).toBe('/l/alpha/whiteboard/b1/_checkpoint');
     expect(whiteboardServerListWithThumbnails('alpha')).toBe(
       '/l/alpha/whiteboard/_list-with-thumbnails',
     );

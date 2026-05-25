@@ -543,7 +543,11 @@ describe('google calendar connector :: ingest happy path', () => {
           state.tokenCalls += 1;
           return Promise.resolve(
             new Response(
-              JSON.stringify({ access_token: ACCESS_TOKEN, expires_in: 3600, token_type: 'Bearer' }),
+              JSON.stringify({
+                access_token: ACCESS_TOKEN,
+                expires_in: 3600,
+                token_type: 'Bearer',
+              }),
               { status: 200, headers: { 'content-type': 'application/json' } },
             ),
           );
@@ -644,16 +648,15 @@ describe('google calendar connector :: ingest happy path', () => {
     // `entity_external_links` on the delete path. That auto-cleanup
     // would be a separate follow-up.
     const linkAfter = fixture.db
-      .query<{ c: number }, []>(
-        `SELECT COUNT(*) AS c FROM entity_external_links WHERE external_id = 'evt-to-cancel'`,
-      )
+      .query<
+        { c: number },
+        []
+      >(`SELECT COUNT(*) AS c FROM entity_external_links WHERE external_id = 'evt-to-cancel'`)
       .get();
     expect(linkAfter?.c).toBe(1);
 
     // The store emitted an `entity.calendar_event.deleted` event.
-    const deletedEvents = fixture.events.filter(
-      (e) => e.type === 'entity.calendar_event.deleted',
-    );
+    const deletedEvents = fixture.events.filter((e) => e.type === 'entity.calendar_event.deleted');
     expect(deletedEvents.length).toBe(1);
   });
 
@@ -750,17 +753,19 @@ describe('google calendar connector :: ingest happy path', () => {
 
     // Only two `calendar_events` rows still exist — no duplicates.
     const eventCount = fixture.db
-      .query<{ c: number }, []>(
-        `SELECT COUNT(*) AS c FROM calendar_events WHERE deleted_at IS NULL`,
-      )
+      .query<
+        { c: number },
+        []
+      >(`SELECT COUNT(*) AS c FROM calendar_events WHERE deleted_at IS NULL`)
       .get();
     expect(eventCount?.c).toBe(2);
 
     // And the link table still has exactly two rows.
     const linksAfterSecond = fixture.db
-      .query<{ c: number }, []>(
-        `SELECT COUNT(*) AS c FROM entity_external_links WHERE entity_kind = 'calendar_event'`,
-      )
+      .query<
+        { c: number },
+        []
+      >(`SELECT COUNT(*) AS c FROM entity_external_links WHERE entity_kind = 'calendar_event'`)
       .get();
     expect(linksAfterSecond?.c).toBe(2);
   });

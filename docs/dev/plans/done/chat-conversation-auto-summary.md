@@ -31,7 +31,7 @@ same `messageCount` is never re-summarized twice.
 - `last_summarized_message_count` is the only idempotency state we
   need; the event path and the daily sweep both check it.
 - The gate `messageCount >= 6 AND messageCount % 6 === 0 AND
-  last_summarized_message_count < messageCount` lives in pure code
+last_summarized_message_count < messageCount` lives in pure code
   (`shouldEnqueueSummarize`) and is re-checked inside the handler.
 - The handler builds a short prompt from the last 10 messages, asks
   for ≤60 chars no-quote no-period output, and `sanitizeTitle`
@@ -81,7 +81,7 @@ same `messageCount` is never re-summarized twice.
 - `chat.summarize.completed` counter + `chat.summarize.duration_ms`
   observation on success.
 - `chat.summarize.failed` counter with `reason ∈ {empty-title,
-  llm-error}` dimension.
+llm-error}` dimension.
 - Structured logs `chat.summarize.*` and `chat.regenerate-title`.
 - Analytics event `chat_conversation_title_regenerated`
   (`{ layerSlug }`) on the manual path.

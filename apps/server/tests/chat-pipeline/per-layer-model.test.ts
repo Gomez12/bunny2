@@ -70,7 +70,10 @@ function closeFixture(fx: Fixture): void {
   }
 }
 
-function seedConversationAndUserMessage(fx: Fixture, userContent: string): {
+function seedConversationAndUserMessage(
+  fx: Fixture,
+  userContent: string,
+): {
   conversationId: string;
   userMessageId: string;
 } {
@@ -200,9 +203,10 @@ describe('runPipeline llm_calls.model_source', () => {
     );
 
     const rows = fx.db
-      .query<{ model_source: string | null }, []>(
-        'SELECT model_source FROM llm_calls ORDER BY started_at ASC',
-      )
+      .query<
+        { model_source: string | null },
+        []
+      >('SELECT model_source FROM llm_calls ORDER BY started_at ASC')
       .all();
     expect(rows.length).toBe(3);
     expect(rows.every((r) => r.model_source === 'system')).toBe(true);
@@ -250,9 +254,10 @@ describe('runPipeline llm_calls.model_source', () => {
     );
 
     const rows = fx.db
-      .query<{ model_source: string | null }, []>(
-        'SELECT model_source FROM llm_calls ORDER BY started_at ASC',
-      )
+      .query<
+        { model_source: string | null },
+        []
+      >('SELECT model_source FROM llm_calls ORDER BY started_at ASC')
       .all();
     expect(rows.length).toBe(3);
     expect(rows.every((r) => r.model_source === 'layer')).toBe(true);

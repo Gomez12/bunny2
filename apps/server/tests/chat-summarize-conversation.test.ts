@@ -23,9 +23,7 @@ import { createUsersRepo } from '../src/repos/users-repo';
 import { createLayersRepo } from '../src/repos/layers-repo';
 import { createChatConversationsRepo } from '../src/chat/repos/chat-conversations-repo';
 import { createChatMessagesRepo } from '../src/chat/repos/chat-messages-repo';
-import {
-  createSummarizeConversationSubscriber,
-} from '../src/chat/summarize-conversation-subscriber';
+import { createSummarizeConversationSubscriber } from '../src/chat/summarize-conversation-subscriber';
 import {
   sanitizeTitle,
   shouldEnqueueSummarize,
@@ -197,9 +195,12 @@ describe('summarizeConversation', () => {
     for (let i = 0; i < 6; i += 1) {
       pushMessage(fx, conversationId, 'user');
     }
-    const counters = { ticks: new Map<string, number>(), inc(name: string, by = 1): void {
-      counters.ticks.set(name, (counters.ticks.get(name) ?? 0) + by);
-    }};
+    const counters = {
+      ticks: new Map<string, number>(),
+      inc(name: string, by = 1): void {
+        counters.ticks.set(name, (counters.ticks.get(name) ?? 0) + by);
+      },
+    };
     const outcome = await summarizeConversation(conversationId, {
       db: fx.db,
       llm: fakeLlm('   '),
@@ -219,9 +220,12 @@ describe('summarizeConversation', () => {
     for (let i = 0; i < 6; i += 1) {
       pushMessage(fx, conversationId, 'user');
     }
-    const counters = { ticks: new Map<string, number>(), inc(name: string, by = 1): void {
-      counters.ticks.set(name, (counters.ticks.get(name) ?? 0) + by);
-    }};
+    const counters = {
+      ticks: new Map<string, number>(),
+      inc(name: string, by = 1): void {
+        counters.ticks.set(name, (counters.ticks.get(name) ?? 0) + by);
+      },
+    };
     const outcome = await summarizeConversation(conversationId, {
       db: fx.db,
       llm: fakeLlm('', true),

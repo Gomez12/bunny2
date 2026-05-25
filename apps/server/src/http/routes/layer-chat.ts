@@ -597,12 +597,16 @@ export function registerLayerChatRoutes(
     if (conv === null || !isOwnedAndVisible(conv, layer.id, user.id)) {
       return c.json(NOT_FOUND, 404);
     }
-    const outcome = await summarizeConversation(id, {
-      db: deps.db,
-      llm: deps.llm,
-      conversationsRepo,
-      messagesRepo,
-    }, { force: true });
+    const outcome = await summarizeConversation(
+      id,
+      {
+        db: deps.db,
+        llm: deps.llm,
+        conversationsRepo,
+        messagesRepo,
+      },
+      { force: true },
+    );
     console.log('[chat.regenerate-title]', {
       event: 'chat.regenerate-title',
       conversationId: id,

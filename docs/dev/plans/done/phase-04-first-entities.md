@@ -1668,7 +1668,7 @@ confidence:0.92}` → link applied; exactly one LLM call.
 - **None.** No locale-file changes shipped with 4b.3. An earlier
   version of this close-out claimed
   `entity.enrichment.contacts.suggestCompany.{running,
-  appliedCompany, noMatch}` were added to en + nl as labels for a
+appliedCompany, noMatch}` were added to en + nl as labels for a
   future enrichment UI; this was incorrect — the keys were never
   written to either locale, and the 4b.6 sweep separately documented
   the absence of similarly-named keys. Corrected as part of the

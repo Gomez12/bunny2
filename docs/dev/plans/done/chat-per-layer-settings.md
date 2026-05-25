@@ -40,7 +40,7 @@ phase-6 behaviour byte-for-byte.
   `createChatModelResolver({ settingsRepo, systemDefault })`.
 - The orchestrator threads the resolved `{ model, source }` into
   `PipelineContext.chatModel`; each LLM-backed step forwards `model`
-  + stamps `metadata.modelSource`.
+  - stamps `metadata.modelSource`.
 - `withTelemetry` promotes `metadata.modelSource` → `llm_calls.model_source`.
 - The embedding subscriber gains optional `settingsRepo` + `spendRepo`
   deps; when wired, it consults the cap BEFORE encode (drop + log +

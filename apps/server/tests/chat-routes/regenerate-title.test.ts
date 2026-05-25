@@ -22,13 +22,9 @@ afterEach(() => {
 describe('regenerate-title', () => {
   it('happy path rewrites the title and bumps the watermark', async () => {
     fx = await makeChatFixture('bunny2-chat-regen-title-');
-    const createRes = await send(
-      fx,
-      'POST',
-      `/l/${fx.layerSlug}/chat/conversations`,
-      fx.token,
-      { title: 'Original' },
-    );
+    const createRes = await send(fx, 'POST', `/l/${fx.layerSlug}/chat/conversations`, fx.token, {
+      title: 'Original',
+    });
     const { conversation } = (await createRes.json()) as { conversation: { id: string } };
 
     // Enqueue exactly one reply at the default queue so the handler
@@ -53,13 +49,9 @@ describe('regenerate-title', () => {
 
   it('returns 404 when the conversation belongs to another user', async () => {
     fx = await makeChatFixture('bunny2-chat-regen-title-authz-');
-    const createRes = await send(
-      fx,
-      'POST',
-      `/l/${fx.layerSlug}/chat/conversations`,
-      fx.token,
-      { title: 'Alice' },
-    );
+    const createRes = await send(fx, 'POST', `/l/${fx.layerSlug}/chat/conversations`, fx.token, {
+      title: 'Alice',
+    });
     const { conversation } = (await createRes.json()) as { conversation: { id: string } };
     // Bob hits Alice's conversation id under his own layer → 404
     // (the conversation's user_id != bob).

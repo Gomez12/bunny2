@@ -17,6 +17,7 @@ stays absent on the wire — the web client treats absence as an empty
 object.
 
 Companies declares two columns:
+
 - `city` — reads straight off `payload.address?.city`.
 - `enrichmentLastRunAt` — the raw `entity_souls.updated_at`
   timestamp the runner stamps on every successful enrichment. The
@@ -32,6 +33,7 @@ shared `apps/web/src/lib/relative-time.ts` util. i18n keys
 `enrichmentRecent|Stale|Never` added to en + nl.
 
 Tests:
+
 - §4.0 contract suite — kinds without `summaryColumns` emit no
   `extras` field on the wire (asserted via JSON round-trip).
 - Companies-specific test — `city` and `enrichmentLastRunAt`

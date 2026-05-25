@@ -22,7 +22,11 @@ import { createLayerLocalesRepo } from '../../src/repos/layer-locales-repo';
 import { createLlmClient } from '../../src/llm/client';
 import { Hono } from 'hono';
 import type { User as SafeUser } from '@bunny2/shared';
-import { createEntityStore, mountEntityRoutes, __resetEntityRegistryForTests } from '../../src/entities';
+import {
+  createEntityStore,
+  mountEntityRoutes,
+  __resetEntityRegistryForTests,
+} from '../../src/entities';
 import { calendarEventModule } from '../../src/entities/calendar';
 import type { HonoVariables } from '../../src/http/types';
 import { runEntityContractSuite } from '../entity-contract/suite';
@@ -413,10 +417,9 @@ describe('calendar_events module :: ?from=&to= range filter', () => {
     });
 
     const res = await app.fetch(
-      new Request(
-        `http://localhost/l/${layer.slug}/calendar_event?from=2026-06-01&to=2026-06-30`,
-        { method: 'GET' },
-      ),
+      new Request(`http://localhost/l/${layer.slug}/calendar_event?from=2026-06-01&to=2026-06-30`, {
+        method: 'GET',
+      }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { entities: readonly { slug: string }[] };

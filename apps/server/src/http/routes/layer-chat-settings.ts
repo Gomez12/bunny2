@@ -36,10 +36,7 @@ import {
   createLayerChatSettingsRepo,
   type LayerChatSettingsRepo,
 } from '../../chat/repos/layer-chat-settings-repo';
-import {
-  createLayerEmbeddingSpendRepo,
-  isoDay,
-} from '../../chat/repos/layer-embedding-spend-repo';
+import { createLayerEmbeddingSpendRepo, isoDay } from '../../chat/repos/layer-embedding-spend-repo';
 
 const NOT_VISIBLE = { error: 'errors.layer.notVisible' } as const;
 const FORBIDDEN = { error: 'errors.layer.forbidden' } as const;
@@ -51,7 +48,16 @@ export interface LayerChatSettingsRouteDeps {
   readonly now?: () => Date;
 }
 
-function rowToWire(layerId: string, row: { readonly model: string | null; readonly embeddingDailyCap: number | null; readonly embeddingMonthlyCap: number | null; readonly createdAt: string; readonly updatedAt: string }): LayerChatSettings {
+function rowToWire(
+  layerId: string,
+  row: {
+    readonly model: string | null;
+    readonly embeddingDailyCap: number | null;
+    readonly embeddingMonthlyCap: number | null;
+    readonly createdAt: string;
+    readonly updatedAt: string;
+  },
+): LayerChatSettings {
   return {
     layerId,
     model: row.model,
@@ -73,7 +79,10 @@ function defaults(layerId: string): LayerChatSettings {
   };
 }
 
-function readSettings(repo: LayerChatSettingsRepo, layerId: string): {
+function readSettings(
+  repo: LayerChatSettingsRepo,
+  layerId: string,
+): {
   readonly source: 'default' | 'saved';
   readonly settings: LayerChatSettings;
 } {

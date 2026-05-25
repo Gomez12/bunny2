@@ -252,9 +252,7 @@ export function createEntityStore<Payload>(
   const timeColumn = module.timeColumn;
   if (timeColumn !== undefined) {
     if (!identRe.test(timeColumn)) {
-      throw new Error(
-        `entity-store: invalid timeColumn '${timeColumn}' for kind '${module.kind}'`,
-      );
+      throw new Error(`entity-store: invalid timeColumn '${timeColumn}' for kind '${module.kind}'`);
     }
     if (!indexedNames.includes(timeColumn)) {
       throw new Error(
@@ -425,10 +423,7 @@ export function createEntityStore<Payload>(
     if (entityIds.length === 0) return new Map();
     const placeholders = entityIds.map(() => '?').join(', ');
     const rows = db
-      .query<
-        { entity_id: string; updated_at: string },
-        string[]
-      >(
+      .query<{ entity_id: string; updated_at: string }, string[]>(
         `SELECT entity_id, updated_at FROM entity_souls
           WHERE entity_kind = ? AND entity_id IN (${placeholders})`,
       )

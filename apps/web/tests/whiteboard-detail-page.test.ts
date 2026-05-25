@@ -111,9 +111,7 @@ describe('whiteboardDetailView', () => {
   });
 
   it('returns the ready branch with the saveErrorKey preserved', () => {
-    const view = whiteboardDetailView(
-      ready({ saveErrorKey: 'errors.whiteboards.tooLarge' }),
-    );
+    const view = whiteboardDetailView(ready({ saveErrorKey: 'errors.whiteboards.tooLarge' }));
     expect(view.kind).toBe('ready');
     if (view.kind === 'ready') {
       expect(view.saveErrorKey).toBe('errors.whiteboards.tooLarge');
@@ -143,9 +141,7 @@ describe('shouldShowLockBanner', () => {
   });
 
   it('does not show the banner when the same user wrote the new revision', () => {
-    expect(
-      shouldShowLockBanner({ ...baseArgs, serverUpdatedBy: 'user-a' }),
-    ).toBe(false);
+    expect(shouldShowLockBanner({ ...baseArgs, serverUpdatedBy: 'user-a' })).toBe(false);
   });
 
   it('does not show the banner when the editor wrote the new revision', () => {

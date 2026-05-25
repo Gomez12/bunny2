@@ -30,12 +30,12 @@ of truth that the admin UI and the chat pipeline both read from.
 
 Four primary telemetry surfaces:
 
-| Surface                     | Sink                  | Cardinality     | Retention default                                   |
-| --------------------------- | --------------------- | --------------- | --------------------------------------------------- |
-| LLM calls                   | `llm_calls`           | one row / call  | 180 days (`llm.calls.prune`)                        |
-| Chat-pipeline steps         | `chat_pipeline_steps` | one row / step  | 60 days (`chat.runs.prune` cascades)                |
-| Scheduled-task runs         | `scheduled_task_runs` | one row / run   | 30 days (`scheduled.runs.prune`)                    |
-| Bus outbox + DLQ            | `bus_outbox`, `bus_dlq` | one row / event | 7 days on `delivered` (`bus.outbox.prune`); DLQ is permanent until manually pruned |
+| Surface             | Sink                    | Cardinality     | Retention default                                                                  |
+| ------------------- | ----------------------- | --------------- | ---------------------------------------------------------------------------------- |
+| LLM calls           | `llm_calls`             | one row / call  | 180 days (`llm.calls.prune`)                                                       |
+| Chat-pipeline steps | `chat_pipeline_steps`   | one row / step  | 60 days (`chat.runs.prune` cascades)                                               |
+| Scheduled-task runs | `scheduled_task_runs`   | one row / run   | 30 days (`scheduled.runs.prune`)                                                   |
+| Bus outbox + DLQ    | `bus_outbox`, `bus_dlq` | one row / event | 7 days on `delivered` (`bus.outbox.prune`); DLQ is permanent until manually pruned |
 
 The canonical `events` table is the event log, not telemetry —
 it is the source-of-truth from which read models can be rebuilt.
@@ -60,22 +60,22 @@ streams.
 
 ### Row shape (`llm_calls` table)
 
-| Column           | Source                                          | Notes                                        |
-| ---------------- | ----------------------------------------------- | -------------------------------------------- |
-| `id`             | `crypto.randomUUID()` per call                  | Independent of the provider's id.            |
-| `started_at` / `ended_at` | wrap-time `clock()`                  | ISO-8601 strings.                            |
-| `model`          | provider response `model`, else pre-call        | Real-call model preferred for accuracy.      |
-| `endpoint`       | `client.endpoint`                               | Stable across calls.                         |
-| `request` / `response` | redacted, stringified JSON                | See §5 redaction.                            |
-| `tokens_in` / `tokens_out` | provider response                     | `NULL` on error.                             |
-| `cost_usd`       | `estimateCostUsd(...)`                          | `NULL` when pricing unknown — honest gap.    |
-| `latency_ms`     | `ended_at - started_at`                         | Around the provider call only.               |
-| `correlation_id` | `metadata.correlationId`                        | Joins to `events.correlation_id`.            |
-| `flow_id`        | `metadata.flowId`                               | Joins to `events.flow_id`.                   |
-| `layer_id`       | `metadata.layerId`                              | Stable layer UUID; never a slug.             |
-| `user_id`        | `metadata.userId`                               | Stable user UUID.                            |
-| `error`          | `String(err)` on failure                        | `NULL` on success.                           |
-| `model_source`   | `metadata.modelSource` (`'system'` / `'layer'`) | Records whether the model came from the system default or a per-layer `layer_chat_settings.model` override (per-layer chat settings follow-up). `NULL` for callers that do not stamp it; historical rows backfilled to `'system'`. |
+| Column                     | Source                                          | Notes                                                                                                                                                                                                                              |
+| -------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                       | `crypto.randomUUID()` per call                  | Independent of the provider's id.                                                                                                                                                                                                  |
+| `started_at` / `ended_at`  | wrap-time `clock()`                             | ISO-8601 strings.                                                                                                                                                                                                                  |
+| `model`                    | provider response `model`, else pre-call        | Real-call model preferred for accuracy.                                                                                                                                                                                            |
+| `endpoint`                 | `client.endpoint`                               | Stable across calls.                                                                                                                                                                                                               |
+| `request` / `response`     | redacted, stringified JSON                      | See §5 redaction.                                                                                                                                                                                                                  |
+| `tokens_in` / `tokens_out` | provider response                               | `NULL` on error.                                                                                                                                                                                                                   |
+| `cost_usd`                 | `estimateCostUsd(...)`                          | `NULL` when pricing unknown — honest gap.                                                                                                                                                                                          |
+| `latency_ms`               | `ended_at - started_at`                         | Around the provider call only.                                                                                                                                                                                                     |
+| `correlation_id`           | `metadata.correlationId`                        | Joins to `events.correlation_id`.                                                                                                                                                                                                  |
+| `flow_id`                  | `metadata.flowId`                               | Joins to `events.flow_id`.                                                                                                                                                                                                         |
+| `layer_id`                 | `metadata.layerId`                              | Stable layer UUID; never a slug.                                                                                                                                                                                                   |
+| `user_id`                  | `metadata.userId`                               | Stable user UUID.                                                                                                                                                                                                                  |
+| `error`                    | `String(err)` on failure                        | `NULL` on success.                                                                                                                                                                                                                 |
+| `model_source`             | `metadata.modelSource` (`'system'` / `'layer'`) | Records whether the model came from the system default or a per-layer `layer_chat_settings.model` override (per-layer chat settings follow-up). `NULL` for callers that do not stamp it; historical rows backfilled to `'system'`. |
 
 ### Stable dimensions
 

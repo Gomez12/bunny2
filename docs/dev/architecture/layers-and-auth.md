@@ -26,14 +26,14 @@ Mirrors `auth-and-sessions.md §0`.
 
 ### Authenticated only (no admin gate, no layer gate)
 
-| Method | Path              | Owner phase | Notes                                                               |
-| ------ | ----------------- | ----------- | ------------------------------------------------------------------- |
-| `GET`  | `/me/layers`      | 3.4         | Caller's `effectiveLayers`. Convenience alias for the switcher.     |
-| `GET`  | `/me/visible-users`  | follow-up | Users reachable via at least one shared transitive group. Directory-disclosure boundary for non-admins. Self + soft-deleted excluded. |
-| `GET`  | `/me/visible-groups` | follow-up | Caller's own transitive group set (id + name + slug). Picker scope for "groups I can add to a layer". |
-| `GET`  | `/layers`         | 3.4         | Same set + `type` / `search` / `includeDeleted` (admin-only) query. |
-| `POST` | `/layers`         | 3.4         | Create a `project` layer; caller is inserted as `owner` in same tx. |
-| `GET`  | `/system/locales` | 3.4         | System-configured locale list. Used by the locale tab.              |
+| Method | Path                 | Owner phase | Notes                                                                                                                                 |
+| ------ | -------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/me/layers`         | 3.4         | Caller's `effectiveLayers`. Convenience alias for the switcher.                                                                       |
+| `GET`  | `/me/visible-users`  | follow-up   | Users reachable via at least one shared transitive group. Directory-disclosure boundary for non-admins. Self + soft-deleted excluded. |
+| `GET`  | `/me/visible-groups` | follow-up   | Caller's own transitive group set (id + name + slug). Picker scope for "groups I can add to a layer".                                 |
+| `GET`  | `/layers`            | 3.4         | Same set + `type` / `search` / `includeDeleted` (admin-only) query.                                                                   |
+| `POST` | `/layers`            | 3.4         | Create a `project` layer; caller is inserted as `owner` in same tx.                                                                   |
+| `GET`  | `/system/locales`    | 3.4         | System-configured locale list. Used by the locale tab.                                                                                |
 
 ### Layer-scoped (`requireLayer` → 404 `errors.layer.notVisible` on a non-member)
 
@@ -198,18 +198,18 @@ No admin-only gate on `/layers/*`. Authorization is computed per
 route from the caller's relationship to the layer, via
 `apps/server/src/layers/authz.ts` `canEditLayer(user, layer, …)`:
 
-| Route                                          | Allowed for                                                                                                                                                        |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /me/layers`, `GET /layers`                | any authenticated user (returns `effectiveLayers`)                                                                                                                 |
+| Route                                             | Allowed for                                                                                                                                                                                                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /me/layers`, `GET /layers`                   | any authenticated user (returns `effectiveLayers`)                                                                                                                                                                          |
 | `GET /me/visible-users`, `GET /me/visible-groups` | any authenticated user. Directory-disclosure boundary for non-admins: returns the union of users / groups reachable via at least one shared transitive group; self + soft-deleted excluded. Used by the Members tab picker. |
-| `GET /layers/:slug`                            | any authenticated user **iff** the slug is in `effectiveLayers` (else 404 `errors.layer.notVisible`)                                                               |
-| `POST /layers` (create project layer)          | any authenticated user; caller is inserted into `layer_user_members` with `role = 'owner'` in the same transaction                                                 |
-| `PATCH /layers/:slug` / `DELETE /layers/:slug` | personal: owning user only • project: any `owner` member or site-admin • group: **site-admin only** (v1 fallback, see follow-up below) • everyone: site-admin only |
-| `POST/DELETE /layers/:slug/members`            | project layers only; `owner` members or site-admin                                                                                                                 |
-| `POST/DELETE /layers/:slug/visibility`         | same as `PATCH /layers/:slug`; v1 rejects any `direction` other than `'bottom_up'` (§11.6)                                                                         |
-| `POST /layers/:slug/locales`                   | same as `PATCH /layers/:slug`                                                                                                                                      |
-| `POST/DELETE /layers/:slug/attachments`        | same as `PATCH /layers/:slug`                                                                                                                                      |
-| `GET /system/locales`                          | any authenticated user                                                                                                                                             |
+| `GET /layers/:slug`                               | any authenticated user **iff** the slug is in `effectiveLayers` (else 404 `errors.layer.notVisible`)                                                                                                                        |
+| `POST /layers` (create project layer)             | any authenticated user; caller is inserted into `layer_user_members` with `role = 'owner'` in the same transaction                                                                                                          |
+| `PATCH /layers/:slug` / `DELETE /layers/:slug`    | personal: owning user only • project: any `owner` member or site-admin • group: **site-admin only** (v1 fallback, see follow-up below) • everyone: site-admin only                                                          |
+| `POST/DELETE /layers/:slug/members`               | project layers only; `owner` members or site-admin                                                                                                                                                                          |
+| `POST/DELETE /layers/:slug/visibility`            | same as `PATCH /layers/:slug`; v1 rejects any `direction` other than `'bottom_up'` (§11.6)                                                                                                                                  |
+| `POST /layers/:slug/locales`                      | same as `PATCH /layers/:slug`                                                                                                                                                                                               |
+| `POST/DELETE /layers/:slug/attachments`           | same as `PATCH /layers/:slug`                                                                                                                                                                                               |
+| `GET /system/locales`                             | any authenticated user                                                                                                                                                                                                      |
 
 "Site-admin" = transitive membership of the seeded `admin` group
 from phase 2.4 — same `GroupResolver.isUserInGroup` call the admin

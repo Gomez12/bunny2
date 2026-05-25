@@ -152,11 +152,7 @@ describe('/l/:slug/whiteboard CRUD', () => {
     expect(list.status).toBe(404);
     expect(((await list.json()) as { error: string }).error).toBe('errors.layer.notVisible');
 
-    const lwt = await getJson(
-      fx,
-      '/l/wbtest/whiteboard/_list-with-thumbnails',
-      intruder.token,
-    );
+    const lwt = await getJson(fx, '/l/wbtest/whiteboard/_list-with-thumbnails', intruder.token);
     expect(lwt.status).toBe(404);
     expect(((await lwt.json()) as { error: string }).error).toBe('errors.layer.notVisible');
 

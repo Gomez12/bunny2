@@ -17,10 +17,11 @@
 ## Description
 
 bunny2 places LLM calls in many components: chat answerer + router
-+ resolver + retrieval, entity enrichment, translator, embedding
-encoder, and the phase-7 review agent. Each component has its own
-cadence and its own provider config. Three failure modes can
-blow the bill:
+
+- resolver + retrieval, entity enrichment, translator, embedding
+  encoder, and the phase-7 review agent. Each component has its own
+  cadence and its own provider config. Three failure modes can
+  blow the bill:
 
 1. **Runaway loop.** An enrichment handler that loops back into
    itself, or a connector ingest that re-publishes the same

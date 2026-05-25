@@ -377,10 +377,7 @@ function MembersTab(props: TabProps): JSX.Element {
     setSubmitting(true);
     setErrorKey(null);
     try {
-      const body =
-        kind === 'user'
-          ? { userId: memberId, role }
-          : { groupId: memberId, role };
+      const body = kind === 'user' ? { userId: memberId, role } : { groupId: memberId, role };
       await addLayerMember(props.layer.slug, body);
       pushToast({ kind: 'success', message: t('admin.layers.members.added') });
       setMemberId('');
@@ -521,14 +518,8 @@ function VisibilityTab(props: TabProps): JSX.Element {
     [session.layers, props.layer.id],
   );
 
-  const inheritsFrom = useMemo(
-    () => (edges ?? []).filter((e) => e.relation === 'parent'),
-    [edges],
-  );
-  const inheritedBy = useMemo(
-    () => (edges ?? []).filter((e) => e.relation === 'child'),
-    [edges],
-  );
+  const inheritsFrom = useMemo(() => (edges ?? []).filter((e) => e.relation === 'parent'), [edges]);
+  const inheritedBy = useMemo(() => (edges ?? []).filter((e) => e.relation === 'child'), [edges]);
 
   async function handleAdd(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
@@ -859,7 +850,9 @@ function ChatTab(props: TabProps): JSX.Element {
         if (cancelled) return;
         setResponse(r);
         setModel(r.settings.model ?? '');
-        setDailyCap(r.settings.embeddingDailyCap === null ? '' : String(r.settings.embeddingDailyCap));
+        setDailyCap(
+          r.settings.embeddingDailyCap === null ? '' : String(r.settings.embeddingDailyCap),
+        );
         setMonthlyCap(
           r.settings.embeddingMonthlyCap === null ? '' : String(r.settings.embeddingMonthlyCap),
         );

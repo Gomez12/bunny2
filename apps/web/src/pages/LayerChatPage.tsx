@@ -182,9 +182,7 @@ export function LayerChatPage(): JSX.Element {
   useEffect(() => {
     if (deepLinkMessageId === null || messagesLoading) return;
     if (typeof document === 'undefined') return;
-    const target = document.querySelector<HTMLElement>(
-      messageElementSelector(deepLinkMessageId),
-    );
+    const target = document.querySelector<HTMLElement>(messageElementSelector(deepLinkMessageId));
     if (target === null) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // `tabindex="-1"` on the bubble makes the element programmatically

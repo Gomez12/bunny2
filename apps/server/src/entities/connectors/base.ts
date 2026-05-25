@@ -159,9 +159,7 @@ export type ConnectorIngestEntity<Payload> =
       readonly title: string;
       readonly payload: Partial<Payload>;
       readonly externalId?: string;
-      readonly matchKey?:
-        | { readonly kind: 'email'; readonly value: string }
-        | undefined;
+      readonly matchKey?: { readonly kind: 'email'; readonly value: string } | undefined;
     }
   | {
       readonly title: string;

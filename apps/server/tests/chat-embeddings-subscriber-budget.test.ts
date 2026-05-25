@@ -20,17 +20,13 @@ import { InMemoryMessageBus } from '@bunny2/bus/test-utils';
 import { z } from 'zod';
 import { openDatabase } from '../src/storage/sqlite';
 import { createLayersRepo } from '../src/repos/layers-repo';
-import {
-  createEmbeddingSubscriber,
-} from '../src/chat/embeddings/subscriber';
+import { createEmbeddingSubscriber } from '../src/chat/embeddings/subscriber';
 import {
   createInMemoryLanceWriter,
   getLanceTableForKind,
 } from '../src/chat/embeddings/lance-tables';
 import { createMockEmbedder } from '../src/chat/embeddings/embedder';
-import {
-  createLayerChatSettingsRepo,
-} from '../src/chat/repos/layer-chat-settings-repo';
+import { createLayerChatSettingsRepo } from '../src/chat/repos/layer-chat-settings-repo';
 import {
   createLayerEmbeddingSpendRepo,
   isoDay,
@@ -44,7 +40,9 @@ function companyModule(): EntityModule<unknown> {
   return {
     kind: 'company',
     tableName: 'companies',
-    payloadSchema: z.object({ name: z.string() }) as unknown as EntityModule<unknown>['payloadSchema'],
+    payloadSchema: z.object({
+      name: z.string(),
+    }) as unknown as EntityModule<unknown>['payloadSchema'],
     toSummary({ ref, meta, payload, title }) {
       const text = ((payload as { name?: string }).name ?? '').toLowerCase();
       return { ...ref, meta, title, subtitle: null, searchableText: text };

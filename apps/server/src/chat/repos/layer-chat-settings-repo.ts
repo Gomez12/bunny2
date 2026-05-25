@@ -40,8 +40,7 @@ interface SqlRow {
   updated_at: string;
 }
 
-const COLS =
-  'layer_id, model, embedding_daily_cap, embedding_monthly_cap, created_at, updated_at';
+const COLS = 'layer_id, model, embedding_daily_cap, embedding_monthly_cap, created_at, updated_at';
 
 function rowToSettings(row: SqlRow): LayerChatSettings {
   return {

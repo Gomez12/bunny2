@@ -189,8 +189,22 @@ export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> 
           deps.chunkSink !== undefined && typeof deps.llm.chatStream === 'function';
 
         const inner = streamingPossible
-          ? await runStreaming(messages, metadata, linkedSignal, deps, timeoutController, modelOverride)
-          : await runNonStreaming(messages, metadata, linkedSignal, deps, timeoutController, modelOverride);
+          ? await runStreaming(
+              messages,
+              metadata,
+              linkedSignal,
+              deps,
+              timeoutController,
+              modelOverride,
+            )
+          : await runNonStreaming(
+              messages,
+              metadata,
+              linkedSignal,
+              deps,
+              timeoutController,
+              modelOverride,
+            );
         // Tack on the attribution JSON computed above so the
         // orchestrator can persist it into `chat_pipeline_steps`.
         // `null` here keeps the column NULL (phase-6 default); a

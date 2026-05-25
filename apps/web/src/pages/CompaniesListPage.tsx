@@ -170,9 +170,7 @@ export function CompaniesListPage(): JSX.Element {
                         <td className="px-2 py-2 text-muted-foreground">
                           {c.subtitle ?? t('entity.companies.subtitle.noDetails')}
                         </td>
-                        <td className="px-2 py-2 text-muted-foreground">
-                          {extras.city ?? '—'}
-                        </td>
+                        <td className="px-2 py-2 text-muted-foreground">{extras.city ?? '—'}</td>
                         <td className="px-2 py-2 text-muted-foreground">
                           <span
                             data-enrichment-state={

@@ -73,7 +73,7 @@ defaults to off until an operator opts a layer in.
 ### Phase 8 — manual rollback (already shipped)
 
 4. **Soft-deactivate, audit-trail rollback.** `POST
-   /l/:slug/proposals/:id/rollback` calls
+/l/:slug/proposals/:id/rollback` calls
    `capabilityRegistry.deactivate({...})` and writes
    `rolled_back_at` / `rolled_back_by` / `rolled_back_reason` on
    the proposal row plus `layer_capabilities.deactivated_at`. The

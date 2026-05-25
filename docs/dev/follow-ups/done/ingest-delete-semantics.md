@@ -106,7 +106,7 @@ Tests added in
   delete (no warning surfaces; the dispatcher logs a
   `deleteMissed` because no local row matches in that fixture).
 - A new test `soft-deletes the matched local row when an upstream
-  event is cancelled, preserving the link row` exercises the
+event is cancelled, preserving the link row` exercises the
   round-trip: first ingest creates the row + link, second ingest
   returns the same id as `cancelled`, and the entity's `deleted_at`
   column is set while the `entity_external_links` row is preserved.

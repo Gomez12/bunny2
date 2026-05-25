@@ -17,10 +17,10 @@ the code actually uses.
 
 Two sinks today:
 
-| Sink                       | Purpose                                                     | Implementation                                                                                                                                                                                                                       |
-| -------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Console (stdout/stderr)** | Runtime diagnostics, startup, warnings, errors             | `console.log` / `console.warn` / `console.error` directly, or via a structured-logger interface (`{ info, warn, error }`) injected into long-lived components (chat pipeline orchestrator, embedding subscriber, scheduled handlers). |
-| **SQLite tables**          | Durable diagnostics — the on-disk audit trail                | `events` (canonical event log), `bus_outbox` / `bus_dlq` (delivery ledger + DLQ), `llm_calls` (100% LLM-call log), `scheduled_task_runs` (every scheduled task invocation).                                                          |
+| Sink                        | Purpose                                        | Implementation                                                                                                                                                                                                                        |
+| --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Console (stdout/stderr)** | Runtime diagnostics, startup, warnings, errors | `console.log` / `console.warn` / `console.error` directly, or via a structured-logger interface (`{ info, warn, error }`) injected into long-lived components (chat pipeline orchestrator, embedding subscriber, scheduled handlers). |
+| **SQLite tables**           | Durable diagnostics — the on-disk audit trail  | `events` (canonical event log), `bus_outbox` / `bus_dlq` (delivery ledger + DLQ), `llm_calls` (100% LLM-call log), `scheduled_task_runs` (every scheduled task invocation).                                                           |
 
 There is **no file-based log writer today**. The console is the
 runtime sink; the SQLite tables are the durable sink. Packaged
@@ -154,14 +154,14 @@ These tables are the "file log" for the project. Every one of
 them is queryable from the admin UI (`/admin/*`) or directly
 via `sqlite3 bunny2.sqlite`.
 
-| Table                  | Producer                                                                | Owner doc                                                                                       |
-| ---------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `events`               | Every `bus.publish(...)` — inlined into the durable adapter's transaction | [`event-bus.md`](../architecture/event-bus.md) §4                                              |
-| `bus_outbox`           | Durable adapter delivery ledger (pending / in_flight / delivered / dead / abandoned) | [`event-bus.md`](../architecture/event-bus.md) §3.1                                            |
-| `bus_dlq`              | Middleware-chain throws (handler throws are caught earlier)              | [`event-bus.md`](../architecture/event-bus.md) §3.4                                            |
-| `llm_calls`            | Every LLM call (success or failure) via `withTelemetry(...)`             | [`llm-and-telemetry.md`](../architecture/llm-and-telemetry.md) §4                              |
-| `scheduled_task_runs`  | Every scheduled-task invocation                                          | [`scheduled-tasks.md`](../architecture/scheduled-tasks.md)                                     |
-| `chat_pipeline_steps`  | Per-step trace of every chat run                                         | [`chat-pipeline.md`](../architecture/chat-pipeline.md)                                          |
+| Table                 | Producer                                                                             | Owner doc                                                         |
+| --------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `events`              | Every `bus.publish(...)` — inlined into the durable adapter's transaction            | [`event-bus.md`](../architecture/event-bus.md) §4                 |
+| `bus_outbox`          | Durable adapter delivery ledger (pending / in_flight / delivered / dead / abandoned) | [`event-bus.md`](../architecture/event-bus.md) §3.1               |
+| `bus_dlq`             | Middleware-chain throws (handler throws are caught earlier)                          | [`event-bus.md`](../architecture/event-bus.md) §3.4               |
+| `llm_calls`           | Every LLM call (success or failure) via `withTelemetry(...)`                         | [`llm-and-telemetry.md`](../architecture/llm-and-telemetry.md) §4 |
+| `scheduled_task_runs` | Every scheduled-task invocation                                                      | [`scheduled-tasks.md`](../architecture/scheduled-tasks.md)        |
+| `chat_pipeline_steps` | Per-step trace of every chat run                                                     | [`chat-pipeline.md`](../architecture/chat-pipeline.md)            |
 
 Retention prune jobs (registered as scheduled tasks):
 
