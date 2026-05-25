@@ -32,6 +32,7 @@ import {
   createInMemoryLanceWriter,
 } from '../../src/chat';
 import { registerProposalsScheduledTaskHandlers } from '../../src/proposals';
+import { registerWhiteboardsScheduledTaskHandlers } from '../../src/entities/whiteboards';
 
 function repoRoot(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -110,6 +111,9 @@ describe('phase 5.7 — job-inventory cross-check', () => {
     // registry; the docs-check only consults the `kind` field, and
     // no test in this file invokes `.run(...)`.
     registerProposalsScheduledTaskHandlers();
+    // Phase 11.3 — whiteboards-domain handlers. No deps either; the
+    // handler resolves its module + store at run time.
+    registerWhiteboardsScheduledTaskHandlers();
   });
 
   afterAll(() => {

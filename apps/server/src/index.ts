@@ -54,6 +54,7 @@ import {
   registerProposalsScheduledTaskHandlers,
   replanOnApproval,
 } from './proposals';
+import { registerWhiteboardsScheduledTaskHandlers } from './entities/whiteboards';
 import { createLayerCapabilitiesRepo } from './proposals/repos/layer-capabilities-repo';
 import { createImprovementProposalsRepo } from './proposals/repos/improvement-proposals-repo';
 import { createImprovementProposalEvidenceRepo } from './proposals/repos/improvement-proposal-evidence-repo';
@@ -540,6 +541,14 @@ registerProposalsScheduledTaskHandlers({
     bus,
   },
 });
+
+// Phase 11.3 — whiteboards scheduled AI enrichment sweep. Mirrors the
+// chat / proposals helpers above: idempotent boot-time registration of
+// `entity.whiteboards.enrich` so the daily safety-net sweep complements
+// the event-driven enrichment runner. The handler resolves the
+// whiteboards module + store from the registry at run time, so this
+// call needs no per-deps wiring (matches `proposalsEvidencePruneHandler`).
+registerWhiteboardsScheduledTaskHandlers();
 
 // Phase 7.5 — boot re-attach of every active `agent` capability. The
 // per-process subscriber wrapper is in-memory only, so a restart

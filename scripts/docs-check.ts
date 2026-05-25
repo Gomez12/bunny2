@@ -31,6 +31,7 @@ import {
   createInMemoryLanceWriter,
 } from '../apps/server/src/chat';
 import { registerProposalsScheduledTaskHandlers } from '../apps/server/src/proposals';
+import { registerWhiteboardsScheduledTaskHandlers } from '../apps/server/src/entities/whiteboards';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const plansDir = join(repoRoot, 'docs/dev/plans');
@@ -135,6 +136,8 @@ async function checkJobInventory(): Promise<void> {
   });
   // Phase 7.6 — proposals-domain handlers also feed the inventory.
   registerProposalsScheduledTaskHandlers();
+  // Phase 11.3 — whiteboards-domain handlers feed the inventory too.
+  registerWhiteboardsScheduledTaskHandlers();
   const registered = new Set(listRegisteredScheduledTaskHandlers().map((h) => h.kind));
   const body = await readFile(inventoryPath, 'utf8');
   const documented = parseInventoryKinds(body);

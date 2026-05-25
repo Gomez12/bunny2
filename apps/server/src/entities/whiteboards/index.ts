@@ -19,7 +19,27 @@ export {
   type CreateWhiteboardModuleOptions,
 } from './module';
 
-export { whiteboardEnrichmentJobs } from './enrichment';
+export {
+  whiteboardEnrichmentJobs,
+  whiteboardSceneSummaryJob,
+  whiteboardMentionResolverJob,
+  WHITEBOARD_SCENE_SUMMARY_JOB_ID,
+  WHITEBOARD_MENTION_RESOLVER_JOB_ID,
+  WHITEBOARD_MENTION_CONNECTOR_ID,
+  extractMentionTokens,
+  extractSceneTexts,
+} from './enrichment';
+
+export {
+  WHITEBOARDS_ENRICH_KIND,
+  whiteboardsEnrichHandler,
+  registerWhiteboardsScheduledTaskHandlers,
+  runWhiteboardsEnrichSweep,
+  listStaleWhiteboards,
+  readWhiteboardSummary,
+  type WhiteboardsEnrichConfig,
+  type WhiteboardsEnrichSweepResult,
+} from './scheduled';
 
 export { whiteboardStatsProvider, type WhiteboardStats } from './stats';
 
