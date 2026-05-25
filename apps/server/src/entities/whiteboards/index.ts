@@ -177,5 +177,10 @@ export function mountWhiteboardRoutes(
     store,
     bus: deps.bus,
     db: deps.db,
+    // Phase 5 (ui-exposure-gaps) — the whiteboard dashboard widget reads
+    // `_recent` thumbnails, not aggregate counts; the `_stats` auto-mount
+    // would only show up as a "no web caller" row in the route audit.
+    // See `docs/dev/architecture/backend-only-endpoints.md`.
+    optOutOfStats: true,
   });
 }

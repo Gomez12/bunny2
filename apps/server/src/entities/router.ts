@@ -78,6 +78,19 @@ export interface MountEntityRoutesDeps<Payload> {
    * `config.locales.default`; tests can override it.
    */
   readonly defaultLocale?: string;
+  /**
+   * Phase 5 (ui-exposure-gaps) — opt out of the auto-mounted
+   * `GET /l/:slug/<kind>/_stats` route. The stats endpoint is convenient
+   * for dashboard widgets but every mounted route also shows up in the
+   * route-exposure audit; kinds whose dashboard widget reads a different
+   * shape (e.g. whiteboards use `_recent` thumbnails, not aggregate
+   * counts) should pass `optOutOfStats: true` so the audit's "no web
+   * caller" table stays clean. When set, the `_stats` route is not
+   * registered at all and falls through to the `:entitySlug` matcher,
+   * which returns `errors.entity.notFound` (404) for the literal
+   * `_stats` slug — same surface as any other unknown entity.
+   */
+  readonly optOutOfStats?: boolean;
 }
 
 const STATS_NOT_AVAILABLE = { error: 'errors.entity.statsUnavailable' } as const;
@@ -190,15 +203,24 @@ export function mountEntityRoutes<Payload>(
   // that don't declare `statsProvider` return 404 here, mirroring the
   // "feature not present on this kind" contract used by the rest of the
   // router.
-  app.get(`${base}/_stats`, requireLayer, (c) => {
-    const layer = c.get('layer');
-    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
-    if (module.statsProvider === undefined) {
-      return c.json(STATS_NOT_AVAILABLE, 404);
-    }
-    const stats = module.statsProvider.compute({ layerId: layer.id, db: deps.db, now });
-    return c.json({ stats });
-  });
+  //
+  // Phase 5 (ui-exposure-gaps) — kinds whose dashboard widget does not
+  // consume `_stats` opt out via `deps.optOutOfStats`. When opted out the
+  // route is not registered at all; the literal slug `_stats` then falls
+  // through to the `:entitySlug` matcher below and surfaces as
+  // `errors.entity.notFound`. See
+  // `docs/dev/architecture/backend-only-endpoints.md`.
+  if (deps.optOutOfStats !== true) {
+    app.get(`${base}/_stats`, requireLayer, (c) => {
+      const layer = c.get('layer');
+      if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+      if (module.statsProvider === undefined) {
+        return c.json(STATS_NOT_AVAILABLE, 404);
+      }
+      const stats = module.statsProvider.compute({ layerId: layer.id, db: deps.db, now });
+      return c.json({ stats });
+    });
+  }
 
   // ---------- GET /l/:slug/<kind> ----------------------------------------
 

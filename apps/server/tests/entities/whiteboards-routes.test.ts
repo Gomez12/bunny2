@@ -165,6 +165,21 @@ describe('/l/:slug/whiteboard CRUD', () => {
     expect(((await create.json()) as { error: string }).error).toBe('errors.layer.notVisible');
   });
 
+  // Phase 5 (ui-exposure-gaps) — the whiteboard widget reads `_recent`,
+  // not `_stats`. The whiteboard `mountEntityRoutes` call opts out of the
+  // `_stats` auto-mount so the route does not appear in the route-
+  // exposure audit. When unmounted, the literal slug `_stats` falls
+  // through to the `:entitySlug` matcher and surfaces as
+  // `errors.entity.notFound` — same shape any unknown entity would.
+  it('returns 404 errors.entity.notFound for opted-out whiteboard _stats route', async () => {
+    fx = makeTestApp('bunny2-wb-routes-no-stats-');
+    const { token } = await bootLayer('owner');
+
+    const res = await getJson(fx, '/l/wbtest/whiteboard/_stats', token);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toBe('errors.entity.notFound');
+  });
+
   it('rejects an over-cap POST with 413 errors.whiteboards.tooLarge', async () => {
     fx = makeTestApp('bunny2-wb-routes-cap-post-');
     const { token } = await bootLayer('owner');

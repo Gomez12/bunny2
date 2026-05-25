@@ -2,7 +2,6 @@ import type { ZodType } from 'zod';
 import { WhiteboardPayloadSchema, type WhiteboardPayload } from '@bunny2/shared';
 import type { EnrichmentJob, EntityModule } from '../module';
 import type { EntityConnector } from '../connectors/base';
-import { whiteboardStatsProvider } from './stats';
 
 /**
  * Phase 11.1 — fifth concrete `EntityModule`.
@@ -94,7 +93,11 @@ export function createWhiteboardModule(
     // the calendar / todos precedent and is purely defensive against
     // future schema additions that might introduce defaults.
     payloadSchema: WhiteboardPayloadSchema as unknown as ZodType<WhiteboardPayload>,
-    statsProvider: whiteboardStatsProvider,
+    // Phase 5 (ui-exposure-gaps) — `statsProvider` removed. The whiteboard
+    // dashboard widget reads `_recent` thumbnails, not aggregate counts;
+    // the `_stats` HTTP mount is opted out in `./index.ts`. The
+    // `whiteboardStatsProvider` is still exported from `./stats.ts` for
+    // any future widget that needs the shape.
     indexedColumns: [
       {
         name: 'scene_byte_size',

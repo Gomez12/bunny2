@@ -424,11 +424,6 @@ export async function listLayers(params: ListLayersQuery = {}): Promise<readonly
   return res.layers;
 }
 
-export async function getLayer(slug: string): Promise<Layer> {
-  const res = await request<LayerDetailResponse>(`/layers/${encodeURIComponent(slug)}`);
-  return res.layer;
-}
-
 export async function createLayer(body: CreateLayerPayload): Promise<Layer> {
   const res = await request<LayerDetailResponse>('/layers', {
     method: 'POST',
