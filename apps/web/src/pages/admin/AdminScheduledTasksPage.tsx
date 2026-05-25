@@ -91,6 +91,9 @@ export function AdminScheduledTasksPage(): JSX.Element {
                     <th scope="col" className="px-2 py-2 font-medium">
                       {t('admin.scheduledTasks.columns.status')}
                     </th>
+                    <th scope="col" className="px-2 py-2 font-medium">
+                      <span className="sr-only">{t('admin.scheduledTasks.columns.actions')}</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -130,6 +133,14 @@ export function AdminScheduledTasksPage(): JSX.Element {
                         <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
                           {t(statusLabelKey(task.status))}
                         </span>
+                      </td>
+                      <td className="px-2 py-2 text-right">
+                        <Link
+                          to={`/admin/scheduled-tasks/${encodeURIComponent(task.id)}/runs`}
+                          className="underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {t('admin.scheduledTasks.action.runs')}
+                        </Link>
                       </td>
                     </tr>
                   ))}

@@ -277,6 +277,27 @@
       "delete": {
         "title": "Delete user",
         "body": "Delete {{name}}? This is a soft delete and removes their active sessions."
+      },
+      "detail": {
+        "title": "User · {{name}}",
+        "titlePlaceholder": "User detail",
+        "back": "Back to users",
+        "profile": "Profile",
+        "directGroups": "Direct group memberships",
+        "noDirectGroups": "This user has no direct group memberships.",
+        "layersVisibility": "Layers visibility",
+        "layersVisibilityPending": "A per-user layer-visibility view is not yet available; use the Layers page on behalf of the user to inspect their reachable layers.",
+        "field": {
+          "username": "Username",
+          "displayName": "Display name",
+          "status": "Status",
+          "createdAt": "Created at",
+          "updatedAt": "Updated at",
+          "deletedAt": "Deleted at"
+        },
+        "status": {
+          "mustChangePassword": "Must change password"
+        }
       }
     },
     "groups": {
@@ -445,9 +466,33 @@
         "schedule": "Schedule",
         "nextRun": "Next run",
         "lastRun": "Last run",
-        "status": "Status"
+        "status": "Status",
+        "actions": "Actions"
       },
-      "openInLayerCta": "Open in layer"
+      "openInLayerCta": "Open in layer",
+      "action": {
+        "runs": "Runs"
+      },
+      "runs": {
+        "title": "Runs · {{name}}",
+        "titlePlaceholder": "Scheduled task runs",
+        "back": "Back to scheduled tasks",
+        "empty": "No runs recorded yet.",
+        "openInLayer": "Open task in layer {{slug}}",
+        "expand": "Show details",
+        "collapse": "Hide details",
+        "durationMs": "{{ms}} ms",
+        "durationPending": "—",
+        "columns": {
+          "requestedAt": "Requested at",
+          "status": "Status",
+          "trigger": "Trigger",
+          "attempt": "Attempt",
+          "duration": "Duration",
+          "error": "Error",
+          "details": "Details"
+        }
+      }
     },
     "bus": {
       "dlq": {

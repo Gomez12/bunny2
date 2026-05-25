@@ -228,9 +228,56 @@
         "schedule": "Schema",
         "nextRun": "Volgende run",
         "lastRun": "Laatste run",
-        "status": "Status"
+        "status": "Status",
+        "actions": "Acties"
       },
-      "openInLayerCta": "Openen in laag"
+      "openInLayerCta": "Openen in laag",
+      "action": {
+        "runs": "Runs"
+      },
+      "runs": {
+        "title": "Runs · {{name}}",
+        "titlePlaceholder": "Runs van geplande taak",
+        "back": "Terug naar geplande taken",
+        "empty": "Nog geen runs vastgelegd.",
+        "openInLayer": "Open taak in laag {{slug}}",
+        "expand": "Details tonen",
+        "collapse": "Details verbergen",
+        "durationMs": "{{ms}} ms",
+        "durationPending": "—",
+        "columns": {
+          "requestedAt": "Aangevraagd op",
+          "status": "Status",
+          "trigger": "Trigger",
+          "attempt": "Poging",
+          "duration": "Duur",
+          "error": "Fout",
+          "details": "Details"
+        }
+      }
+    },
+    "users": {
+      "detail": {
+        "title": "Gebruiker · {{name}}",
+        "titlePlaceholder": "Gebruikersdetails",
+        "back": "Terug naar gebruikers",
+        "profile": "Profiel",
+        "directGroups": "Directe groepslidmaatschappen",
+        "noDirectGroups": "Deze gebruiker heeft geen directe groepslidmaatschappen.",
+        "layersVisibility": "Zichtbare lagen",
+        "layersVisibilityPending": "Een per-gebruiker laag-zichtbaarheidsoverzicht is nog niet beschikbaar; gebruik de Lagen-pagina namens de gebruiker om hun bereikbare lagen te bekijken.",
+        "field": {
+          "username": "Gebruikersnaam",
+          "displayName": "Weergavenaam",
+          "status": "Status",
+          "createdAt": "Aangemaakt op",
+          "updatedAt": "Bijgewerkt op",
+          "deletedAt": "Verwijderd op"
+        },
+        "status": {
+          "mustChangePassword": "Moet wachtwoord wijzigen"
+        }
+      }
     },
     "bus": {
       "dlq": {

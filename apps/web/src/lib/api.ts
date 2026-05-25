@@ -1412,6 +1412,22 @@ export async function listAdminScheduledTasks(): Promise<readonly AdminScheduled
   return res.tasks;
 }
 
+/**
+ * Phase 4 (ui-exposure-gaps) — cross-layer runs drilldown for the
+ * admin scheduled-tasks page. Mirrors `listScheduledTaskRuns` but
+ * keyed by `taskId` (admins don't always know the owning layer slug
+ * when they navigate from the cross-layer overview).
+ */
+export async function listAdminScheduledTaskRuns(
+  taskId: string,
+  limit = 50,
+): Promise<readonly ScheduledTaskRunSummary[]> {
+  const res = await request<{ runs: readonly ScheduledTaskRunSummary[] }>(
+    `/admin/scheduled-tasks/${encodeURIComponent(taskId)}/runs?limit=${encodeURIComponent(String(limit))}`,
+  );
+  return res.runs;
+}
+
 export async function listAdminBusDlq(limit = 50): Promise<readonly AdminBusDlqRow[]> {
   const res = await request<{ items: readonly AdminBusDlqRow[] }>(
     `/admin/bus/dlq?limit=${encodeURIComponent(String(limit))}`,

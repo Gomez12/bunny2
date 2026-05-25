@@ -18,8 +18,10 @@ import { ChatPage } from './pages/ChatPage';
 import { LoginPage } from './pages/LoginPage';
 import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage';
+import { AdminUserDetailPage } from './pages/admin/AdminUserDetailPage';
 import { AdminGroupsPage } from './pages/admin/AdminGroupsPage';
 import { AdminScheduledTasksPage } from './pages/admin/AdminScheduledTasksPage';
+import { AdminScheduledTaskRunsPage } from './pages/admin/AdminScheduledTaskRunsPage';
 import { AdminBusDlqPage } from './pages/admin/AdminBusDlqPage';
 import { ScheduledTasksListPage } from './pages/ScheduledTasksListPage';
 import { MyLayersPage } from './pages/MyLayersPage';
@@ -271,9 +273,16 @@ function AppShell(): JSX.Element {
             element={<ChangePasswordPage onSuccess={() => nav('/status')} />}
           />
           {isAdmin ? <Route path="/admin/users" element={<AdminUsersPage />} /> : null}
+          {isAdmin ? <Route path="/admin/users/:userId" element={<AdminUserDetailPage />} /> : null}
           {isAdmin ? <Route path="/admin/groups" element={<AdminGroupsPage />} /> : null}
           {isAdmin ? (
             <Route path="/admin/scheduled-tasks" element={<AdminScheduledTasksPage />} />
+          ) : null}
+          {isAdmin ? (
+            <Route
+              path="/admin/scheduled-tasks/:taskId/runs"
+              element={<AdminScheduledTaskRunsPage />}
+            />
           ) : null}
           {isAdmin ? <Route path="/admin/bus/dlq" element={<AdminBusDlqPage />} /> : null}
           <Route path="/l/:layerSlug/dashboard" element={<LayerDashboardPage />} />

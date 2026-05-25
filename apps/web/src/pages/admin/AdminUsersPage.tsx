@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { ConfirmDialog, Dialog } from '../../components/ui/dialog';
@@ -114,7 +115,14 @@ export function AdminUsersPage(): JSX.Element {
                 <tbody>
                   {state.users.map((u) => (
                     <tr key={u.id} className="border-b last:border-0">
-                      <td className="px-2 py-2 font-mono">{u.username}</td>
+                      <td className="px-2 py-2 font-mono">
+                        <Link
+                          to={`/admin/users/${encodeURIComponent(u.id)}`}
+                          className="underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {u.username}
+                        </Link>
+                      </td>
                       <td className="px-2 py-2">{u.displayName}</td>
                       <td className="px-2 py-2 text-muted-foreground">
                         {groupNamesFor(u, state.groups)}
