@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 import type { Database } from 'bun:sqlite';
 import type { MessageBus } from '@bunny2/bus';
-import type { EntityRef } from '@bunny2/shared';
+import { Iso8601DateSchema, type EntityRef } from '@bunny2/shared';
 import { createRequireLayer } from '../http/middleware/layer';
 import type { HonoVariables } from '../http/types';
 import type { EntityModule } from './module';
@@ -208,10 +208,30 @@ export function mountEntityRoutes<Payload>(
     const includeDeleted = c.req.query('includeDeleted') === 'true';
     const limit = parseIntOrNull(c.req.query('limit'));
     const offset = parseIntOrNull(c.req.query('offset'));
+    // `?from=&to=` is parsed unconditionally so we can return 400 on a
+    // malformed bound even when the module doesn't declare a
+    // `timeColumn` (we'd otherwise silently swallow garbage input).
+    // The store ignores the values when `timeColumn` is undefined.
+    const rawFrom = c.req.query('from');
+    const rawTo = c.req.query('to');
+    let from: string | undefined;
+    let to: string | undefined;
+    if (rawFrom !== undefined && rawFrom !== '') {
+      const parsed = Iso8601DateSchema.safeParse(rawFrom);
+      if (!parsed.success) return c.json(BAD_REQUEST, 400);
+      from = parsed.data;
+    }
+    if (rawTo !== undefined && rawTo !== '') {
+      const parsed = Iso8601DateSchema.safeParse(rawTo);
+      if (!parsed.success) return c.json(BAD_REQUEST, 400);
+      to = parsed.data;
+    }
     const summaries = store.listSummaries([layer.id], {
       includeDeleted,
       ...(limit === null ? {} : { limit }),
       ...(offset === null ? {} : { offset }),
+      ...(from === undefined ? {} : { from }),
+      ...(to === undefined ? {} : { to }),
     });
     return c.json({ entities: summaries });
   });

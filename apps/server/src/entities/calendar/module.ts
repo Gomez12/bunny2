@@ -101,6 +101,12 @@ export function createCalendarEventModule(
     // defaults so they don't hit this — first time a calendar-style
     // default lands.)
     payloadSchema: CalendarEventPayloadSchema as unknown as ZodType<CalendarEventPayload>,
+    // Phase 4c.5 follow-up — opts into the generic §4.0 list-endpoint
+    // `?from=&to=` range filter. The store ANDs an inclusive lex range
+    // on the indexed `starts_at` column into the WHERE clause; other
+    // kinds without a `timeColumn` ignore the params. See
+    // `docs/dev/follow-ups/done/calendar-list-range-filter.md`.
+    timeColumn: 'starts_at',
     indexedColumns: [
       {
         name: 'starts_at',

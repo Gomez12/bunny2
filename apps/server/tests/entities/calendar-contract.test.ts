@@ -20,8 +20,11 @@ import { createUsersRepo } from '../../src/repos/users-repo';
 import { createLayersRepo } from '../../src/repos/layers-repo';
 import { createLayerLocalesRepo } from '../../src/repos/layer-locales-repo';
 import { createLlmClient } from '../../src/llm/client';
-import { createEntityStore, __resetEntityRegistryForTests } from '../../src/entities';
+import { Hono } from 'hono';
+import type { User as SafeUser } from '@bunny2/shared';
+import { createEntityStore, mountEntityRoutes, __resetEntityRegistryForTests } from '../../src/entities';
 import { calendarEventModule } from '../../src/entities/calendar';
+import type { HonoVariables } from '../../src/http/types';
 import { runEntityContractSuite } from '../entity-contract/suite';
 import { safeRmSync } from '../_helpers/temp-dir';
 
@@ -288,6 +291,10 @@ describe('calendar_events module :: shape', () => {
     ]);
   });
 
+  it('declares timeColumn = starts_at for the §4.0 list-endpoint ?from=&to= range filter', () => {
+    expect(calendarEventModule.timeColumn).toBe('starts_at');
+  });
+
   it('builds a subtitle from startsAt and optional location', () => {
     const ref = {
       id: 'id',
@@ -327,5 +334,101 @@ describe('calendar_events module :: shape', () => {
       },
     });
     expect(withoutLocation.subtitle).toBe('2026-06-01T09:00:00.000Z');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Calendar-specific `GET /l/:slug/calendar_event?from=&to=` end-to-end test.
+//
+// Exercises the foundation extension wired in the
+// calendar-list-range-filter follow-up — the module declares
+// `timeColumn: 'starts_at'` and the generic store ANDs an inclusive
+// range filter into the WHERE clause. The router is mounted with a
+// stub middleware (same shape as the §4.0 contract suite's PATCH-merge
+// test) so we don't need to spin up the full auth chain.
+// ---------------------------------------------------------------------------
+
+describe('calendar_events module :: ?from=&to= range filter', () => {
+  let fx: Fixture | null = null;
+  afterEach(() => {
+    if (fx !== null) {
+      fx.cleanup();
+      fx = null;
+    }
+  });
+
+  it('narrows the rowset to the inclusive [from, to] window on starts_at', async () => {
+    fx = makeFixture();
+    const layerId = seedLayer(fx.db, `r-${crypto.randomUUID().slice(0, 6)}`);
+    const userId = seedUser(fx.db, `u-${crypto.randomUUID().slice(0, 6)}`);
+    const layer = createLayersRepo(fx.db).getLayerById(layerId);
+    if (layer === null) throw new Error('layer missing after seed');
+    const store = createEntityStore<CalendarEventPayload>({
+      module: calendarEventModule,
+      db: fx.db,
+      bus: fx.bus,
+      llm: createLlmClient({
+        endpoint: 'mock://echo',
+        apiKey: '',
+        defaultModel: 'mock-default',
+      }),
+    });
+    // Three events: before, inside, and after the requested window.
+    await store.create({
+      layerId,
+      slug: 'before',
+      title: 'Before',
+      originalLocale: 'en',
+      payload: { startsAt: '2026-05-01T09:00:00.000Z', allDay: false },
+      actorId: userId,
+    });
+    await store.create({
+      layerId,
+      slug: 'inside',
+      title: 'Inside',
+      originalLocale: 'en',
+      payload: { startsAt: '2026-06-15T09:00:00.000Z', allDay: false },
+      actorId: userId,
+    });
+    await store.create({
+      layerId,
+      slug: 'after',
+      title: 'After',
+      originalLocale: 'en',
+      payload: { startsAt: '2026-07-01T09:00:00.000Z', allDay: false },
+      actorId: userId,
+    });
+
+    const app = new Hono<{ Variables: HonoVariables }>();
+    app.use('*', async (c, next) => {
+      c.set('user', { id: userId } as unknown as SafeUser);
+      c.set('effectiveLayers', [layer]);
+      await next();
+    });
+    mountEntityRoutes(app, {
+      module: calendarEventModule,
+      store,
+      bus: fx.bus,
+      db: fx.db,
+    });
+
+    const res = await app.fetch(
+      new Request(
+        `http://localhost/l/${layer.slug}/calendar_event?from=2026-06-01&to=2026-06-30`,
+        { method: 'GET' },
+      ),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { entities: readonly { slug: string }[] };
+    const slugs = body.entities.map((e) => e.slug).sort();
+    expect(slugs).toEqual(['inside']);
+
+    // Without the bounds the listing returns all three.
+    const unscoped = await app.fetch(
+      new Request(`http://localhost/l/${layer.slug}/calendar_event`, { method: 'GET' }),
+    );
+    expect(unscoped.status).toBe(200);
+    const unscopedBody = (await unscoped.json()) as { entities: readonly { slug: string }[] };
+    expect(unscopedBody.entities.map((e) => e.slug).sort()).toEqual(['after', 'before', 'inside']);
   });
 });

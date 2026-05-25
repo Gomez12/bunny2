@@ -96,6 +96,16 @@ export interface ListSummariesOptions {
   readonly includeDeleted?: boolean;
   readonly limit?: number;
   readonly offset?: number;
+  /**
+   * Inclusive lower bound on the module's declared `timeColumn`.
+   * Ignored when the module does not declare a `timeColumn`. ISO-8601
+   * string compare (lexicographic, sound for the ISO shape the
+   * column stores). Caller validates the format — the store assumes
+   * the value is already an ISO-8601 string.
+   */
+  readonly from?: string;
+  /** Inclusive upper bound on the module's declared `timeColumn`. */
+  readonly to?: string;
 }
 
 export interface SearchSummariesOptions extends ListSummariesOptions {
@@ -232,6 +242,25 @@ export function createEntityStore<Payload>(
   // here than from a confusing SQLite "duplicate column" error later.
   if (new Set(indexedNames).size !== indexedNames.length) {
     throw new Error(`entity-store: duplicate indexed column names for kind '${module.kind}'`);
+  }
+
+  // Optional `timeColumn` for the §4.0 `?from=&to=` list range filter
+  // (added in the calendar-list-range-filter follow-up). Must name one
+  // of the indexed columns — a range filter on an unindexed column
+  // would be a foot-gun once a table grows. Validated at boot so a
+  // typo fails the process, not the first request.
+  const timeColumn = module.timeColumn;
+  if (timeColumn !== undefined) {
+    if (!identRe.test(timeColumn)) {
+      throw new Error(
+        `entity-store: invalid timeColumn '${timeColumn}' for kind '${module.kind}'`,
+      );
+    }
+    if (!indexedNames.includes(timeColumn)) {
+      throw new Error(
+        `entity-store: timeColumn '${timeColumn}' for kind '${module.kind}' is not in indexedColumns`,
+      );
+    }
   }
 
   const selectCols =
@@ -608,13 +637,30 @@ export function createEntityStore<Payload>(
       if (opts.includeDeleted !== true) {
         conditions.push('deleted_at IS NULL');
       }
+      // `?from=&to=` range filter. Honored ONLY when the module
+      // declares a `timeColumn`; modules without it ignore the
+      // bounds entirely so the contract stays opt-in (the kind has
+      // no time axis to filter on). Bounds are inclusive on both
+      // sides — same closed-interval shape `react-big-calendar`'s
+      // visible range produces.
+      const timeArgs: string[] = [];
+      if (timeColumn !== undefined) {
+        if (opts.from !== undefined) {
+          conditions.push(`${timeColumn} >= ?`);
+          timeArgs.push(opts.from);
+        }
+        if (opts.to !== undefined) {
+          conditions.push(`${timeColumn} <= ?`);
+          timeArgs.push(opts.to);
+        }
+      }
       const limit = opts.limit ?? 200;
       const offset = opts.offset ?? 0;
       const sql =
         `SELECT ${selectCols} FROM ${t} WHERE ${conditions.join(' AND ')} ` +
         `ORDER BY updated_at DESC LIMIT ? OFFSET ?`;
       const stmt = db.query<KindRow, (string | number)[]>(sql);
-      const rows = stmt.all(...layerIds, limit, offset);
+      const rows = stmt.all(...layerIds, ...timeArgs, limit, offset);
       return rows.map(rowToSummary);
     },
 

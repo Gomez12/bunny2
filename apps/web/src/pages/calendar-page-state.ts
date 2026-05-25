@@ -59,6 +59,70 @@ export function calendarPageView(input: CalendarPageInput): CalendarPageView {
   return { kind: 'ready', events: input.events };
 }
 
+// ---------- visible range for `?from=&to=` --------------------------------
+
+/**
+ * Compute an inclusive ISO-8601 UTC range covering the cells
+ * `react-big-calendar` actually paints for a given `view` + anchor
+ * `date`. Used to populate the §4.0 list endpoint's `?from=&to=`
+ * server-side filter (see `EntityModule.timeColumn` /
+ * `docs/dev/follow-ups/done/calendar-list-range-filter.md`).
+ *
+ * We pad each side generously:
+ *  - `month` view returns the calendar month plus the leading /
+ *    trailing days the grid shows from the adjacent months — we
+ *    approximate by widening to ±7 days around the calendar month.
+ *  - `week` view returns the week plus a one-day pad on each side
+ *    so locale-dependent week-start choices don't drop an edge event.
+ *  - `day` / `agenda` view widens to ±1 day for the same reason.
+ *
+ * The bounds are intentionally loose. The server-side `WHERE` clamps
+ * the rowset cheaply; the React layer then filters precisely. Over-
+ * fetching by a day is fine; under-fetching would drop visible events.
+ *
+ * Returns ISO-8601 date-only strings (`YYYY-MM-DD`). The server's
+ * `Iso8601DateSchema` accepts that shape; lex-compare against the
+ * column's ISO timestamps is sound.
+ */
+export type CalendarPageView2 = 'month' | 'week' | 'work_week' | 'day' | 'agenda';
+
+export function visibleCalendarRange(
+  view: CalendarPageView2,
+  anchor: Date,
+): { readonly from: string; readonly to: string } {
+  const day = 24 * 60 * 60 * 1000;
+  const center = anchor.getTime();
+  let halfWindow: number;
+  switch (view) {
+    case 'month':
+      halfWindow = 21 * day; // month is at most ~31 days; 21 each side covers it.
+      break;
+    case 'agenda':
+      halfWindow = 31 * day; // agenda shows ~1 month by default; widen generously.
+      break;
+    case 'week':
+    case 'work_week':
+      halfWindow = 8 * day;
+      break;
+    case 'day':
+      halfWindow = 1 * day;
+      break;
+    default:
+      halfWindow = 31 * day;
+  }
+  const from = new Date(center - halfWindow);
+  const to = new Date(center + halfWindow);
+  return {
+    from: toDateOnly(from),
+    to: toDateOnly(to),
+  };
+}
+
+function toDateOnly(d: Date): string {
+  // `YYYY-MM-DD` in UTC. `toISOString` always emits Z; slice the date.
+  return d.toISOString().slice(0, 10);
+}
+
 // ---------- detail page ----------------------------------------------------
 
 export type CalendarEventDetailInput =

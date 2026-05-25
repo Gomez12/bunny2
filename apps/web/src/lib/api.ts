@@ -807,8 +807,20 @@ export async function importContactsVcard(
 // singular `/l/:slug/calendar_event` segment per the §4.0 entity contract;
 // the web UI's friendlier URL is `/l/:slug/calendar`.
 
-export async function listCalendarEvents(layerSlug: string): Promise<readonly EntitySummary[]> {
-  const res = await request<{ entities: readonly EntitySummary[] }>(calendarServerBase(layerSlug));
+export async function listCalendarEvents(
+  layerSlug: string,
+  opts: { readonly from?: string; readonly to?: string } = {},
+): Promise<readonly EntitySummary[]> {
+  // Phase 4c.5 follow-up — the server's §4.0 list endpoint now accepts
+  // `?from=&to=` against the indexed `starts_at` column when the
+  // calendar module declares a `timeColumn`. Caller passes the grid's
+  // visible range so we don't fetch every event in the layer.
+  const params = new URLSearchParams();
+  if (opts.from !== undefined && opts.from !== '') params.set('from', opts.from);
+  if (opts.to !== undefined && opts.to !== '') params.set('to', opts.to);
+  const qs = params.toString();
+  const url = qs === '' ? calendarServerBase(layerSlug) : `${calendarServerBase(layerSlug)}?${qs}`;
+  const res = await request<{ entities: readonly EntitySummary[] }>(url);
   return res.entities;
 }
 

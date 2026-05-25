@@ -390,6 +390,102 @@ export function runEntityContractSuite<Payload>(
       // undefined here.
       expect(refreshedPayload[preservedKey]).toEqual(initial[preservedKey]);
     });
+
+    // -----------------------------------------------------------------
+    // GET /l/:slug/<kind>?from=&to= contract.
+    //
+    // Calendar opts in via `module.timeColumn`. For every other kind
+    // (companies, contacts, todos, fixture) the parameters MUST be
+    // ignored — the response shape stays the same and the rowset is
+    // not narrowed. A malformed ISO string still returns 400 (the
+    // router parses the params unconditionally so the kind never sees
+    // SQL-noise input regardless of whether it opts in).
+    // -----------------------------------------------------------------
+    it('GET ?from=&to= is ignored by modules without a timeColumn', async () => {
+      // Skip the kinds that DO opt in — the assertion would be wrong.
+      if (fixture.module.timeColumn !== undefined) return;
+
+      const { layerAId } = fixture.createTwoLayers({
+        localesA: ['en'],
+        localesB: ['en'],
+        defaultLocaleA: 'en',
+      });
+      const userId = fixture.createUser('time-col');
+      const layer = createLayersRepo(fixture.db).getLayerById(layerAId);
+      if (layer === null) throw new Error('layer not found after createTwoLayers');
+      await fixture.store.create({
+        layerId: layerAId,
+        slug: 'in-range',
+        title: 'In range',
+        originalLocale: 'en',
+        payload: fixture.samplePayload('in-range'),
+        actorId: userId,
+      });
+
+      const app = new Hono<{ Variables: HonoVariables }>();
+      app.use('*', async (c, next) => {
+        c.set('user', { id: userId } as unknown as SafeUser);
+        c.set('effectiveLayers', [layer]);
+        await next();
+      });
+      mountEntityRoutes(app, {
+        module: fixture.module,
+        store: fixture.store,
+        bus: fixture.bus,
+        db: fixture.db,
+      });
+
+      const res = await app.fetch(
+        new Request(
+          `http://localhost/l/${layer.slug}/${fixture.module.kind}?from=2020-01-01&to=2020-01-02`,
+          { method: 'GET' },
+        ),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { entities: readonly { slug: string }[] };
+      // The row is OUTSIDE the supposed `[2020-01-01, 2020-01-02]`
+      // range — if the kind had a time filter on `updated_at` we'd
+      // get zero rows. The assertion is "the param did not narrow
+      // the rowset" — the row is still present.
+      expect(body.entities.find((e) => e.slug === 'in-range')).toBeDefined();
+    });
+
+    it('GET rejects malformed ?from= / ?to= with a 400', async () => {
+      const { layerAId } = fixture.createTwoLayers({
+        localesA: ['en'],
+        localesB: ['en'],
+        defaultLocaleA: 'en',
+      });
+      const userId = fixture.createUser('bad-range');
+      const layer = createLayersRepo(fixture.db).getLayerById(layerAId);
+      if (layer === null) throw new Error('layer not found after createTwoLayers');
+
+      const app = new Hono<{ Variables: HonoVariables }>();
+      app.use('*', async (c, next) => {
+        c.set('user', { id: userId } as unknown as SafeUser);
+        c.set('effectiveLayers', [layer]);
+        await next();
+      });
+      mountEntityRoutes(app, {
+        module: fixture.module,
+        store: fixture.store,
+        bus: fixture.bus,
+        db: fixture.db,
+      });
+
+      const badFrom = await app.fetch(
+        new Request(`http://localhost/l/${layer.slug}/${fixture.module.kind}?from=not-a-date`, {
+          method: 'GET',
+        }),
+      );
+      expect(badFrom.status).toBe(400);
+      const badTo = await app.fetch(
+        new Request(`http://localhost/l/${layer.slug}/${fixture.module.kind}?to=foo`, {
+          method: 'GET',
+        }),
+      );
+      expect(badTo.status).toBe(400);
+    });
   });
 }
 

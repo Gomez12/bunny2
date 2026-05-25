@@ -62,6 +62,28 @@ export interface EntityModule<Payload> {
   }): EntitySummary;
   searchableText(payload: Payload): string;
   readonly indexedColumns?: readonly EntityIndexedColumn<Payload>[];
+  /**
+   * Optional indexed column name (must match an entry in
+   * `indexedColumns`) that the generic list endpoint uses for the
+   * `?from=&to=` range filter. When set, `GET /l/:slug/<kind>?from=…&to=…`
+   * adds a SQL `AND <timeColumn> >= ? AND <timeColumn> <= ?` clause
+   * against the indexed column; when omitted, the params are ignored.
+   *
+   * The store enforces at boot that the named column appears in
+   * `indexedColumns` — a range filter on an unindexed column would be
+   * a foot-gun for tables that grow.
+   *
+   * The router validates `from` / `to` as ISO-8601 strings (date or
+   * date-time) via `Iso8601DateSchema` in `@bunny2/shared`. Lexico-
+   * graphic ISO compare is sound; the column stores the same string
+   * shape.
+   *
+   * Added in the calendar-list-range-filter follow-up (see
+   * `docs/dev/follow-ups/done/calendar-list-range-filter.md`).
+   * Calendar opts in with `timeColumn: 'starts_at'`; other kinds
+   * remain opt-out.
+   */
+  readonly timeColumn?: string;
   readonly connectors?: readonly EntityConnector<Payload>[];
   readonly scheduledJobs?: readonly EntityScheduledJob[];
   /**

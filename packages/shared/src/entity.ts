@@ -25,6 +25,28 @@ export const EntitySyncStateSchema = z.enum(['idle', 'syncing', 'error']);
 export type EntitySyncState = z.infer<typeof EntitySyncStateSchema>;
 
 /**
+ * Loose ISO-8601 date / date-time string. Accepts:
+ *  - `YYYY-MM-DD` (date-only — same shape calendar all-day events use)
+ *  - `YYYY-MM-DDTHH:MM(:SS(.sss)?)?(Z|[+-]HH:MM)?`
+ *
+ * Used by the §4.0 entity list endpoint's `?from=&to=` range filter
+ * (see `EntityModule.timeColumn`). Kept minimal and string-typed so
+ * the server can pass the value straight to a `WHERE col >= ?`
+ * lexicographic compare against the indexed ISO-8601 column.
+ *
+ * The regex rejects "obviously wrong" input (empty, non-ISO words)
+ * but does NOT enforce calendar validity (e.g. `2026-02-30` slips
+ * through). That's fine — the lexicographic compare is sound either
+ * way; the validator's job is to refuse SQL-noise like `'; drop --`.
+ */
+export const ISO_8601_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+export const Iso8601DateSchema = z
+  .string()
+  .min(1)
+  .regex(ISO_8601_DATE_RE, 'iso8601-date');
+
+/**
  * Minimal pointer to an entity. Used by cross-entity references (e.g.
  * a todo pointing at a contact) and by event payloads.
  */

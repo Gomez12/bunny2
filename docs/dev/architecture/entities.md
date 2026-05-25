@@ -103,6 +103,7 @@ interface EntityModule<Payload> {
   toSummary(input: { ref; meta; payload; title }): EntitySummary;
   searchableText(payload): string;
   readonly indexedColumns?: readonly EntityIndexedColumn<Payload>[];
+  readonly timeColumn?: string;
   readonly connectors?: readonly EntityConnector<Payload>[];
   readonly scheduledJobs?: readonly EntityScheduledJob[];
   readonly onCreate?: EntityLifecycleHook<Payload>;
@@ -124,6 +125,16 @@ columns to populate alongside `payload_json` — e.g. `companies.kvk_number`,
 treatment as `tableName`); reserved-column collisions throw at boot.
 Modules that need no extra columns omit the field entirely — the fixture
 module is the canonical example.
+
+`timeColumn` (added in the calendar-list-range-filter follow-up) opts
+the kind into the generic list-endpoint `?from=&to=` range filter.
+Must name an entry in `indexedColumns`; the store enforces this at
+boot. When set, `GET /l/:slug/<kind>?from=…&to=…` adds a
+`AND <timeColumn> >= ? AND <timeColumn> <= ?` clause against the
+indexed column. ISO-8601 lex compare is sound because the column
+stores the same ISO shape. Modules that need no time filter omit
+the field entirely; the router still 400s on malformed bounds so
+silently-swallowed garbage never reaches the store.
 
 `registerEntityModule(module)` throws on duplicate `kind` — the
 registry is process-local and authoritative (see

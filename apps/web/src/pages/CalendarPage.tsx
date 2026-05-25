@@ -39,8 +39,10 @@ import {
   mergeCalendarFeed,
   setAllDay as setAllDayOnDraft,
   validateCalendarEventForm,
+  visibleCalendarRange,
   type CalendarEventFormDraft,
   type CalendarPageInput,
+  type CalendarPageView2,
   type MappableEventLike,
   type TodoProjectionLike,
 } from './calendar-page-state';
@@ -94,6 +96,13 @@ export function CalendarPage(): JSX.Element {
     if (layerSlug === null) return;
     setInput({ status: 'loading' });
     try {
+      // Phase 4c.5 follow-up — narrow the server-side rowset to the
+      // grid's visible range so layers with hundreds of events don't
+      // pull the whole table on every navigation. The §4.0 list
+      // endpoint honors `?from=&to=` when the calendar module
+      // declares `timeColumn: 'starts_at'`. See
+      // `docs/dev/follow-ups/done/calendar-list-range-filter.md`.
+      const range = visibleCalendarRange(view as CalendarPageView2, date);
       // Phase 4d.6 — fetch calendar events AND todo projections in
       // parallel. The projections endpoint never fails the page load
       // even if the bridge has yet to write any rows (it just returns
@@ -101,7 +110,7 @@ export function CalendarPage(): JSX.Element {
       // projection layer simply does not render — same defensive
       // posture as the per-event `getCalendarEvent` hydrate below.
       const [summaries, projectionsResp] = await Promise.all([
-        listCalendarEvents(layerSlug),
+        listCalendarEvents(layerSlug, range),
         listTodoProjectionsForCalendar(layerSlug).catch(() => ({
           items: [] as readonly TodoCalendarProjectionItem[],
         })),
@@ -131,7 +140,7 @@ export function CalendarPage(): JSX.Element {
     } catch (err: unknown) {
       setInput({ status: 'error', errorKey: errorKeyOf(err) });
     }
-  }, [layerSlug]);
+  }, [layerSlug, view, date]);
 
   useEffect(() => {
     void refresh();
