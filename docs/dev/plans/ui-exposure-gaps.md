@@ -26,12 +26,12 @@ In scope (the audit gaps):
    (company, contact, calendar_event, todo, whiteboard).
    `POST /l/:slug/<kind>/:slug/restore` exists; no UI calls it.
 2. **Layer member removal UI**. `DELETE
-   /layers/:slug/members/:memberId` exists; Members tab only
+/layers/:slug/members/:memberId` exists; Members tab only
    exposes add.
 3. **External-link CRUD** on contact, calendar_event,
    whiteboard, todo. Only Companies has the affordance today;
    the routes (`POST` / `DELETE
-   .../entities/<kind>/:slug/external-links/...`) are wired but
+.../entities/<kind>/:slug/external-links/...`) are wired but
    silent on every other entity's detail page.
 4. **Admin omissions**:
    - `GET /admin/users/:id` — no `AdminUserDetailPage`.

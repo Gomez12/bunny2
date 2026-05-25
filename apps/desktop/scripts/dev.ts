@@ -156,13 +156,7 @@ function installSignalHandlers(): void {
  * node_modules symlinks that `bun install` creates.
  */
 function startServer(): void {
-  serverChild = start(
-    'server',
-    'bun',
-    ['src/index.ts'],
-    {},
-    path.join(repoRoot, 'apps', 'server'),
-  );
+  serverChild = start('server', 'bun', ['src/index.ts'], {}, path.join(repoRoot, 'apps', 'server'));
 }
 
 /**

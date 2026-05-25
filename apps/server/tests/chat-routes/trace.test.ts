@@ -17,13 +17,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test';
-import {
-  makeChatFixture,
-  send,
-  consumeSse,
-  type ChatTestFixture,
-  type SseFrame,
-} from './_helpers';
+import { makeChatFixture, send, consumeSse, type ChatTestFixture, type SseFrame } from './_helpers';
 
 let fx: ChatTestFixture | null = null;
 
@@ -107,16 +101,14 @@ interface TraceBody {
       errorCode: string | null;
       inputJson: string | null;
       outputJson: string | null;
-      llmCall:
-        | {
-            id: string;
-            model: string;
-            endpoint: string;
-            request: string;
-            response: string | null;
-            error: string | null;
-          }
-        | null;
+      llmCall: {
+        id: string;
+        model: string;
+        endpoint: string;
+        request: string;
+        response: string | null;
+        error: string | null;
+      } | null;
     }>;
   }>;
 }
@@ -137,11 +129,7 @@ describe('GET /l/:slug/chat/conversations/:convId/messages/:msgId/trace', () => 
     fx = await makeChatFixture('bunny2-chat-trace-owner-');
     const convId = await createConversation(fx, fx.token);
     enqueueHappyPath(fx, 'The Acme meeting is tomorrow at 10:00.');
-    const assistantMsgId = await postMessageAndWaitForAssistant(
-      fx,
-      convId,
-      'when do I meet acme?',
-    );
+    const assistantMsgId = await postMessageAndWaitForAssistant(fx, convId, 'when do I meet acme?');
 
     const res = await send(
       fx,

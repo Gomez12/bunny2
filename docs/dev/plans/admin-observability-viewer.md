@@ -5,6 +5,7 @@
 > Mode: Large Change — new admin sections, new (small)
 > server-side analytics sink, multi-phase work.
 > Background:
+>
 > - [`docs/dev/observability/logging.md`](../observability/logging.md)
 > - [`docs/dev/observability/telemetry.md`](../observability/telemetry.md)
 > - [`docs/dev/observability/analytics.md`](../observability/analytics.md)
@@ -45,8 +46,8 @@ In scope:
   drilldown UI; no edit capability except DLQ replay (already
   partially supported).
 - Server-side `analytics_events` SQLite table + ingest endpoint
-  + `configureAnalytics` wiring in `apps/web/src/main.tsx` to
-  post events to it.
+  - `configureAnalytics` wiring in `apps/web/src/main.tsx` to
+    post events to it.
 - Prune jobs for any new tables (analytics events retention).
 - Privacy: every viewer surfaces **already-redacted** rows;
   redaction is enforced at write time as today. No new
@@ -125,7 +126,7 @@ Web:
 - `apps/web/src/lib/api.ts` (helpers).
 - `apps/web/src/lib/analytics.ts` (configure the real sink).
 - `apps/web/src/main.tsx` (wire `configureAnalytics({ sink:
-  httpAnalyticsSink })`).
+httpAnalyticsSink })`).
 - `apps/web/src/locales/{en,nl}.json`.
 - `apps/web/src/App.tsx` (routes + nav entries).
 
@@ -224,14 +225,14 @@ flowchart TD
   drilldown (overlaps with `ui-exposure-gaps.md` phase 4 —
   share the endpoint).
 - Extend `AdminBusDlqPage` (or split into `AdminBusOutboxPage`
-  + `AdminBusDlqPage`) so admins can also see in-flight /
-  delivered outbox rows, not just DLQ.
+  - `AdminBusDlqPage`) so admins can also see in-flight /
+    delivered outbox rows, not just DLQ.
 
 ### Phase 6 — Analytics sink + viewer (est. 8h)
 
 - Migration: `analytics_events` table —
   `(id, occurred_at, event_name, layer_slug, user_id_hash,
-  properties_json, ingested_at)`.
+properties_json, ingested_at)`.
 - `POST /analytics/events` with shape validation against the
   documented catalogue in `analytics.md`. Reject unknown
   event names (or accept them under a `_unknown_` bucket — to
@@ -369,8 +370,8 @@ re-naming of existing events; the catalogue in
 - **R3: JSON payload rendering crashes the page** on a
   multi-MB `llm_calls.request`. Mitigation: server truncates
   > 200 KB with an explicit "truncated; full payload
-  available via API" marker; viewer renders only first N
-  rows / chars by default with an explicit expander.
+  > available via API" marker; viewer renders only first N
+  > rows / chars by default with an explicit expander.
 - **R4: Admin viewer exposes data we thought was redacted but
   isn't.** Mitigation: phase 0 includes a redaction audit
   per surface; tests assert no raw user content in sampled

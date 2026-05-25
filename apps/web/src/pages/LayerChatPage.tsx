@@ -836,9 +836,7 @@ function MessageTracePanel(props: MessageTracePanelProps): JSX.Element {
         {t('chat.trace.summary')}
       </summary>
       <div className="mt-2 space-y-2">
-        {loading ? (
-          <p className="text-muted-foreground">{t('chat.trace.loading')}</p>
-        ) : null}
+        {loading ? <p className="text-muted-foreground">{t('chat.trace.loading')}</p> : null}
         {errorKey !== null && !loading ? (
           <p role="alert" className="text-destructive">
             {t(errorKey, { defaultValue: t('chat.trace.error') })}
