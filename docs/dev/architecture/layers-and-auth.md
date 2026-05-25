@@ -42,6 +42,7 @@ Mirrors `auth-and-sessions.md §0`.
 | `DELETE` | `/layers/:slug`                        | 3.4         | `canEditLayer` + type ≠ project rejected   |
 | `POST`   | `/layers/:slug/members`                | 3.4         | `canEditLayer` (project only)              |
 | `DELETE` | `/layers/:slug/members/:memberId`      | 3.4         | `canEditLayer` (project only)              |
+| `GET`    | `/layers/:slug/visibility`             | follow-up   | Visibility only; redacts non-visible peers |
 | `POST`   | `/layers/:slug/visibility`             | 3.4         | `canEditLayer`; v1 direction = `bottom_up` |
 | `DELETE` | `/layers/:slug/visibility/:parentSlug` | 3.4         | `canEditLayer`                             |
 | `POST`   | `/layers/:slug/locales`                | 3.4         | `canEditLayer`                             |

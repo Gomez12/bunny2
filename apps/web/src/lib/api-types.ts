@@ -171,6 +171,26 @@ export interface LayerVisibilityEdge {
   readonly createdAt: string;
 }
 
+/**
+ * Row returned by `GET /layers/:slug/visibility`. `relation` says
+ * which side the queried layer sits on:
+ *   - `parent` — the layer is the CHILD; the row describes a parent
+ *     it inherits FROM.
+ *   - `child`  — the layer is the PARENT; the row describes a child
+ *     layer that is inherited BY it.
+ * `parentLayerId/parentSlug/parentName` always describe the "other"
+ * layer in the edge regardless of the relation; the UI labels each
+ * sub-section accordingly.
+ */
+export interface LayerVisibilityListItem {
+  readonly relation: 'parent' | 'child';
+  readonly parentLayerId: string;
+  readonly parentSlug: string;
+  readonly parentName: string;
+  readonly direction: LayerVisibilityDirection;
+  readonly createdAt: string;
+}
+
 export interface CreateLayerPayload {
   readonly type: 'project';
   readonly slug: string;

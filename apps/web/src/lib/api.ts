@@ -54,6 +54,7 @@ import type {
   LayerDetailResponse,
   LayerListResponse,
   LayerLocale,
+  LayerVisibilityListItem,
   ListLayersQuery,
   LoginResponse,
   MeResponse,
@@ -457,6 +458,15 @@ export async function addLayerVisibility(
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+export async function listLayerVisibility(
+  slug: string,
+): Promise<readonly LayerVisibilityListItem[]> {
+  const res = await request<{ edges: readonly LayerVisibilityListItem[] }>(
+    `/layers/${encodeURIComponent(slug)}/visibility`,
+  );
+  return res.edges;
 }
 
 export async function removeLayerVisibility(slug: string, parentSlug: string): Promise<void> {

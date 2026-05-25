@@ -464,6 +464,77 @@ export function registerLayersRoutes(
     return c.json({ ok: true });
   });
 
+  // ---------- GET /layers/:slug/visibility --------------------------------
+
+  /**
+   * List visibility edges for a layer (follow-up
+   * `layer-visibility-list.md`). Walks both directions so the UI can
+   * render two sub-sections:
+   *   - `relation: 'parent'` — rows where the current layer is the
+   *     CHILD; the row describes a parent the layer inherits FROM.
+   *   - `relation: 'child'`  — rows where the current layer is the
+   *     PARENT; the row describes a child layer that is inherited BY
+   *     this layer.
+   *
+   * Visibility redaction (recommended by the follow-up doc): if the
+   * caller cannot see the "other side" layer per their effective set,
+   * the row is OMITTED entirely. ADR `0010` collapses "non-visible
+   * parent" and "non-existent parent" into a single answer; the same
+   * principle here is "non-visible neighbour is indistinguishable from
+   * no neighbour".
+   *
+   * `parentLayerId/parentSlug/parentName` always describe the PARENT
+   * side of the edge regardless of the `relation`; consumers split on
+   * `relation` to label the section.
+   */
+  app.get('/layers/:slug/visibility', requireLayer, (c) => {
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    const effective = c.get('effectiveLayers') ?? [];
+    const visibleById = new Map(effective.map((l) => [l.id, l]));
+
+    const edges: Array<{
+      readonly relation: 'parent' | 'child';
+      readonly parentLayerId: string;
+      readonly parentSlug: string;
+      readonly parentName: string;
+      readonly direction: string;
+      readonly createdAt: string;
+    }> = [];
+
+    for (const edge of visibilityRepo.listEdgesForChild(layer.id)) {
+      const parent = visibleById.get(edge.parentLayerId);
+      if (parent === undefined) continue; // redact non-visible parent
+      edges.push({
+        relation: 'parent',
+        parentLayerId: parent.id,
+        parentSlug: parent.slug,
+        parentName: parent.name,
+        direction: edge.direction,
+        createdAt: edge.createdAt,
+      });
+    }
+
+    for (const edge of visibilityRepo.listEdgesForParent(layer.id)) {
+      const child = visibleById.get(edge.childLayerId);
+      if (child === undefined) continue; // redact non-visible child
+      // Naming choice: `parentLayerId/parentSlug/parentName` keeps the
+      // top-level field shape stable across both relations; for the
+      // 'child' relation the fields describe the OTHER side (the
+      // child of the edge), and the UI labels them accordingly.
+      edges.push({
+        relation: 'child',
+        parentLayerId: child.id,
+        parentSlug: child.slug,
+        parentName: child.name,
+        direction: edge.direction,
+        createdAt: edge.createdAt,
+      });
+    }
+
+    return c.json({ edges });
+  });
+
   // ---------- POST /layers/:slug/visibility -------------------------------
 
   app.post('/layers/:slug/visibility', requireLayer, async (c) => {

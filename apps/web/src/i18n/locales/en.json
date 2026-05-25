@@ -361,7 +361,13 @@
         "added": "Visibility edge added.",
         "remove": "Remove edge",
         "removed": "Visibility edge removed.",
-        "removeHelp": "Manage existing edges"
+        "removeHelp": "Manage existing edges",
+        "loading": "Loading visibility edges…",
+        "loadError": "Could not load visibility edges.",
+        "inheritsFromTitle": "Inherits from",
+        "inheritsFromEmpty": "This layer has no parent layers.",
+        "inheritedByTitle": "Inherited by",
+        "inheritedByEmpty": "No layers inherit from this one."
       },
       "locales": {
         "intro": "Pick the locales this layer accepts. The system default is {{defaultLocale}}.",

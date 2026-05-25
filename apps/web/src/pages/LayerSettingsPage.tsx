@@ -14,13 +14,19 @@ import {
   deleteLayer,
   getSystemLocales,
   listLayerAttachments,
+  listLayerVisibility,
   registerLayerAttachment,
   removeLayerAttachment,
   removeLayerVisibility,
   setLayerLocales,
   updateLayer,
 } from '../lib/api';
-import type { Layer, LayerAttachment, LayerAttachmentKind } from '../lib/api-types';
+import type {
+  Layer,
+  LayerAttachment,
+  LayerAttachmentKind,
+  LayerVisibilityListItem,
+} from '../lib/api-types';
 import { errorKeyOf } from '../lib/errors';
 import { refreshLayers, useSession } from '../lib/session';
 import { pushToast } from '../lib/toast';
@@ -339,13 +345,39 @@ function VisibilityTab(props: TabProps): JSX.Element {
   const [parentSlug, setParentSlug] = useState('');
   const [pending, setPending] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [edges, setEdges] = useState<readonly LayerVisibilityListItem[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Visibility list isn't exposed by the server today — the route only
-  // accepts add/remove. Render the add form + a hint, surfaced as a
-  // followUp note rather than calling a phantom endpoint.
+  // Canonical edge list from `GET /layers/:slug/visibility` (added in
+  // the layer-visibility-list follow-up). Refetched on mount and after
+  // every add / remove so the list survives a page reload and matches
+  // the server's view (non-visible edges are redacted server-side).
+  const refresh = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const list = await listLayerVisibility(props.layer.slug);
+      setEdges(list);
+    } catch (err: unknown) {
+      setLoadError(errorKeyOf(err));
+    }
+  }, [props.layer.slug]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
   const candidates = useMemo<Layer[]>(
     () => session.layers.filter((l) => l.id !== props.layer.id),
     [session.layers, props.layer.id],
+  );
+
+  const inheritsFrom = useMemo(
+    () => (edges ?? []).filter((e) => e.relation === 'parent'),
+    [edges],
+  );
+  const inheritedBy = useMemo(
+    () => (edges ?? []).filter((e) => e.relation === 'child'),
+    [edges],
   );
 
   async function handleAdd(e: FormEvent<HTMLFormElement>): Promise<void> {
@@ -363,6 +395,7 @@ function VisibilityTab(props: TabProps): JSX.Element {
         direction: 'bottom_up',
       });
       await refreshLayers();
+      await refresh();
       pushToast({ kind: 'success', message: t('admin.layers.visibility.added') });
       setParentSlug('');
     } catch (err: unknown) {
@@ -377,6 +410,7 @@ function VisibilityTab(props: TabProps): JSX.Element {
     try {
       await removeLayerVisibility(props.layer.slug, slug);
       await refreshLayers();
+      await refresh();
       pushToast({ kind: 'success', message: t('admin.layers.visibility.removed') });
     } catch (err: unknown) {
       pushToast({ kind: 'error', message: t(errorKeyOf(err)) });
@@ -388,6 +422,75 @@ function VisibilityTab(props: TabProps): JSX.Element {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">{t('admin.layers.visibility.intro')}</p>
+
+      {loadError !== null ? (
+        <p role="alert" className="text-sm text-destructive">
+          {t('admin.layers.visibility.loadError', { defaultValue: t('errors.network') })}
+        </p>
+      ) : edges === null ? (
+        <p className="text-sm text-muted-foreground">{t('admin.layers.visibility.loading')}</p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">
+              {t('admin.layers.visibility.inheritsFromTitle')}
+            </h3>
+            {inheritsFrom.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t('admin.layers.visibility.inheritsFromEmpty')}
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {inheritsFrom.map((e) => (
+                  <li
+                    key={`${e.relation}-${e.parentLayerId}`}
+                    className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium">{e.parentName}</span>{' '}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {e.parentSlug}
+                      </span>
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleRemove(e.parentSlug)}
+                      disabled={disabled}
+                    >
+                      {t('admin.layers.visibility.remove')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">
+              {t('admin.layers.visibility.inheritedByTitle')}
+            </h3>
+            {inheritedBy.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t('admin.layers.visibility.inheritedByEmpty')}
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {inheritedBy.map((e) => (
+                  <li
+                    key={`${e.relation}-${e.parentLayerId}`}
+                    className="rounded-md border p-2 text-sm"
+                  >
+                    <span className="font-medium">{e.parentName}</span>{' '}
+                    <span className="font-mono text-xs text-muted-foreground">{e.parentSlug}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+
       <form onSubmit={(e) => void handleAdd(e)} className="space-y-3" noValidate>
         <div className="space-y-2">
           <Label htmlFor="layer-vis-parent">{t('admin.layers.visibility.parentLabel')}</Label>
@@ -423,28 +526,6 @@ function VisibilityTab(props: TabProps): JSX.Element {
           {t('admin.layers.visibility.add')}
         </Button>
       </form>
-      <details className="rounded-md border p-3 text-sm">
-        <summary className="cursor-pointer">{t('admin.layers.visibility.removeHelp')}</summary>
-        <ul className="mt-2 space-y-1">
-          {candidates.map((l) => (
-            <li key={l.id} className="flex items-center justify-between gap-2">
-              <span>
-                <span className="font-medium">{l.name}</span>{' '}
-                <span className="font-mono text-xs text-muted-foreground">{l.slug}</span>
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleRemove(l.slug)}
-                disabled={disabled}
-              >
-                {t('admin.layers.visibility.remove')}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </details>
     </div>
   );
 }
