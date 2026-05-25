@@ -14,6 +14,7 @@ import { registerAuthRoutes } from './routes/auth';
 import { registerAdminGroupsRoutes } from './routes/admin-groups';
 import { registerAdminUsersRoutes } from './routes/admin-users';
 import { registerMeLayersRoute } from './routes/me-layers';
+import { registerMeVisibleRoutes } from './routes/me-visible';
 import { registerLayersRoutes } from './routes/layers';
 import { registerSystemLocalesRoute } from './routes/system-locales';
 // Phase 4a.1 — first concrete entity kind. Each per-kind sub-phase
@@ -148,6 +149,7 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
   // Phase 3.4 — layer-scoped HTTP surface. Per-route authz lives in
   // `canEditLayer`; there is no router-level admin gate on `/layers/*`.
   registerMeLayersRoute(app);
+  registerMeVisibleRoutes(app, { db: deps.db, resolver: deps.resolver });
   registerLayersRoutes(app, {
     bus: deps.bus,
     db: deps.db,

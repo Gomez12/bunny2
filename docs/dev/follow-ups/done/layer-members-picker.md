@@ -1,8 +1,44 @@
 # Follow-up — Members tab needs a non-admin user/group picker
 
-- Status: open
+- Status: done
 - Created: 2026-05-23 (phase 3.6 close-out — discovered during 3.5)
+- Resolved: 2026-05-25
 - Phases referencing it: 3.5 (UI gap), 3.6 (close-out)
+
+## Resolution
+
+Picked option B from "Next step" — visibility via the existing
+transitive group graph. Two new authenticated routes registered in
+`apps/server/src/http/routes/me-visible.ts`:
+
+- `GET /me/visible-users` — returns `{ users: [{id, displayName}] }`.
+  Implementation walks `GroupResolver.expandUserGroups(caller)` for
+  the caller's transitive group set, then `expandGroupMembers(g)`
+  per group, unions the user ids, drops self, hydrates via
+  `usersRepo.listUsers()` (excludes soft-deleted), sorts by
+  `displayName`.
+- `GET /me/visible-groups` — returns `{ groups: [{id, name, slug}] }`.
+  Implementation returns the caller's own transitive group set
+  (`expandUserGroups`) — the picker for "groups I can add to a
+  layer" wants exactly this set (adding a group I'm not in would
+  grant access to people I cannot see).
+
+Both routes are the directory-disclosure boundary for non-admins —
+documented in `docs/dev/architecture/layers-and-auth.md` §0 + §4.
+
+`apps/web/src/pages/LayerSettingsPage.tsx` MembersTab now mounts a
+two-step picker (kind: user / group → member → role) populated from
+the two endpoints. Free-text id input replaced. Loading + empty +
+error states i18n'd in en + nl.
+
+Tests (`apps/server/tests/http-me-visible.test.ts`):
+- Visible peers via a shared transitive group.
+- Self excluded.
+- Soft-deleted users excluded.
+- Users in no shared group excluded.
+- Empty-list response for a caller in no groups.
+- `/me/visible-groups` returns the caller's transitive group set
+  sorted by name.
 
 ## What remains
 

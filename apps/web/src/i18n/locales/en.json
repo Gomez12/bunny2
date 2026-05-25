@@ -349,8 +349,22 @@
       },
       "members": {
         "derivedNotice": "Membership for this layer type is derived from users and groups — there’s nothing to manage here.",
-        "projectNotice": "Project-layer members can be added by an owner. Use the API in this phase; a picker is coming in 3.6.",
-        "followUp": "A user / group picker is tracked in phase 3.6."
+        "projectNotice": "Add a user or group as a layer member. Only people and groups you already share a group with appear in the picker.",
+        "followUp": "A user / group picker is tracked in phase 3.6.",
+        "kindLabel": "Kind",
+        "kindUser": "User",
+        "kindGroup": "Group",
+        "pickerLabel": "Member",
+        "pickerPlaceholder": "Pick a member to add",
+        "pickerLoading": "Loading candidates…",
+        "pickerEmptyUsers": "No users you share a group with.",
+        "pickerEmptyGroups": "No groups you share a group with.",
+        "roleLabel": "Role",
+        "roleMember": "Member",
+        "roleOwner": "Owner",
+        "addCta": "Add member",
+        "added": "Member added.",
+        "loadError": "Could not load the candidate list."
       },
       "visibility": {
         "intro": "Add a parent layer so this layer can see entities created above it. Only bottom-up edges are supported in this version.",

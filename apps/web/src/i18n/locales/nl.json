@@ -182,6 +182,25 @@
         "confirmTitle": "Deze laag verwijderen?",
         "confirmBody": "“{{name}}” verdwijnt uit jouw switcher en uit het zicht van alle andere leden. Dit kan niet meer via de UI ongedaan worden gemaakt.",
         "deleted": "Laag “{{name}}” verwijderd."
+      },
+      "members": {
+        "derivedNotice": "Lidmaatschap van dit laagtype wordt afgeleid uit gebruikers en groepen — hier valt niets te beheren.",
+        "projectNotice": "Voeg een gebruiker of groep toe als lid van deze laag. Alleen mensen en groepen waarmee je al een groep deelt verschijnen in de keuzelijst.",
+        "followUp": "Een gebruikers- / groepkiezer wordt bijgehouden in fase 3.6.",
+        "kindLabel": "Soort",
+        "kindUser": "Gebruiker",
+        "kindGroup": "Groep",
+        "pickerLabel": "Lid",
+        "pickerPlaceholder": "Kies een lid om toe te voegen",
+        "pickerLoading": "Kandidaten laden…",
+        "pickerEmptyUsers": "Geen gebruikers waar je een groep mee deelt.",
+        "pickerEmptyGroups": "Geen groepen waar je een groep mee deelt.",
+        "roleLabel": "Rol",
+        "roleMember": "Lid",
+        "roleOwner": "Eigenaar",
+        "addCta": "Lid toevoegen",
+        "added": "Lid toegevoegd.",
+        "loadError": "Kon de kandidatenlijst niet laden."
       }
     },
     "scheduledTasks": {

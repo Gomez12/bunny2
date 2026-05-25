@@ -10,16 +10,21 @@ import { Textarea } from '../components/ui/textarea';
 import { Tabs, type TabDef } from '../components/ui/tabs';
 import { LayerTypeBadge } from '../components/LayerTypeBadge';
 import {
+  addLayerMember,
   addLayerVisibility,
   deleteLayer,
   getSystemLocales,
   listLayerAttachments,
   listLayerVisibility,
+  listVisibleGroups,
+  listVisibleUsers,
   registerLayerAttachment,
   removeLayerAttachment,
   removeLayerVisibility,
   setLayerLocales,
   updateLayer,
+  type VisibleGroup,
+  type VisibleUser,
 } from '../lib/api';
 import type {
   Layer,
@@ -311,30 +316,166 @@ function GeneralTab(props: TabProps): JSX.Element {
 
 function MembersTab(props: TabProps): JSX.Element {
   const { t } = useTranslation();
+  // Layer-members-picker follow-up: `/me/visible-users` + `/me/visible-groups`
+  // expose the directory-disclosure boundary for non-admins. We hydrate
+  // both into a Combobox-like select so the owner can pick instead of
+  // pasting an opaque uuid.
+  const [users, setUsers] = useState<readonly VisibleUser[] | null>(null);
+  const [groups, setGroups] = useState<readonly VisibleGroup[] | null>(null);
+  const [loadErrorKey, setLoadErrorKey] = useState<string | null>(null);
+  const [kind, setKind] = useState<'user' | 'group'>('user');
+  const [memberId, setMemberId] = useState('');
+  const [role, setRole] = useState<'member' | 'owner'>('member');
+  const [submitting, setSubmitting] = useState(false);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
 
-  // Phase 3.5 deliberately does NOT ship the member-add flow because
-  // there is no non-admin endpoint that lists candidate users / groups
-  // to pick from. Owners get a read-only summary fetched from
-  // /layers/:slug (which only returns the layer row itself today),
-  // and a notice explaining the next step. The detailed
-  // member-CRUD endpoints already exist server-side (3.4) — wiring up
-  // a member-add UI is deferred to phase 3.6 once a non-admin
-  // user/group picker exists.
+  useEffect(() => {
+    if (props.layer.type !== 'project') return;
+    let cancelled = false;
+    void (async (): Promise<void> => {
+      try {
+        const [u, g] = await Promise.all([listVisibleUsers(), listVisibleGroups()]);
+        if (!cancelled) {
+          setUsers(u);
+          setGroups(g);
+          setLoadErrorKey(null);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setLoadErrorKey(errorKeyOf(err));
+          console.error('[layer.members] picker load failed', { errorKey: errorKeyOf(err) });
+        }
+      }
+    })();
+    return (): void => {
+      cancelled = true;
+    };
+  }, [props.layer.type]);
+
   if (props.layer.type !== 'project') {
     return (
       <p className="text-sm text-muted-foreground">{t('admin.layers.members.derivedNotice')}</p>
     );
   }
 
+  async function handleAdd(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (!props.canEdit || submitting) return;
+    if (memberId === '') {
+      setErrorKey('errors.layer.badRequest');
+      return;
+    }
+    setSubmitting(true);
+    setErrorKey(null);
+    try {
+      const body =
+        kind === 'user'
+          ? { userId: memberId, role }
+          : { groupId: memberId, role };
+      await addLayerMember(props.layer.slug, body);
+      pushToast({ kind: 'success', message: t('admin.layers.members.added') });
+      setMemberId('');
+    } catch (err: unknown) {
+      setErrorKey(errorKeyOf(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const disabled = !props.canEdit || submitting;
+  const options = kind === 'user' ? users : groups;
+  const loading = users === null || groups === null;
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <p className="text-sm text-muted-foreground">{t('admin.layers.members.projectNotice')}</p>
-      <p className="text-xs text-muted-foreground">
-        {/* TODO(phase-3.6): user/group picker + add/remove rows.
-            Blocked on a non-admin lookup endpoint; tracked in the
-            phase-03 plan §11. */}
-        {t('admin.layers.members.followUp')}
-      </p>
+
+      {loadErrorKey !== null ? (
+        <p role="alert" className="text-sm text-destructive">
+          {t('admin.layers.members.loadError', { defaultValue: t('errors.network') })}
+        </p>
+      ) : null}
+
+      <form onSubmit={(e) => void handleAdd(e)} className="space-y-3" noValidate>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="layer-members-kind">{t('admin.layers.members.kindLabel')}</Label>
+            <select
+              id="layer-members-kind"
+              className="block w-full rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value as 'user' | 'group');
+                setMemberId('');
+              }}
+              disabled={disabled}
+            >
+              <option value="user">{t('admin.layers.members.kindUser')}</option>
+              <option value="group">{t('admin.layers.members.kindGroup')}</option>
+            </select>
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="layer-members-id">{t('admin.layers.members.pickerLabel')}</Label>
+            <select
+              id="layer-members-id"
+              className="block w-full rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={memberId}
+              onChange={(e) => setMemberId(e.target.value)}
+              disabled={disabled || loading || (options !== null && options.length === 0)}
+            >
+              <option value="">
+                {loading
+                  ? t('admin.layers.members.pickerLoading')
+                  : options === null || options.length === 0
+                    ? kind === 'user'
+                      ? t('admin.layers.members.pickerEmptyUsers')
+                      : t('admin.layers.members.pickerEmptyGroups')
+                    : t('admin.layers.members.pickerPlaceholder')}
+              </option>
+              {options !== null
+                ? options.map((opt) =>
+                    kind === 'user' ? (
+                      <option key={opt.id} value={opt.id}>
+                        {(opt as VisibleUser).displayName}
+                      </option>
+                    ) : (
+                      <option key={opt.id} value={opt.id}>
+                        {(opt as VisibleGroup).name}
+                      </option>
+                    ),
+                  )
+                : null}
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="layer-members-role">{t('admin.layers.members.roleLabel')}</Label>
+          <select
+            id="layer-members-role"
+            className="block w-fit rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={role}
+            onChange={(e) => setRole(e.target.value as 'member' | 'owner')}
+            disabled={disabled}
+          >
+            <option value="member">{t('admin.layers.members.roleMember')}</option>
+            <option value="owner">{t('admin.layers.members.roleOwner')}</option>
+          </select>
+        </div>
+
+        {errorKey !== null ? (
+          <p role="alert" className="text-sm text-destructive">
+            {t(errorKey, { defaultValue: t('errors.network') })}
+          </p>
+        ) : null}
+
+        <div className="flex justify-end">
+          <Button type="submit" disabled={disabled || memberId === ''}>
+            {t('admin.layers.members.addCta')}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }

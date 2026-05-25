@@ -450,6 +450,34 @@ export async function removeLayerMember(slug: string, memberId: string): Promise
   );
 }
 
+// ---------- /me/visible-users + /me/visible-groups -------------------------
+//
+// Layer-members-picker follow-up: directory disclosure boundary for
+// non-admins. Returns the union of users / groups the caller shares
+// at least one transitive group with. Self excluded; soft-deleted
+// excluded.
+
+export interface VisibleUser {
+  readonly id: string;
+  readonly displayName: string;
+}
+
+export interface VisibleGroup {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+}
+
+export async function listVisibleUsers(): Promise<readonly VisibleUser[]> {
+  const res = await request<{ users: readonly VisibleUser[] }>('/me/visible-users');
+  return res.users;
+}
+
+export async function listVisibleGroups(): Promise<readonly VisibleGroup[]> {
+  const res = await request<{ groups: readonly VisibleGroup[] }>('/me/visible-groups');
+  return res.groups;
+}
+
 export async function addLayerVisibility(
   slug: string,
   body: AddLayerVisibilityPayload,
