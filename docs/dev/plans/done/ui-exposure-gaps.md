@@ -1,7 +1,7 @@
 # UI exposure gaps
 
-> Source: [`docs/dev/audits/ui-route-exposure-audit-2026-05-25.md`](../audits/ui-route-exposure-audit-2026-05-25.md).
-> Status: open.
+> Source: [`docs/dev/audits/ui-route-exposure-audit-2026-05-25.md`](../../audits/ui-route-exposure-audit-2026-05-25.md).
+> Status: done.
 > Owner: cross-cutting (entity modules + admin).
 > Mode: Large Change — touches every entity kind + admin surfaces.
 
@@ -56,7 +56,7 @@ Non-goals:
   and notes the duplication for a future refactor follow-up.
 - Admin observability views (LLM calls, chat runs, events,
   analytics) — separate plan
-  [`admin-observability-viewer.md`](./admin-observability-viewer.md).
+  [`admin-observability-viewer.md`](../admin-observability-viewer.md).
 
 ## 3. Approach
 
@@ -287,3 +287,32 @@ Per `docs/dev/observability/analytics.md` rules.
 
 - None blocking. Phase 3 may split into 4× sub-tasklist rows
   if the per-kind work diverges.
+
+## 16. Closure
+
+Closed 2026-05-25 after the audit re-run in
+[`docs/dev/audits/ui-route-exposure-audit-2026-05-25-closure.md`](../../audits/ui-route-exposure-audit-2026-05-25-closure.md)
+confirmed every original §3.1 gap is now wired and the "backend
+routes with no web caller" table is a single row that matches
+`docs/dev/architecture/backend-only-endpoints.md` §1.
+
+Shipped phases + commits:
+
+| Phase                                                       | Commit    |
+| ----------------------------------------------------------- | --------- |
+| Phase 1 — Soft-delete restore UI (5 kinds)                  | `068dc03` |
+| Phase 2 — Layer member removal UI + `GET .../members`       | `0b96cf5` |
+| Phase 3 — External-link CRUD on 4 kinds                     | `9edf005` |
+| Phase 4 — Admin user detail + scheduled-task runs drilldown | `f908e9b` |
+| Phase 5 — Dead-code cleanup + `backend-only-endpoints.md`   | `d3a05b3` |
+
+Remaining intentionally-backend-only HTTP route after closure:
+
+- `GET /layers/:slug` — kept for REST symmetry and operator scripting;
+  the UI reads layer data via `GET /me/layers` plus targeted setters.
+  Documented in `docs/dev/architecture/backend-only-endpoints.md` §1.
+
+Follow-up filed during execution:
+[`docs/dev/follow-ups/shared-entity-external-links-component.md`](../../follow-ups/shared-entity-external-links-component.md)
+— promote `<EntityExternalLinks>` to a fully shared component
+(includes migrating Companies onto the generic helpers).
