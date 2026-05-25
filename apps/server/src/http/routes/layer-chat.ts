@@ -23,6 +23,7 @@ import { createChatMessageFeedbackRepo } from '../../chat/repos/chat-message-fee
 import { createChatModelResolver, runPipeline } from '../../chat/pipeline';
 import type { EntityKind, EntityStoreForRetrieval, PipelineStepEvent } from '../../chat/pipeline';
 import { createLayerChatSettingsRepo } from '../../chat/repos/layer-chat-settings-repo';
+import { summarizeConversation } from '../../chat/summarize-conversation';
 import { createRequireLayer } from '../middleware/layer';
 import type { HonoVariables } from '../types';
 import type { LocalesConfig } from '../../config/schema';
@@ -578,6 +579,44 @@ export function registerLayerChatRoutes(
       now: nowIso,
     });
     return c.json({ feedback: stored }, 201);
+  });
+
+  // ---------- POST /l/:slug/chat/conversations/:id/regenerate-title ------
+  //
+  // Auto-summary follow-up — any conversation member can force a
+  // title rewrite. Re-uses the same `summarizeConversation` core as
+  // the event subscriber and the daily sweep; `force: true` bypasses
+  // the every-six-messages gate so users can re-summarize at any
+  // time after the first turn.
+  app.post('/l/:slug/chat/conversations/:id/regenerate-title', requireLayer, async (c) => {
+    const user = c.get('user');
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    const id = c.req.param('id');
+    const conv = conversationsRepo.getConversationById(id);
+    if (conv === null || !isOwnedAndVisible(conv, layer.id, user.id)) {
+      return c.json(NOT_FOUND, 404);
+    }
+    const outcome = await summarizeConversation(id, {
+      db: deps.db,
+      llm: deps.llm,
+      conversationsRepo,
+      messagesRepo,
+    }, { force: true });
+    console.log('[chat.regenerate-title]', {
+      event: 'chat.regenerate-title',
+      conversationId: id,
+      layerId: layer.id,
+      userId: user.id,
+      outcomeStatus: outcome.status,
+    });
+    if (outcome.status === 'updated') {
+      const refreshed = conversationsRepo.getConversationById(id);
+      return c.json({ conversation: refreshed }, 200);
+    }
+    // The handler logs its own warning; surface a stable 502 with
+    // the same `errors.chat.upstream` key the SSE error path uses.
+    return c.json({ error: 'errors.chat.upstream' }, 502);
   });
 }
 

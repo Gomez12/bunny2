@@ -87,6 +87,12 @@ export const ChatConversationSchema = z
     updatedAt: z.string(),
     deletedAt: z.string().nullable(),
     deletedBy: z.string().uuid().nullable(),
+    /**
+     * Auto-summary follow-up — `messageCount` watermark from the
+     * last summarize run. NULL on threads that have never been
+     * summarized; the handler uses it as the idempotency guard.
+     */
+    lastSummarizedMessageCount: z.number().int().min(0).nullable(),
   })
   .strict();
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;

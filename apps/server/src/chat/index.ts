@@ -27,6 +27,7 @@ import {
 import { createChatEmbeddingsBackfillHandler, type Embedder, type LanceWriter } from './embeddings';
 import { chatRunsPruneHandler } from './runs-prune-handler';
 import { chatReviewLayerHandler } from './review-layer-handler';
+import { chatSummarizeConversationHandler } from './summarize-conversation-handler';
 
 export interface RegisterChatScheduledTaskHandlersDeps {
   readonly embedder: Embedder;
@@ -52,6 +53,7 @@ export function registerChatScheduledTaskHandlers(
     }),
     chatReviewLayerHandler,
     chatRunsPruneHandler,
+    chatSummarizeConversationHandler,
   ];
   for (const handler of handlers) {
     if (getScheduledTaskHandler(handler.kind) === null) {
@@ -71,6 +73,20 @@ export {
   type ChatRunsPruneResult,
 } from './runs-prune-handler';
 export { CHAT_REVIEW_LAYER_KIND, chatReviewLayerHandler } from './review-layer-handler';
+export {
+  CHAT_SUMMARIZE_CONVERSATION_KIND,
+  sanitizeTitle,
+  shouldEnqueueSummarize,
+  summarizeConversation,
+  listConversationIdsForSweep,
+  type SummarizeOutcome,
+} from './summarize-conversation';
+export { chatSummarizeConversationHandler } from './summarize-conversation-handler';
+export {
+  createSummarizeConversationSubscriber,
+  type SummarizeConversationSubscriber,
+  type SummarizeConversationSubscriberDeps,
+} from './summarize-conversation-subscriber';
 export { loadSkillFragments, type LoadedSkillFragment } from './skills/load-fragments';
 export {
   createLayerChatSettingsRepo,

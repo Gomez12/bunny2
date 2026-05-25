@@ -312,7 +312,10 @@
       "deleteCta": "Gesprek verwijderen",
       "deleteConfirm": "Dit gesprek verwijderen? Het wordt verborgen maar blijft in het auditspoor staan.",
       "listLabel": "Gesprekken",
-      "untitled": "Naamloos gesprek"
+      "untitled": "Naamloos gesprek",
+      "regenerateTitle": {
+        "cta": "Titel opnieuw genereren"
+      }
     },
     "thread": {
       "label": "Gespreksverloop",

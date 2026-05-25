@@ -1233,6 +1233,23 @@ export async function deleteLayerChatConversation(
   );
 }
 
+/**
+ * Force a conversation-title regeneration via the auto-summary
+ * handler. Returns the updated conversation row (full detail shape;
+ * the caller widens with zeroed feedback counts when surfacing in
+ * the list).
+ */
+export async function regenerateLayerChatConversationTitle(
+  layerSlug: string,
+  conversationId: string,
+): Promise<LayerChatConversationDetail> {
+  const res = await request<{ conversation: LayerChatConversationDetail }>(
+    `${chatConversationsBase(layerSlug)}/${encodeURIComponent(conversationId)}/regenerate-title`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+  return res.conversation;
+}
+
 export async function listLayerChatMessages(
   layerSlug: string,
   conversationId: string,

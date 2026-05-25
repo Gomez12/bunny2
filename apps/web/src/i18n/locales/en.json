@@ -111,7 +111,10 @@
       "deleteCta": "Delete conversation",
       "deleteConfirm": "Delete this conversation? It will be hidden but kept in the audit trail.",
       "listLabel": "Conversations",
-      "untitled": "Untitled conversation"
+      "untitled": "Untitled conversation",
+      "regenerateTitle": {
+        "cta": "Regenerate title"
+      }
     },
     "thread": {
       "label": "Conversation thread",

@@ -464,14 +464,23 @@ joined across logs, telemetry, and feedback for diagnostics.
   hard-coded shape fails. ADR
   [`0020`](../decisions/0020-chat-pipeline.md) §1 records the
   rejection.
-- **Conversation auto-summary** — `chat.summarize-conversation` is
-  a reserved scheduled-task kind for phase 7. See follow-up
-  `docs/dev/follow-ups/chat-conversation-auto-summary.md`.
+- **Conversation auto-summary** — implemented. The
+  `chat.summarize-conversation` handler runs on two paths:
+  (a) a `chat.message.answered` subscriber that fires inline at
+  message 6 / 12 / 18 / … using `last_summarized_message_count` as
+  the idempotency watermark, and (b) a daily scheduled task that
+  sweeps every thread missed by the event path. A manual route
+  `POST /l/:slug/chat/conversations/:id/regenerate-title` lets any
+  member force a rewrite. See plan
+  [`chat-conversation-auto-summary.md`](../plans/done/chat-conversation-auto-summary.md).
 - **Stop-generating button** — a `POST .../abort` route. ADR
   [`0022`](../decisions/0022-sse-for-answerer.md) §1 records why
   it's not in phase 6.
-- **Per-layer model override** — phase 6 keeps the system-default.
-  Follow-up `docs/dev/follow-ups/chat-per-layer-llm-model.md`.
+- **Per-layer model override** — implemented. `layer_chat_settings.model`
+  pinned per layer; `chatModelForLayer` resolver threads the
+  decision into every step's `chat()` call and stamps
+  `llm_calls.model_source = 'system' | 'layer'`. See plan
+  [`chat-per-layer-settings.md`](../plans/done/chat-per-layer-settings.md).
 - **Shared / team conversations** — the `(layer_id, user_id)`
   scoping is intentional in v1. Follow-up
   `docs/dev/follow-ups/chat-shared-conversations.md`.

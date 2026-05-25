@@ -44,6 +44,7 @@ import {
   createOpenAiEmbedder,
   createLanceDbWriter,
   createEmbeddingSubscriber,
+  createSummarizeConversationSubscriber,
   createVectorSearch,
   type Embedder,
 } from './chat';
@@ -607,6 +608,17 @@ const embeddingSubscriber = createEmbeddingSubscriber({
   },
 });
 embeddingSubscriber.start();
+
+// Auto-summary subscriber — fires on `chat.message.answered`, runs
+// the summarize handler inline when the eligibility gate is met
+// (every 6th message). Idempotent via `last_summarized_message_count`.
+const summarizeSubscriber = createSummarizeConversationSubscriber({
+  bus,
+  db,
+  llm: llmClient,
+});
+summarizeSubscriber.start();
+void summarizeSubscriber;
 // Phase 5.5 — seed the four system scheduled tasks into the
 // `everyone` layer. Runs on EVERY role (one-shot row insert; the
 // worker/all role owns execution via the scheduler tick). MUST run

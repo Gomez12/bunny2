@@ -260,6 +260,15 @@ clipped string fields (DLQ `error`, scheduled-task `error`).
   encode (`{ layerId, day, tokensSpent }`); `chat.embeddings.deferred`
   counter when a cap is hit. The persistent counters live in
   `layer_embedding_spend`.
+- **Conversation auto-summary telemetry.** Implemented by the
+  conversation auto-summary follow-up (plan
+  [`chat-conversation-auto-summary.md`](../plans/done/chat-conversation-auto-summary.md)):
+  - `chat.summarize.completed` counter on every successful title
+    rewrite, plus `chat.summarize.duration_ms` observation.
+  - `chat.summarize.failed` counter with a closed-enum `reason`
+    dimension (`empty-title` / `llm-error`).
+  - Analytics event `chat_conversation_title_regenerated` (web,
+    manual path only) — no message content; layer slug only.
 - **A `LOG_LEVEL`-equivalent telemetry-level switch.** Every
   call is logged at 100%; sampling is not configurable.
   Retention prune is the only "fewer rows" lever.

@@ -21,6 +21,7 @@ import {
   listLayerChatConversations,
   listLayerChatMessages,
   postLayerChatFeedback,
+  regenerateLayerChatConversationTitle,
   type LayerChatConversation,
   type LayerChatFeedbackValue,
   type LayerChatMessage,
@@ -242,6 +243,35 @@ export function LayerChatPage(): JSX.Element {
       console.error('[chat.page] delete conversation failed', { errorKey: key });
     } finally {
       setDeletingConvo(false);
+    }
+  }
+
+  // ---------- regenerate title -------------------------------------------
+
+  const [regenTitleBusyId, setRegenTitleBusyId] = useState<string | null>(null);
+
+  async function handleRegenerateTitle(conversationId: string): Promise<void> {
+    if (layerSlug === null || regenTitleBusyId !== null) return;
+    setRegenTitleBusyId(conversationId);
+    try {
+      const updated = await regenerateLayerChatConversationTitle(layerSlug, conversationId);
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conversationId
+            ? {
+                ...c,
+                title: updated.title,
+                updatedAt: updated.updatedAt,
+              }
+            : c,
+        ),
+      );
+      trackEvent('chat_conversation_title_regenerated', { layerSlug });
+    } catch (err: unknown) {
+      const key = errorKeyOf(err);
+      console.error('[chat.page] regenerate title failed', { errorKey: key });
+    } finally {
+      setRegenTitleBusyId(null);
     }
   }
 
@@ -483,6 +513,17 @@ export function LayerChatPage(): JSX.Element {
                       {new Date(c.updatedAt).toLocaleString()}
                     </span>
                   </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t('chat.conversation.regenerateTitle.cta')}
+                    title={t('chat.conversation.regenerateTitle.cta')}
+                    disabled={regenTitleBusyId !== null}
+                    onClick={() => void handleRegenerateTitle(c.id)}
+                  >
+                    {regenTitleBusyId === c.id ? '…' : '↻'}
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"

@@ -24,6 +24,13 @@ export interface ChatConversation {
   readonly updatedAt: string;
   readonly deletedAt: string | null;
   readonly deletedBy: string | null;
+  /**
+   * Auto-summary follow-up — `messageCount` at the time the
+   * summarize handler last rewrote the title. NULL on rows that
+   * have not been summarized yet (the default for every existing
+   * thread post-migration).
+   */
+  readonly lastSummarizedMessageCount: number | null;
 }
 
 interface ChatConversationRow {
@@ -36,6 +43,7 @@ interface ChatConversationRow {
   updated_at: string;
   deleted_at: string | null;
   deleted_by: string | null;
+  last_summarized_message_count: number | null;
 }
 
 export interface InsertChatConversationInput {
@@ -75,6 +83,15 @@ export interface ChatConversationsRepo {
   /** Bumps `updated_at` only. Used after a new message lands. */
   touchConversation(id: string, now: string): void;
   softDeleteConversation(id: string, deletedBy: string, now: string): void;
+  /**
+   * Auto-summary follow-up — atomically rewrite the title and pin
+   * the watermark to `messageCount`. Two callers: the
+   * `chat.summarize-conversation` handler (event-triggered and
+   * daily-sweep variants) and the manual regenerate-title route.
+   * `updated_at` is intentionally NOT touched — title rewrites are
+   * cosmetic and should not promote the thread in the list view.
+   */
+  setTitleAndSummaryCount(id: string, title: string, messageCount: number): void;
 }
 
 export interface ChatConversationSummary extends ChatConversation {
@@ -83,7 +100,8 @@ export interface ChatConversationSummary extends ChatConversation {
 }
 
 const COLS =
-  'id, layer_id, user_id, title, locale, ' + 'created_at, updated_at, deleted_at, deleted_by';
+  'id, layer_id, user_id, title, locale, ' +
+  'created_at, updated_at, deleted_at, deleted_by, last_summarized_message_count';
 
 function rowToConversation(row: ChatConversationRow): ChatConversation {
   return {
@@ -96,6 +114,7 @@ function rowToConversation(row: ChatConversationRow): ChatConversation {
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
     deletedBy: row.deleted_by,
+    lastSummarizedMessageCount: row.last_summarized_message_count,
   };
 }
 
@@ -177,6 +196,7 @@ export function createChatConversationsRepo(db: Database): ChatConversationsRepo
         SELECT
           c.id, c.layer_id, c.user_id, c.title, c.locale,
           c.created_at, c.updated_at, c.deleted_at, c.deleted_by,
+          c.last_summarized_message_count,
           COALESCE(fb.up_count, 0) AS feedback_up_count,
           COALESCE(fb.down_count, 0) AS feedback_down_count
           FROM chat_conversations c
@@ -236,6 +256,14 @@ export function createChatConversationsRepo(db: Database): ChatConversationsRepo
 
     softDeleteConversation(id, deletedBy, now) {
       softDelete.run(now, deletedBy, now, id);
+    },
+
+    setTitleAndSummaryCount(id, title, messageCount) {
+      db.query<unknown, [string, number, string]>(
+        `UPDATE chat_conversations
+            SET title = ?, last_summarized_message_count = ?
+          WHERE id = ? AND deleted_at IS NULL`,
+      ).run(title, messageCount, id);
     },
   };
 }
