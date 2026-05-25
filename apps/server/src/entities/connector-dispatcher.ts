@@ -12,6 +12,7 @@ import {
   markSucceeded,
   persistConnectorPayloadPatch,
   setSyncingState,
+  type ConnectorIngestMatchKey,
   type ConnectorIngestPayload,
   type ConnectorIngestResult,
   type EntityConnector,
@@ -333,7 +334,7 @@ export function createConnectorDispatcher(deps: ConnectorDispatcherDeps): Connec
     readonly tableName: string;
     readonly layerId: string;
     readonly connectorId: string;
-    readonly matchKey: NonNullable<ConnectorIngestResult<unknown>['entities'][number]['matchKey']>;
+    readonly matchKey: ConnectorIngestMatchKey;
   }): string | null {
     if (input.matchKey.kind === 'email') {
       // The contacts table writes `primary_email` lowercased only when
@@ -485,6 +486,49 @@ export function createConnectorDispatcher(deps: ConnectorDispatcherDeps): Connec
         });
         updated += 1;
       }
+    }
+
+    // Soft-delete pass. Connectors that never emit deletes can omit
+    // the field entirely — the dispatcher normalises a missing
+    // `deletes` to `[]`. Each entry's `matchKey` resolves the SAME way
+    // the create / update path resolves `entities[].matchKey`; when a
+    // match is found we call `store.softDelete`. A miss is not a
+    // failure — log structurally and skip. See
+    // `docs/dev/follow-ups/done/ingest-delete-semantics.md`.
+    const deletes = result.deletes ?? [];
+    for (const del of deletes) {
+      const existingId = findExistingByMatchKey({
+        kind: input.kind,
+        tableName: module.tableName,
+        layerId: input.layerId,
+        connectorId: input.connectorId,
+        matchKey: del.matchKey,
+      });
+      if (existingId === null) {
+        // Missed delete — the upstream removed a record the layer
+        // never imported (or already soft-deleted). Not an error;
+        // operators see it in logs if they care.
+        console.warn('[connector-dispatcher] ingest delete missed', {
+          event: 'connector.ingest.deleteMissed',
+          kind: input.kind,
+          connectorId: input.connectorId,
+          layerId: input.layerId,
+          matchKeyKind: del.matchKey.kind,
+        });
+        continue;
+      }
+      await store.softDelete({
+        id: existingId,
+        actorId: input.actorId,
+        ...(corr === undefined ? {} : { correlationId: corr }),
+      });
+      console.info('[connector-dispatcher] ingest soft-deleted entity', {
+        event: 'connector.ingest.softDeleted',
+        kind: input.kind,
+        connectorId: input.connectorId,
+        layerId: input.layerId,
+        matchKeyKind: del.matchKey.kind,
+      });
     }
 
     const completedPayload: EntityConnectorIngestCompletedPayload = {

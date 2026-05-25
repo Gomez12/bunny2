@@ -81,16 +81,20 @@ connector's contract narrow: the dispatcher only persists patches.
   future sub-phase wires the full OAuth dance.
 - **Read-only.** No `push` is implemented; calendar writes back to
   Google are out of scope.
-- **Cancelled events are warnings, not deletes.** The 4b.2 ingest
-  contract has create + update only. A follow-up
-  (`docs/dev/follow-ups/ingest-delete-semantics.md`) tracks the proper
-  soft-delete path.
+- **Cancelled events soft-delete the local row.** The ingest contract
+  carries a `deletes` array alongside `entities`; the connector emits
+  `deletes: [{ matchKey: { kind: 'externalId', value: id } }]` for
+  every `status === 'cancelled'` item, and the dispatcher applies
+  `store.softDelete` against the matching row. A miss (no local row
+  matches the cancelled id) logs `connector.ingest.deleteMissed` and
+  skips. See
+  `docs/dev/follow-ups/done/ingest-delete-semantics.md`.
 
 ## Follow-ups
 
 - OAuth-dance UI (`docs/dev/follow-ups/google-calendar-oauth-ui.md`).
 - Ingest delete semantics
-  (`docs/dev/follow-ups/ingest-delete-semantics.md`).
+  (`docs/dev/follow-ups/done/ingest-delete-semantics.md`).
 - Operator runbook for `BUNNY2_ENCRYPTION_KEY` rotation — defer to v2 of
   the secrets envelope.
 

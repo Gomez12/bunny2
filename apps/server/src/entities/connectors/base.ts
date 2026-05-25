@@ -113,10 +113,36 @@ export interface ConnectorIngestPayload {
  * `matchKey` — always create) `externalId` is optional. vCard import
  * (one-shot file upload) omits it entirely; the .vcf file is not an
  * upstream system the contact stays linked to.
+ *
+ * `deletes` is the parallel array for upstream removals. Each entry
+ * carries a `matchKey` that the dispatcher resolves against the per-
+ * kind table the same way `entities[].matchKey` is resolved; when a
+ * match is found the dispatcher calls `store.softDelete`. When no
+ * match is found the dispatcher logs a structured warning
+ * (`event: 'connector.ingest.deleteMissed'`) and skips — a missed
+ * delete is not a failure (the upstream may have removed an event the
+ * layer never imported in the first place). Connectors that never
+ * emit deletes can omit the field entirely; the dispatcher normalises
+ * a missing `deletes` to `[]`. See
+ * `docs/dev/follow-ups/done/ingest-delete-semantics.md`.
  */
 export interface ConnectorIngestResult<Payload> {
   readonly entities: ReadonlyArray<ConnectorIngestEntity<Payload>>;
+  readonly deletes?: ReadonlyArray<ConnectorIngestDelete>;
   readonly warnings: readonly string[];
+}
+
+/**
+ * Per-delete result item from `ingest`. The `matchKey` resolves
+ * against the same per-kind table the create / update path uses; the
+ * dispatcher calls `store.softDelete` on the matched row. The
+ * dispatcher does NOT remove the `entity_external_links` row — that
+ * is a separate concern (the link is the dedup index and may be
+ * useful for re-import audit trails). See ADR 0014 §4 + the follow-up
+ * `docs/dev/follow-ups/done/ingest-delete-semantics.md`.
+ */
+export interface ConnectorIngestDelete {
+  readonly matchKey: ConnectorIngestMatchKey;
 }
 
 /**

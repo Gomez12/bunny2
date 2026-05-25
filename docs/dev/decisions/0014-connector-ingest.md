@@ -92,12 +92,17 @@ payloads. The connector decides what to do with the bytes — vCard's
 connector validates the content type or filename extension and hands
 the bytes to its parser. The dispatcher does not inspect the bytes.
 
-### 3. `ConnectorIngestResult<P>` carries N entities + warnings
+### 3. `ConnectorIngestResult<P>` carries N entities + deletes + warnings
 
 ```ts
 interface ConnectorIngestResult<Payload> {
   readonly entities: ReadonlyArray<ConnectorIngestEntity<Payload>>;
+  readonly deletes?: ReadonlyArray<ConnectorIngestDelete>;
   readonly warnings: readonly string[];
+}
+
+interface ConnectorIngestDelete {
+  readonly matchKey: ConnectorIngestMatchKey;
 }
 
 // Discriminated: `externalId` is required when the connector asks
@@ -124,6 +129,10 @@ creates or updates each entity. The connector NEVER calls
 `store.create` / `store.update` itself — that boundary lives in the
 dispatcher so secret discipline + event emission stay centralized.
 
+`deletes` is optional — connectors that never emit deletes (vCard
+import, KvK-style one-shot pulls) omit the field and the dispatcher
+normalises it to `[]`. See §4 for the resolution rules.
+
 ### 4. `matchKey` drives dedup against the layer
 
 The dispatcher resolves each `matchKey` against the per-kind table in
@@ -146,6 +155,17 @@ A `null` / missing `matchKey` ⇒ no dedup ⇒ always create. vCard sets a
 `matchKey` only when the parsed contact has a primary email; cards
 without an email are always created (and the parser warns if the same
 file has duplicates that drift through this path).
+
+The dispatcher applies `result.deletes` the same way after the
+create / update loop: each entry's `matchKey` is resolved against
+the per-kind table, and a match triggers `store.softDelete`. A miss
+is logged structurally (`event: 'connector.ingest.deleteMissed'`)
+and skipped — a missed delete is not a failure. Successful
+soft-deletes also log structurally (`event:
+'connector.ingest.softDeleted'`). The dispatcher does NOT remove the
+`entity_external_links` row on the delete path — link auto-cleanup
+is a separate concern. See
+`docs/dev/follow-ups/done/ingest-delete-semantics.md`.
 
 ### 5. The HTTP dispatch is synchronous
 

@@ -782,8 +782,7 @@
           "invalidConfig": "The Google Calendar connector configuration is invalid. Please verify every field.",
           "plaintextSecret": "Secrets must be encrypted before they are saved. Please paste an enc:v1: envelope.",
           "syncFailed": "The calendar could not be synced. Please try again later.",
-          "invalidContentType": "Unexpected request payload for the Google Calendar sync.",
-          "cancelledIgnored": "A cancelled event was ignored — deletion through sync is not supported yet."
+          "invalidContentType": "Unexpected request payload for the Google Calendar sync."
         }
       }
     },

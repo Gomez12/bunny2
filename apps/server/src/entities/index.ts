@@ -119,6 +119,7 @@ export type {
   ConnectorIngestPayload,
   ConnectorIngestResult,
   ConnectorIngestEntity,
+  ConnectorIngestDelete,
   ConnectorIngestMatchKey,
   ConnectorIngestContext,
   InsertExternalLinkInput,

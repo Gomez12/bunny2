@@ -563,8 +563,7 @@
           "invalidConfig": "De Google Calendar-connectorconfiguratie is ongeldig. Controleer elk veld.",
           "plaintextSecret": "Geheimen moeten versleuteld worden opgeslagen. Plak een enc:v1:-envelop.",
           "syncFailed": "De agenda kon niet worden gesynchroniseerd. Probeer het later opnieuw.",
-          "invalidContentType": "Onverwachte payload voor de Google Calendar-synchronisatie.",
-          "cancelledIgnored": "Een geannuleerde afspraak is genegeerd — verwijderen via synchronisatie wordt nog niet ondersteund."
+          "invalidContentType": "Onverwachte payload voor de Google Calendar-synchronisatie."
         }
       }
     },

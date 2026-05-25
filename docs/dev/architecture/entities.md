@@ -1244,12 +1244,15 @@ next call falls back to the full time-window sync.
 
 ### Cancelled events
 
-The ingest contract has create + update only (no delete path). The
-connector surfaces Google's `status='cancelled'` events as warnings
-(`errors.connectors.google.calendar.cancelledIgnored:<eventId>`) so an
-operator can see them. The follow-up
-`docs/dev/follow-ups/ingest-delete-semantics.md` tracks the proper
-soft-delete extension.
+The ingest contract carries a `deletes?: ReadonlyArray<{ matchKey
+}>` field alongside `entities`. The Google Calendar connector emits
+`{ matchKey: { kind: 'externalId', value: id } }` for every
+`status='cancelled'` event in the `events.list` window; the
+dispatcher resolves the local row by the same `externalId` lookup
+the create / update path uses and calls `store.softDelete`. A miss
+(no local row matched the cancelled id) logs
+`connector.ingest.deleteMissed` and is skipped. See
+`docs/dev/follow-ups/done/ingest-delete-semantics.md`.
 
 ### Foundation tweaks
 

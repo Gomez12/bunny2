@@ -94,7 +94,6 @@ export const GOOGLE_CALENDAR_ERROR_KEYS = {
   PlaintextSecret: 'errors.connectors.google.calendar.plaintextSecret',
   SyncFailed: 'errors.connectors.google.calendar.syncFailed',
   InvalidContentType: 'errors.connectors.google.calendar.invalidContentType',
-  CancelledIgnored: 'errors.connectors.google.calendar.cancelledIgnored',
 } as const;
 
 /**
@@ -403,7 +402,7 @@ export function createGoogleCalendarConnector(
       // connector reports a warning and persists `syncToken: undefined`
       // via the dispatcher.
       const warningsArr = [GOOGLE_CALENDAR_ERROR_KEYS.SyncFailed];
-      return { entities: [], warnings: warningsArr };
+      return { entities: [], deletes: [], warnings: warningsArr };
     }
     if (!res.ok) {
       throw new Error(GOOGLE_CALENDAR_ERROR_KEYS.SyncFailed);
@@ -420,17 +419,19 @@ export function createGoogleCalendarConnector(
     const list = body as GoogleListResponse;
     const items = list.items ?? [];
     type EntityItem = ConnectorIngestResult<CalendarEventPayload>['entities'][number];
+    type DeleteItem = NonNullable<ConnectorIngestResult<CalendarEventPayload>['deletes']>[number];
     const entities: EntityItem[] = [];
+    const deletes: DeleteItem[] = [];
     const warnings: string[] = [];
     for (const item of items) {
       if (typeof item.id !== 'string' || item.id.length === 0) continue;
       if ((item.status ?? '').toLowerCase() === 'cancelled') {
-        // The ingest path (4b.2) has create + update only — no delete
-        // semantics. Surface cancelled events as a warning so an operator
-        // sees them; the follow-up
-        // `docs/dev/follow-ups/ingest-delete-semantics.md` tracks the
-        // proper soft-delete path.
-        warnings.push(`${GOOGLE_CALENDAR_ERROR_KEYS.CancelledIgnored}:${item.id}`);
+        // Upstream removal — emit a delete so the dispatcher
+        // soft-deletes the corresponding local row. The dispatcher
+        // logs a structured warning when the delete misses (no
+        // existing row matched the externalId). See
+        // `docs/dev/follow-ups/done/ingest-delete-semantics.md`.
+        deletes.push({ matchKey: { kind: 'externalId', value: item.id } });
         continue;
       }
       const patch = mapGoogleEvent(item, cfg.calendarId);
@@ -468,7 +469,7 @@ export function createGoogleCalendarConnector(
         warnings.push(GOOGLE_CALENDAR_ERROR_KEYS.SyncFailed);
       }
     }
-    return { entities, warnings };
+    return { entities, deletes, warnings };
   }
 
   async function push(

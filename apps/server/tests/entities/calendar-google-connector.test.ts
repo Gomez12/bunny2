@@ -405,7 +405,7 @@ describe('google calendar connector :: pull happy path', () => {
 });
 
 describe('google calendar connector :: ingest happy path', () => {
-  it('returns 2 entities and 1 warning for a list with confirmed, recurring, and cancelled events', async () => {
+  it('returns 2 entities and 1 delete for a list with confirmed, recurring, and cancelled events', async () => {
     const fixture = f();
     const secrets = makeSecrets();
     const stub = stubFetch({
@@ -463,8 +463,12 @@ describe('google calendar connector :: ingest happy path', () => {
     });
     expect(result.created).toBe(2);
     expect(result.updated).toBe(0);
-    expect(result.warnings.length).toBe(1);
-    expect(result.warnings[0]?.startsWith(GOOGLE_CALENDAR_ERROR_KEYS.CancelledIgnored)).toBe(true);
+    // Cancelled events are now emitted as deletes (not warnings).
+    // `evt-deleted` has no corresponding local row in this fixture, so
+    // the dispatcher logs a `connector.ingest.deleteMissed` and skips —
+    // no warning surfaces on the result, and no row is soft-deleted.
+    // See `docs/dev/follow-ups/done/ingest-delete-semantics.md`.
+    expect(result.warnings.length).toBe(0);
 
     const events = fixture.db
       .query<
@@ -508,6 +512,149 @@ describe('google calendar connector :: ingest happy path', () => {
     const rows = createLayerAttachmentsRepo(fixture.db).listAttachments(layerId, 'connector');
     const cfg = rows.find((r) => r.id === attachmentId)?.config;
     expect(cfg?.['syncToken']).toBe('sync-token-after-call');
+  });
+
+  it('soft-deletes the matched local row when an upstream event is cancelled, preserving the link row', async () => {
+    const fixture = f();
+    const secrets = makeSecrets();
+    // First call returns a confirmed event so we have a real row +
+    // link to soft-delete. Second call returns the same id as
+    // `cancelled` → the connector emits a delete; the dispatcher
+    // soft-deletes the local entity. The link row stays —
+    // auto-removal of `entity_external_links` is a separate concern
+    // out of scope per the follow-up.
+    const confirmedItem = {
+      id: 'evt-to-cancel',
+      status: 'confirmed',
+      summary: 'Doomed sync',
+      start: { dateTime: '2026-06-03T09:00:00Z' },
+      end: { dateTime: '2026-06-03T10:00:00Z' },
+    };
+    let listCallNo = 0;
+    const stub: StubFetch = (() => {
+      const state = { tokenCalls: 0, getCalls: 0, listCalls: 0 };
+      const bodies: string[] = [];
+      const urls: string[] = [];
+      const fn = ((req: string | URL | Request, init?: RequestInit) => {
+        const url = typeof req === 'string' ? req : req instanceof URL ? req.href : req.url;
+        urls.push(url);
+        if (typeof init?.body === 'string') bodies.push(init.body);
+        if (url.includes('oauth2.googleapis.com/token')) {
+          state.tokenCalls += 1;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ access_token: ACCESS_TOKEN, expires_in: 3600, token_type: 'Bearer' }),
+              { status: 200, headers: { 'content-type': 'application/json' } },
+            ),
+          );
+        }
+        state.listCalls += 1;
+        listCallNo += 1;
+        const body =
+          listCallNo === 1
+            ? { items: [confirmedItem] }
+            : { items: [{ id: 'evt-to-cancel', status: 'cancelled' }] };
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      }) as typeof fetch;
+      return {
+        fetch: fn,
+        get tokenCalls() {
+          return state.tokenCalls;
+        },
+        get getCalls() {
+          return state.getCalls;
+        },
+        get listCalls() {
+          return state.listCalls;
+        },
+        bodies,
+        urls,
+      };
+    })();
+    const { module } = makeStore(fixture, stub.fetch, secrets);
+    void module;
+
+    const layerId = seedLayer(fixture.db, 'team-del');
+    const userId = seedUser(fixture.db, 'del');
+    attachGoogle(fixture.db, layerId, secrets);
+
+    const llm = createLlmClient({
+      endpoint: 'mock://echo',
+      apiKey: '',
+      defaultModel: 'mock-default',
+    });
+    const dispatcher = createConnectorDispatcher({
+      db: fixture.db,
+      bus: fixture.bus,
+      llm,
+      resolveConfig: createGoogleCalendarConfigResolver(fixture.db),
+    });
+
+    // First ingest creates the local row + the link row.
+    const first = await dispatcher.ingest({
+      kind: 'calendar_event',
+      connectorId: GOOGLE_CALENDAR_CONNECTOR_ID,
+      layerId,
+      actorId: userId,
+      payload: { contentType: GOOGLE_CALENDAR_INGEST_CONTENT_TYPE, bytes: new Uint8Array() },
+      originalLocale: 'en',
+    });
+    expect(first.created).toBe(1);
+
+    const beforeRow = fixture.db
+      .query<
+        { id: string; deleted_at: string | null },
+        []
+      >('SELECT id, deleted_at FROM calendar_events ORDER BY created_at DESC LIMIT 1')
+      .get();
+    expect(beforeRow).not.toBeNull();
+    expect(beforeRow?.deleted_at).toBeNull();
+
+    // Second ingest: same id, status cancelled. Connector emits
+    // `deletes: [{ matchKey: { kind: 'externalId', value: 'evt-to-cancel' } }]`,
+    // the dispatcher resolves the existing entity via the link row and
+    // soft-deletes it.
+    const second = await dispatcher.ingest({
+      kind: 'calendar_event',
+      connectorId: GOOGLE_CALENDAR_CONNECTOR_ID,
+      layerId,
+      actorId: userId,
+      payload: { contentType: GOOGLE_CALENDAR_INGEST_CONTENT_TYPE, bytes: new Uint8Array() },
+      originalLocale: 'en',
+    });
+    expect(second.created).toBe(0);
+    expect(second.updated).toBe(0);
+    expect(second.warnings.length).toBe(0);
+
+    // The row is soft-deleted: `deleted_at` is now set.
+    const afterRow = fixture.db
+      .query<
+        { id: string; deleted_at: string | null },
+        [string]
+      >('SELECT id, deleted_at FROM calendar_events WHERE id = ?')
+      .get(beforeRow!.id);
+    expect(afterRow?.deleted_at).not.toBeNull();
+
+    // The link row is preserved — the dispatcher does NOT touch
+    // `entity_external_links` on the delete path. That auto-cleanup
+    // would be a separate follow-up.
+    const linkAfter = fixture.db
+      .query<{ c: number }, []>(
+        `SELECT COUNT(*) AS c FROM entity_external_links WHERE external_id = 'evt-to-cancel'`,
+      )
+      .get();
+    expect(linkAfter?.c).toBe(1);
+
+    // The store emitted an `entity.calendar_event.deleted` event.
+    const deletedEvents = fixture.events.filter(
+      (e) => e.type === 'entity.calendar_event.deleted',
+    );
+    expect(deletedEvents.length).toBe(1);
   });
 
   it('dedups the second ingest against entity_external_links written by the first', async () => {
