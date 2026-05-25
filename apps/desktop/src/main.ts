@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron';
 import {
   resolveBunBinary,
   resolveServerEntry,
@@ -89,6 +89,30 @@ interface AppRuntime {
 }
 
 const runtime: AppRuntime = { sidecar: null, apiBase: 'http://127.0.0.1:4317' };
+
+type ThemePref = 'light' | 'dark' | 'system';
+
+function isThemePref(v: unknown): v is ThemePref {
+  return v === 'light' || v === 'dark' || v === 'system';
+}
+
+/**
+ * Wire the `set-theme` IPC channel so the renderer can keep
+ * `nativeTheme.themeSource` in sync with the in-app theme choice. This
+ * is what makes the macOS traffic-light buttons and the Windows title
+ * bar follow Light / Dark / System without the user touching OS
+ * settings. See `docs/dev/follow-ups/done/dark-light-mode.md`.
+ */
+function registerThemeIpc(): void {
+  ipcMain.handle('set-theme', (_event, pref: unknown) => {
+    if (!isThemePref(pref)) {
+      console.warn(`[${PRODUCT_NAME}] set-theme: ignoring invalid value`);
+      return false;
+    }
+    nativeTheme.themeSource = pref;
+    return true;
+  });
+}
 
 async function startSidecar(): Promise<void> {
   const { resourcesPath, isPackaged } = resolveResourcesRoot();
@@ -186,6 +210,7 @@ async function stopSidecar(): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
+  registerThemeIpc();
   if (skipSidecar) {
     runtime.apiBase = process.env['BUNNY2_API_BASE'] ?? runtime.apiBase;
     process.env['BUNNY2_API_BASE'] = runtime.apiBase;

@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>bunny2</title>
+    <!-- Theme bootstrap: must run synchronously before paint to avoid
+         a flash-of-incorrect-theme. See
+         docs/dev/follow-ups/done/dark-light-mode.md. -->
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem('bunny2.theme') || 'system';
+          var isDark =
+            p === 'dark' ||
+            (p === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) document.documentElement.classList.add('dark');
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

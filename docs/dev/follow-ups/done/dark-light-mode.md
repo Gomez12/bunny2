@@ -1,7 +1,11 @@
 # Follow-up — Explicit light / dark / system theme switch
 
-- Status: open
+- Status: done
 - Created: 2026-05-24 (user request, no prior coverage)
+- Closed: 2026-05-25 — shipped the toggle in the account chip, persisted
+  preference under `localStorage['bunny2.theme']`, Tailwind switched to
+  `darkMode: 'class'`, Electron bridge wires `nativeTheme.themeSource`,
+  and `apps/web/tests/theme.test.ts` covers the controller.
 - Phases referencing it: 1.5 (Tailwind + shadcn scaffolding landed
   with system-only theming), 2.6 (account chip — the natural home
   for the toggle)

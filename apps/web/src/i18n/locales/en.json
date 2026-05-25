@@ -56,7 +56,13 @@
       "open": "Open account menu",
       "signedInAs": "Signed in as {{name}}",
       "changePassword": "Change password",
-      "signOut": "Sign out"
+      "signOut": "Sign out",
+      "theme": {
+        "label": "Theme",
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      }
     }
   },
   "status": {

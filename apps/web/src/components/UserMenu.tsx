@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from './ui/button';
 import { logout } from '../lib/api';
 import { applyLogout, useSession } from '../lib/session';
+import { useTheme, type ThemePref } from '../lib/theme';
 
 /**
  * Account chip in the AppShell header.
@@ -22,6 +23,7 @@ export interface UserMenuProps {
 export function UserMenu(props: UserMenuProps): JSX.Element | null {
   const { t } = useTranslation();
   const session = useSession();
+  const { pref: themePref, setPref: setThemePref } = useTheme();
   const [open, setOpen] = useState(false);
   const [pendingLogout, setPendingLogout] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -109,6 +111,7 @@ export function UserMenu(props: UserMenuProps): JSX.Element | null {
           >
             {t('auth.userMenu.changePassword')}
           </button>
+          <ThemeSection pref={themePref} onChange={setThemePref} />
           <button
             type="button"
             role="menuitem"
@@ -120,6 +123,60 @@ export function UserMenu(props: UserMenuProps): JSX.Element | null {
           </button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Theme submenu — three radio items (Light / Dark / System) grouped
+ * under a small label. Kept inline with the parent menu surface so the
+ * affordance is reachable via Tab from the account chip without
+ * juggling an additional popover layer.
+ *
+ * The group uses `role="group"` with an `aria-labelledby` reference
+ * to the static "Theme" label; each item is a `menuitemradio` so
+ * screen readers announce the selection state via `aria-checked`.
+ */
+function ThemeSection({
+  pref,
+  onChange,
+}: {
+  readonly pref: ThemePref;
+  readonly onChange: (next: ThemePref) => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const labelId = 'user-menu-theme-label';
+  const options: ReadonlyArray<{ value: ThemePref; label: string }> = [
+    { value: 'light', label: t('auth.userMenu.theme.light') },
+    { value: 'dark', label: t('auth.userMenu.theme.dark') },
+    { value: 'system', label: t('auth.userMenu.theme.system') },
+  ];
+  return (
+    <div className="mt-1 border-t pt-1" role="group" aria-labelledby={labelId}>
+      <p
+        id={labelId}
+        className="px-3 pb-1 pt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+      >
+        {t('auth.userMenu.theme.label')}
+      </p>
+      {options.map((opt) => {
+        const checked = pref === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="menuitemradio"
+            aria-checked={checked}
+            className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onChange(opt.value)}
+          >
+            <span aria-hidden="true" className="inline-block w-4 text-muted-foreground">
+              {checked ? '✓' : ''}
+            </span>
+            <span>{opt.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -247,7 +247,13 @@
       "open": "Open accountmenu",
       "signedInAs": "Ingelogd als {{name}}",
       "changePassword": "Wachtwoord wijzigen",
-      "signOut": "Uitloggen"
+      "signOut": "Uitloggen",
+      "theme": {
+        "label": "Thema",
+        "light": "Licht",
+        "dark": "Donker",
+        "system": "Systeem"
+      }
     }
   },
   "status": {

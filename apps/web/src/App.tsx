@@ -40,6 +40,7 @@ import { LayerProposalsListPage } from './pages/LayerProposalsListPage';
 import { LayerProposalDetailPage } from './pages/LayerProposalDetailPage';
 import { LayerCapabilitiesPage } from './pages/LayerCapabilitiesPage';
 import { bootstrapSession, useSession } from './lib/session';
+import { applyTheme, getThemeSnapshot, subscribeToSystemTheme } from './lib/theme';
 
 /**
  * Top-level state machine for the web app.
@@ -74,6 +75,20 @@ function AppRoot(): JSX.Element {
 
   useEffect(() => {
     void bootstrapSession();
+  }, []);
+
+  // Theme: the inline bootstrap script in `index.html` handled the
+  // initial paint. Re-apply on mount so the React-owned store, the
+  // Electron bridge, and the `.dark` class agree, then subscribe to
+  // OS-level changes so a `'system'` preference keeps tracking the OS
+  // while the app is running. See
+  // `docs/dev/follow-ups/done/dark-light-mode.md`.
+  applyTheme(getThemeSnapshot());
+  useEffect(() => {
+    return subscribeToSystemTheme(() => {
+      const pref = getThemeSnapshot();
+      if (pref === 'system') applyTheme(pref);
+    });
   }, []);
 
   if (
