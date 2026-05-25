@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { trackEvent } from '../lib/analytics';
 import { useCurrentLayer } from '../lib/use-current-layer';
 import { errorKeyOf } from '../lib/errors';
 import { pushToast } from '../lib/toast';
@@ -46,7 +47,7 @@ export function LayerProposalDetailPage(): JSX.Element {
 
   useMemo(() => {
     if (layerSlug === null) return;
-    console.log('[chat.analytics] proposal_detail_opened', { layerSlug, proposalId });
+    trackEvent('proposal_detail_opened', { layerSlug, proposalId });
   }, [layerSlug, proposalId]);
 
   if (current.status !== 'ready') {
@@ -137,7 +138,7 @@ function ProposalDetailView({
     setApproving(true);
     try {
       const res = await approveLayerProposal(layerSlug, proposal.id);
-      console.log('[chat.analytics] proposal_approved', {
+      trackEvent('proposal_approved', {
         layerSlug,
         proposalId: proposal.id,
         outcome: res.outcome,
@@ -158,7 +159,7 @@ function ProposalDetailView({
     setReplaying(true);
     try {
       const res = await replayProposalSandbox(layerSlug, proposal.id);
-      console.log('[chat.analytics] proposal_sandbox_replayed', {
+      trackEvent('proposal_sandbox_replayed', {
         layerSlug,
         proposalId: proposal.id,
         outcome: res.outcome,
@@ -465,7 +466,8 @@ function RejectDialog({
     setBusy(true);
     try {
       await rejectLayerProposal(layerSlug, proposalId, reason.trim());
-      console.log('[chat.analytics] proposal_rejected', {
+      // No reason text in analytics — AGENTS.md §Privacy.
+      trackEvent('proposal_rejected', {
         layerSlug,
         proposalId,
       });
@@ -572,7 +574,7 @@ function RollbackDialog({
     try {
       await rollbackLayerProposal(layerSlug, proposalId, trimmed);
       // No reason text in analytics — ADR 0027 §3.
-      console.log('[chat.analytics] proposal_rolled_back', { layerSlug, proposalId });
+      trackEvent('proposal_rolled_back', { layerSlug, proposalId });
       pushToast({ kind: 'success', message: 'proposals.rollback.savedToast' });
       onDone();
     } catch (err) {

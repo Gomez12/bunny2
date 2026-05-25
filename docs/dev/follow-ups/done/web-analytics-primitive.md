@@ -1,8 +1,29 @@
 # Follow-up — Replace web `console.log` analytics placeholders
 
-- Status: open
+- Status: done
 - Created: 2026-05-24 (phase 6 close-out, 6.5 handoff)
+- Closed: 2026-05-25
 - Phases referencing it: 6.5 (chat UI), every web page that emits analytics
+
+## Outcome (2026-05-25)
+
+Shipped `apps/web/src/lib/analytics.ts` exporting
+`trackEvent(name, props)` + `configureAnalytics({ sink })`. All
+thirteen `console.log('[chat.analytics] …')` call sites across
+`LayerChatPage`, `LayerProposalsListPage`, `LayerProposalDetailPage`,
+and `LayerCapabilitiesPage` were swapped to `trackEvent`. The
+primitive is a no-op by default; a dev opt-in
+(`localStorage['bunny2.debug.analytics'] = '1'` plus
+`import.meta.env.DEV`) mirrors events to the console for local
+debugging. Event catalogue + privacy notes live in
+`docs/dev/observability/analytics.md`. Tests in
+`apps/web/tests/analytics.test.ts`.
+
+The actual analytics destination (PostHog / Plausible / server-side
+table) is still a deferred product decision. Wiring it is a one-line
+`configureAnalytics({ sink })` call in `apps/web/src/main.tsx` once
+chosen — the candidates and constraints are listed in
+`docs/dev/observability/analytics.md` §Picking a real sink.
 
 ## What remains
 

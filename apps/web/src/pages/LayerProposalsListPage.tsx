@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { trackEvent } from '../lib/analytics';
 import { useCurrentLayer } from '../lib/use-current-layer';
 import type { ProposalStatus, ProposalSummary } from '../lib/api';
 import {
@@ -40,7 +41,7 @@ export function LayerProposalsListPage(): JSX.Element {
   // plan §4.7). Fired once per slug change.
   useMemo(() => {
     if (layerSlug === null) return;
-    console.log('[chat.analytics] proposals_page_opened', { layerSlug });
+    trackEvent('proposals_page_opened', { layerSlug });
   }, [layerSlug]);
 
   if (current.status !== 'ready') {
@@ -169,7 +170,7 @@ function ProposalsTable({
                   title={row.problemSummary}
                   className="hover:underline"
                   onClick={() =>
-                    console.log('[chat.analytics] proposal_detail_opened', {
+                    trackEvent('proposal_detail_opened', {
                       layerSlug,
                       proposalId: row.id,
                     })

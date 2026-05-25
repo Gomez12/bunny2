@@ -25,6 +25,7 @@ import {
   type LayerChatFeedbackValue,
   type LayerChatMessage,
 } from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import { errorKeyOf } from '../lib/errors';
 import { sseFetch } from '../lib/sse-fetch';
 import { useCurrentLayer } from '../lib/use-current-layer';
@@ -182,7 +183,7 @@ export function LayerChatPage(): JSX.Element {
       setStreamPending('');
       setStreamErrorKey(null);
       setPipelineSteps(emptyPipelineStepMap());
-      console.log('[chat.analytics] chat_conversation_started', { layerSlug });
+      trackEvent('chat_conversation_started', { layerSlug });
     } catch (err: unknown) {
       const key = errorKeyOf(err);
       setConvoLoadError(mapServerErrorToChatErrorKey(key));
@@ -243,7 +244,7 @@ export function LayerChatPage(): JSX.Element {
     };
     setMessages((prev) => [...prev, optimisticUser]);
 
-    console.log('[chat.analytics] chat_message_sent', {
+    trackEvent('chat_message_sent', {
       layerSlug,
       conversationId: activeId,
       lengthBucket: bucketContentLength(content),
@@ -314,7 +315,7 @@ export function LayerChatPage(): JSX.Element {
     } catch (err: unknown) {
       if (controller.signal.aborted) {
         setStreamErrorKey('chat.errors.streamAborted');
-        console.log('[chat.analytics] chat_stream_aborted', {
+        trackEvent('chat_stream_aborted', {
           layerSlug,
           conversationId: activeId,
         });
@@ -366,7 +367,7 @@ export function LayerChatPage(): JSX.Element {
       setFeedbackSavedKey('chat.feedback.saved');
       setFeedbackDialog(null);
       setFeedbackReason('');
-      console.log('[chat.analytics] chat_feedback_submitted', { value });
+      trackEvent('chat_feedback_submitted', { value });
     } catch (err: unknown) {
       const key = errorKeyOf(err);
       console.error('[chat.page] feedback failed', { errorKey: key });

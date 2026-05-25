@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import { trackEvent } from '../lib/analytics';
 import { useCurrentLayer } from '../lib/use-current-layer';
 import { errorKeyOf } from '../lib/errors';
 import { pushToast } from '../lib/toast';
@@ -37,7 +38,7 @@ export function LayerCapabilitiesPage(): JSX.Element {
 
   useMemo(() => {
     if (layerSlug === null) return;
-    console.log('[chat.analytics] capabilities_page_opened', { layerSlug });
+    trackEvent('capabilities_page_opened', { layerSlug });
   }, [layerSlug]);
 
   useEffect(() => {
@@ -187,7 +188,7 @@ function DeactivateDialog({
     setBusy(true);
     try {
       await deactivateLayerCapability(layerSlug, item.id);
-      console.log('[chat.analytics] capability_deactivated', {
+      trackEvent('capability_deactivated', {
         layerSlug,
         capabilityId: item.id,
       });
