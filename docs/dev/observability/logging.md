@@ -217,6 +217,30 @@ Things deliberately **not** redacted, with reasons:
   prefix-tag conventions (§2, §3) keep call sites grep-able so
   audit catches new leak shapes during review.
 
+### Audit-flavoured log: chat-runs raw-content gate
+
+The admin chat-pipeline runs viewer (Phase 4 of
+`docs/dev/plans/admin-observability-viewer.md`) gates the raw
+`input_json` for the `intent` and `entities` steps behind an
+explicit "Show raw chat content" expander. The viewer fetches
+that gated payload via
+`GET /admin/observability/chat-runs/:id?raw=true`; the same
+request emits an audit log line plus a paired telemetry event
+on the bus so the action is observable from either side:
+
+```
+[admin.observability.chat-runs.raw-content.viewed] {
+  event: 'admin.observability.chat-runs.raw-content.viewed',
+  runId: <chat_pipeline_runs.id>,
+  revealedKinds: ['intent' | 'entities'],
+}
+```
+
+Field set is closed by design: no payload content, no request
+metadata, only the row id and which gated step kinds were
+revealed. Producers must never widen this shape to include the
+raw text — that would defeat the purpose of the gate.
+
 ---
 
 ## 6. Adding a new log call site

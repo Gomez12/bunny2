@@ -241,6 +241,7 @@
       "observability": "Observability",
       "events": "Events",
       "llmCalls": "LLM calls",
+      "chatRuns": "Chat pipeline runs",
       "sections": {
         "usersAndGroups": "Users & Groups",
         "operations": "Operations",
@@ -361,6 +362,91 @@
           "occurredAt": "Occurred at",
           "type": "Type",
           "id": "Event id"
+        }
+      }
+    },
+    "chatRuns": {
+      "title": "Chat pipeline runs",
+      "description": "Read-only view of chat-pipeline runs. Each run groups its steps (intent, entities, retrieval, answer); click a row for the step timeline and linked LLM calls.",
+      "refresh": "Refresh",
+      "loadMore": "Load more",
+      "endOfResults": "End of results",
+      "empty": "No chat-pipeline runs match the current filters.",
+      "viewDetail": "Details",
+      "filters": {
+        "label": "Filter chat-pipeline runs",
+        "layerId": "Layer id",
+        "userId": "User id",
+        "status": "Status",
+        "statusAll": "All",
+        "statusOk": "Success",
+        "statusErr": "Error",
+        "from": "From",
+        "to": "To",
+        "apply": "Apply",
+        "reset": "Reset"
+      },
+      "columns": {
+        "startedAt": "Started at",
+        "duration": "Duration",
+        "layer": "Layer",
+        "user": "User",
+        "steps": "Steps",
+        "errors": "Errors",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "ok": "Success",
+        "err": "Error"
+      },
+      "detail": {
+        "title": "Chat pipeline run",
+        "id": "Run id",
+        "messageId": "Message id",
+        "runStatus": "Run status",
+        "durationMs": "Duration (ms)",
+        "layerId": "Layer id",
+        "userId": "User id",
+        "conversationId": "Conversation id",
+        "correlationId": "Correlation id",
+        "flowId": "Flow id",
+        "steps": "Step timeline",
+        "stepsEmpty": "This run has no recorded steps yet.",
+        "attempt": "Attempt {{attempt}}",
+        "errorCode": "Error code",
+        "durationFormatted": "{{ms}} ms",
+        "durationPending": "(pending)",
+        "stepBarLabel": "Step {{kind}} duration {{ms}} milliseconds",
+        "inputJson": "Step input",
+        "outputJson": "Step output",
+        "attributionJson": "Attribution",
+        "expandJson": "Expand JSON",
+        "empty": "(no value)",
+        "inputGatedHint": "Raw user content hidden ({{bytes}} bytes). Use the gate above to reveal.",
+        "stepStatus": {
+          "succeeded": "Succeeded",
+          "failed": "Failed",
+          "skipped": "Skipped",
+          "running": "Running"
+        },
+        "rawContent": {
+          "warningTitle": "Raw user content is gated",
+          "warningBody": "This run includes steps whose input contains the user's typed message verbatim. Revealing it is logged for audit (admin.observability.chat-runs.raw-content.viewed).",
+          "show": "Show raw chat content",
+          "loading": "Loading…",
+          "revealed": "Raw user content is now visible. This access was logged for audit."
+        },
+        "linkedLlmCalls": "Linked LLM calls (by correlation id)",
+        "linkedLlmCallsEmpty": "No LLM calls share this run's correlation id.",
+        "linkedLlmCallsColumns": {
+          "startedAt": "Started at",
+          "model": "Model",
+          "endpoint": "Endpoint",
+          "latencyMs": "Latency (ms)",
+          "costUsd": "Cost (USD)",
+          "status": "Status",
+          "id": "Call id"
         }
       }
     },

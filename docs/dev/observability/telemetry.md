@@ -171,8 +171,15 @@ In this codebase telemetry "names" appear in two places:
    viewer; carry `{ durationMs, rowCount, filterKeys, limit,
 hasCursor }` / `{ durationMs, found, requestTruncated,
 responseTruncated, linkedEventCount }` /
-   `{ durationMs, count24h, count7d }` respectively). Phase 4 will
-   add `…chat-runs.query`. The closed sets are exported as
+   `{ durationMs, count24h, count7d }` respectively).
+   `admin.observability.chat-runs.query` /
+   `admin.observability.chat-runs.detail` /
+   `admin.observability.chat-runs.raw-content.viewed` (Phase 4
+   chat-pipeline runs viewer; the first two carry the same
+   query/detail shapes as the LLM-calls events; the third is the
+   gated-content audit-trail event and carries
+   `{ runId, revealedKinds: ['intent' | 'entities'] }` only —
+   no payload content). The closed sets are exported as
    constants (e.g. `SCHEDULED_TASK_EVENT_TYPES`,
    `ADMIN_OBSERVABILITY_EVENT_TYPES`) for machine-checking.
 2. **Structured-logger `event` field** — same shape, used by

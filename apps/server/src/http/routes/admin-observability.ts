@@ -78,6 +78,7 @@ export function registerAdminObservabilityRoutes(
   const now = deps.now ?? ((): number => Date.now());
 
   registerLlmCallsRoutes(app, deps, now);
+  registerChatRunsRoutes(app, deps, now);
 
   // ---------- GET /admin/observability/events ----------------------------
 
@@ -1031,4 +1032,593 @@ function quantileLatency(
   );
   const row = stmt.get(cutoff, offset);
   return row?.latency_ms ?? null;
+}
+
+// ====================================================================
+// Phase 4 — /admin/observability/chat-runs (+ /:id)
+// ====================================================================
+//
+// A "run" = one `chat_pipeline_runs` row (the FK every step references
+// via `chat_pipeline_steps.run_id`). The list endpoint walks
+//   chat_pipeline_runs
+//     → chat_messages (via run.message_id)
+//       → chat_conversations (via message.conversation_id)
+// so we can surface `layer_id` and `user_id` inline (neither lives on
+// `chat_pipeline_runs` itself) plus the conversation-level
+// `correlation_id` for joining `llm_calls` later.
+//
+// Step aggregates (step_count + error_count) ride a correlated subquery
+// against `chat_pipeline_steps`. The redaction audit
+// (`docs/dev/audits/admin-observability-redaction-2026-05-25.md`) flags
+// `chat_pipeline_steps.input_json` for the `intent` AND `entities` step
+// kinds as raw user content; the detail endpoint strips both unless the
+// caller passes `?raw=true` AND we log
+// `admin.observability.chat-runs.raw-content.viewed` for audit.
+
+/** Gated step kinds — `input_json` carries the raw user message. */
+const GATED_STEP_KINDS = new Set(['intent', 'entities']);
+/** Cap linked-LLM-calls JOIN per detail — mirrors Phase 3's R3 stance. */
+const MAX_LINKED_LLM_CALLS = 50;
+
+type ChatRunsStatusFilter = 'ok' | 'err' | null;
+
+interface ChatRunsFilter {
+  readonly layerId: string | null;
+  readonly userId: string | null;
+  readonly status: ChatRunsStatusFilter;
+  readonly from: string | null;
+  readonly to: string | null;
+  readonly limit: number;
+  readonly cursor: ChatRunsCursor | null;
+}
+
+export interface ChatRunsCursor {
+  readonly ts: string;
+  readonly id: string;
+}
+
+interface ChatRunSqlListRow {
+  id: string;
+  message_id: string;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  layer_id: string | null;
+  user_id: string | null;
+  conversation_id: string | null;
+  correlation_id: string | null;
+  flow_id: string | null;
+  step_count: number;
+  error_count: number;
+}
+
+export interface ChatRunListItem {
+  readonly id: string;
+  readonly messageId: string;
+  /** Run-level status from `chat_pipeline_runs.status`. */
+  readonly runStatus: string;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly durationMs: number | null;
+  readonly layerId: string | null;
+  readonly userId: string | null;
+  readonly conversationId: string | null;
+  readonly correlationId: string | null;
+  readonly flowId: string | null;
+  readonly stepCount: number;
+  readonly errorCount: number;
+  /** Derived from `error_count > 0` per the task spec. */
+  readonly status: 'ok' | 'err';
+}
+
+interface ChatStepSqlRow {
+  id: string;
+  run_id: string;
+  kind: string;
+  status: string;
+  attempt: number;
+  started_at: string;
+  ended_at: string | null;
+  input_json: string | null;
+  output_json: string | null;
+  llm_call_id: string | null;
+  error_code: string | null;
+  attribution_json: string | null;
+}
+
+export interface ChatRunStepItem {
+  readonly id: string;
+  readonly kind: string;
+  readonly status: string;
+  readonly attempt: number;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly durationMs: number | null;
+  readonly llmCallId: string | null;
+  readonly errorCode: string | null;
+  readonly outputJson: string | null;
+  readonly attributionJson: string | null;
+  /**
+   * `inputJson` is excluded by default for the gated kinds
+   * (`intent`, `entities`); the caller must request `?raw=true` to
+   * receive the content. For non-gated kinds the value is included
+   * inline.
+   */
+  readonly inputJson: string | null;
+  /** True when this step's `input_json` is gated and was suppressed. */
+  readonly inputGated: boolean;
+  /** Always reflects whether the underlying row has a non-null input. */
+  readonly inputAvailable: boolean;
+  /** Byte size of the underlying input_json (0 when NULL). */
+  readonly inputBytes: number;
+}
+
+export interface ChatRunLinkedLlmCall {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly model: string;
+  readonly endpoint: string;
+  readonly latencyMs: number | null;
+  readonly costUsd: number | null;
+  readonly hasError: boolean;
+}
+
+export interface ChatRunDetail extends ChatRunListItem {
+  readonly steps: readonly ChatRunStepItem[];
+  readonly linkedLlmCalls: readonly ChatRunLinkedLlmCall[];
+  /** True when this response was returned with the raw-content gate open. */
+  readonly rawIncluded: boolean;
+}
+
+function registerChatRunsRoutes(
+  app: Hono<{ Variables: HonoVariables }>,
+  deps: AdminObservabilityRouteDeps,
+  now: () => number,
+): void {
+  // ---------- GET /admin/observability/chat-runs ------------------------
+
+  app.get('/admin/observability/chat-runs', async (c) => {
+    const parsed = parseChatRunsQuery(c.req.query());
+    if (parsed.kind === 'error') {
+      return c.json({ error: parsed.errorKey }, 400);
+    }
+    const filter = parsed.filter;
+    const startMs = now();
+
+    const { rows, nextCursor } = queryChatRuns(deps.db, filter);
+
+    const durationMs = Math.max(0, now() - startMs);
+    const filterKeys = describeChatRunsFilterKeys(filter);
+
+    console.log('[admin.observability.chat-runs.query]', {
+      event: 'admin.observability.chat-runs.query',
+      filterKeys,
+      limit: filter.limit,
+      hasCursor: filter.cursor !== null,
+      rowCount: rows.length,
+      durationMs,
+    });
+
+    try {
+      await deps.bus.publish({
+        type: ADMIN_OBSERVABILITY_EVENT_TYPES.ChatRunsQuery,
+        payload: {
+          durationMs,
+          rowCount: rows.length,
+          filterKeys,
+          limit: filter.limit,
+          hasCursor: filter.cursor !== null,
+        },
+      });
+    } catch {
+      // Telemetry must never break a read. Swallow.
+    }
+
+    return c.json({ rows, nextCursor });
+  });
+
+  // ---------- GET /admin/observability/chat-runs/:id -------------------
+
+  app.get('/admin/observability/chat-runs/:id', async (c) => {
+    const id = c.req.param('id');
+    if (typeof id !== 'string' || id === '') {
+      return c.json({ error: 'errors.admin.observability.notFound' }, 404);
+    }
+    // Per the redaction audit: `?raw=true` opens the gate on
+    // `intent` / `entities` `input_json`. Default is gated.
+    const raw = c.req.query('raw') === 'true';
+    const startMs = now();
+    const detail = queryChatRunDetail(deps.db, id, raw);
+    const durationMs = Math.max(0, now() - startMs);
+
+    if (detail === null) {
+      console.log('[admin.observability.chat-runs.detail]', {
+        event: 'admin.observability.chat-runs.detail',
+        durationMs,
+        found: false,
+        rawIncluded: raw,
+      });
+      try {
+        await deps.bus.publish({
+          type: ADMIN_OBSERVABILITY_EVENT_TYPES.ChatRunsDetail,
+          payload: {
+            durationMs,
+            found: false,
+            stepCount: 0,
+            linkedLlmCallCount: 0,
+            rawIncluded: raw,
+          },
+        });
+      } catch {
+        // Swallow.
+      }
+      return c.json({ error: 'errors.admin.observability.notFound' }, 404);
+    }
+
+    console.log('[admin.observability.chat-runs.detail]', {
+      event: 'admin.observability.chat-runs.detail',
+      durationMs,
+      found: true,
+      stepCount: detail.steps.length,
+      linkedLlmCallCount: detail.linkedLlmCalls.length,
+      rawIncluded: raw,
+    });
+
+    try {
+      await deps.bus.publish({
+        type: ADMIN_OBSERVABILITY_EVENT_TYPES.ChatRunsDetail,
+        payload: {
+          durationMs,
+          found: true,
+          stepCount: detail.steps.length,
+          linkedLlmCallCount: detail.linkedLlmCalls.length,
+          rawIncluded: raw,
+        },
+      });
+    } catch {
+      // Swallow.
+    }
+
+    // Gated-path audit trail. We emit BOTH a structured console log
+    // and a stable-named telemetry event so the action is grep-able
+    // from either side. The payload names the row id and the step
+    // kinds whose raw input was revealed — no content, ever.
+    if (raw) {
+      const revealedKinds = detail.steps
+        .filter((s) => GATED_STEP_KINDS.has(s.kind) && s.inputAvailable)
+        .map((s) => s.kind as 'intent' | 'entities');
+      const uniqueRevealed = Array.from(new Set(revealedKinds));
+      console.log('[admin.observability.chat-runs.raw-content.viewed]', {
+        event: 'admin.observability.chat-runs.raw-content.viewed',
+        runId: detail.id,
+        revealedKinds: uniqueRevealed,
+      });
+      try {
+        await deps.bus.publish({
+          type: ADMIN_OBSERVABILITY_EVENT_TYPES.ChatRunsRawContentViewed,
+          payload: {
+            runId: detail.id,
+            revealedKinds: uniqueRevealed,
+          },
+        });
+      } catch {
+        // Swallow.
+      }
+    }
+
+    return c.json(detail);
+  });
+}
+
+// ---------- query parser ---------------------------------------------------
+
+type ChatRunsParseResult =
+  | { readonly kind: 'ok'; readonly filter: ChatRunsFilter }
+  | { readonly kind: 'error'; readonly errorKey: string };
+
+/**
+ * Parses the query-string for `GET /admin/observability/chat-runs`.
+ * Exported for unit tests.
+ */
+export function parseChatRunsQuery(query: Record<string, string | undefined>): ChatRunsParseResult {
+  const limit = parseLimit(query.limit);
+  const cursor = parseChatRunsCursor(query.cursor);
+  if (cursor === 'invalid') {
+    return { kind: 'error', errorKey: 'errors.admin.observability.invalidCursor' };
+  }
+
+  const from = normalizeIso(query.from);
+  if (from === 'invalid') {
+    return { kind: 'error', errorKey: 'errors.admin.observability.invalidTimestamp' };
+  }
+  const to = normalizeIso(query.to);
+  if (to === 'invalid') {
+    return { kind: 'error', errorKey: 'errors.admin.observability.invalidTimestamp' };
+  }
+
+  const status = parseStatus(query.status);
+  if (status === 'invalid') {
+    return { kind: 'error', errorKey: 'errors.admin.observability.invalidStatus' };
+  }
+
+  return {
+    kind: 'ok',
+    filter: {
+      layerId: nonEmpty(query.layerId),
+      userId: nonEmpty(query.userId),
+      status,
+      from,
+      to,
+      limit,
+      cursor,
+    },
+  };
+}
+
+/** Cursor encode for the chat-runs list. Same scheme as events / llm-calls. */
+export function encodeChatRunsCursor(cursor: ChatRunsCursor): string {
+  const json = JSON.stringify({ ts: cursor.ts, id: cursor.id });
+  return Buffer.from(json, 'utf8').toString('base64url');
+}
+
+export function parseChatRunsCursor(raw: string | undefined): ChatRunsCursor | null | 'invalid' {
+  if (raw === undefined || raw === '') return null;
+  let json: string;
+  try {
+    json = Buffer.from(raw, 'base64url').toString('utf8');
+  } catch {
+    return 'invalid';
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return 'invalid';
+  }
+  if (
+    parsed === null ||
+    typeof parsed !== 'object' ||
+    typeof (parsed as { ts?: unknown }).ts !== 'string' ||
+    typeof (parsed as { id?: unknown }).id !== 'string'
+  ) {
+    return 'invalid';
+  }
+  const obj = parsed as { ts: string; id: string };
+  return { ts: obj.ts, id: obj.id };
+}
+
+function describeChatRunsFilterKeys(filter: ChatRunsFilter): readonly string[] {
+  const keys: string[] = [];
+  if (filter.layerId !== null) keys.push('layerId');
+  if (filter.userId !== null) keys.push('userId');
+  if (filter.status !== null) keys.push('status');
+  if (filter.from !== null) keys.push('from');
+  if (filter.to !== null) keys.push('to');
+  return keys;
+}
+
+// ---------- list query ----------------------------------------------------
+
+interface ChatRunsQueryResult {
+  readonly rows: readonly ChatRunListItem[];
+  readonly nextCursor: string | null;
+}
+
+function queryChatRuns(db: Database, filter: ChatRunsFilter): ChatRunsQueryResult {
+  // 3-way JOIN: runs → messages → conversations so we can filter by
+  // (layer_id, user_id) and surface them inline. Step aggregates
+  // (step_count, error_count) ride a correlated subquery against
+  // `chat_pipeline_steps`; cheap at the current single-instance
+  // scale and avoids a second batched roundtrip in the handler.
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (filter.layerId !== null) {
+    where.push('c.layer_id = ?');
+    params.push(filter.layerId);
+  }
+  if (filter.userId !== null) {
+    where.push('c.user_id = ?');
+    params.push(filter.userId);
+  }
+  if (filter.from !== null) {
+    where.push('r.started_at >= ?');
+    params.push(filter.from);
+  }
+  if (filter.to !== null) {
+    where.push('r.started_at <= ?');
+    params.push(filter.to);
+  }
+  // Status is derived from the step-level error count, NOT the
+  // run-level status enum. The two carry different semantics — the
+  // task spec wants `error_count > 0` so that's what we apply.
+  if (filter.status === 'ok') {
+    where.push(
+      '(SELECT COUNT(*) FROM chat_pipeline_steps s WHERE s.run_id = r.id AND s.error_code IS NOT NULL) = 0',
+    );
+  } else if (filter.status === 'err') {
+    where.push(
+      '(SELECT COUNT(*) FROM chat_pipeline_steps s WHERE s.run_id = r.id AND s.error_code IS NOT NULL) > 0',
+    );
+  }
+  if (filter.cursor !== null) {
+    where.push('(r.started_at, r.id) < (?, ?)');
+    params.push(filter.cursor.ts, filter.cursor.id);
+  }
+
+  const whereSql = where.length === 0 ? '' : `WHERE ${where.join(' AND ')}`;
+  const limitPlusOne = filter.limit + 1;
+  const sql = `SELECT r.id            AS id,
+                      r.message_id    AS message_id,
+                      r.status        AS status,
+                      r.started_at    AS started_at,
+                      r.ended_at      AS ended_at,
+                      c.layer_id      AS layer_id,
+                      c.user_id       AS user_id,
+                      m.conversation_id AS conversation_id,
+                      m.correlation_id  AS correlation_id,
+                      m.flow_id         AS flow_id,
+                      (SELECT COUNT(*)
+                         FROM chat_pipeline_steps s
+                        WHERE s.run_id = r.id)         AS step_count,
+                      (SELECT COUNT(*)
+                         FROM chat_pipeline_steps s
+                        WHERE s.run_id = r.id
+                          AND s.error_code IS NOT NULL) AS error_count
+                 FROM chat_pipeline_runs r
+                 LEFT JOIN chat_messages m       ON m.id = r.message_id
+                 LEFT JOIN chat_conversations c  ON c.id = m.conversation_id
+                 ${whereSql}
+                ORDER BY r.started_at DESC, r.id DESC
+                LIMIT ?`;
+  const rows = db.query<ChatRunSqlListRow, typeof params>(sql).all(...params, limitPlusOne);
+
+  const pageRows = rows.slice(0, filter.limit);
+  const hasMore = rows.length > filter.limit;
+  const last = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasMore && last !== undefined
+      ? encodeChatRunsCursor({ ts: last.started_at, id: last.id })
+      : null;
+
+  return {
+    rows: pageRows.map(toChatRunListItem),
+    nextCursor,
+  };
+}
+
+function computeDurationMs(startedAt: string, endedAt: string | null): number | null {
+  if (endedAt === null) return null;
+  const start = Date.parse(startedAt);
+  const end = Date.parse(endedAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return Math.max(0, end - start);
+}
+
+function toChatRunListItem(row: ChatRunSqlListRow): ChatRunListItem {
+  return {
+    id: row.id,
+    messageId: row.message_id,
+    runStatus: row.status,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    durationMs: computeDurationMs(row.started_at, row.ended_at),
+    layerId: row.layer_id,
+    userId: row.user_id,
+    conversationId: row.conversation_id,
+    correlationId: row.correlation_id,
+    flowId: row.flow_id,
+    stepCount: row.step_count,
+    errorCount: row.error_count,
+    status: row.error_count > 0 ? 'err' : 'ok',
+  };
+}
+
+// ---------- detail query --------------------------------------------------
+
+function queryChatRunDetail(db: Database, id: string, raw: boolean): ChatRunDetail | null {
+  // Same JOIN as the list but bounded to one run id.
+  const findRunSql = `SELECT r.id            AS id,
+                             r.message_id    AS message_id,
+                             r.status        AS status,
+                             r.started_at    AS started_at,
+                             r.ended_at      AS ended_at,
+                             c.layer_id      AS layer_id,
+                             c.user_id       AS user_id,
+                             m.conversation_id AS conversation_id,
+                             m.correlation_id  AS correlation_id,
+                             m.flow_id         AS flow_id,
+                             (SELECT COUNT(*)
+                                FROM chat_pipeline_steps s
+                               WHERE s.run_id = r.id)         AS step_count,
+                             (SELECT COUNT(*)
+                                FROM chat_pipeline_steps s
+                               WHERE s.run_id = r.id
+                                 AND s.error_code IS NOT NULL) AS error_count
+                        FROM chat_pipeline_runs r
+                        LEFT JOIN chat_messages m       ON m.id = r.message_id
+                        LEFT JOIN chat_conversations c  ON c.id = m.conversation_id
+                       WHERE r.id = ?`;
+  const runRow = db.query<ChatRunSqlListRow, [string]>(findRunSql).get(id);
+  if (runRow === null) return null;
+  const listItem = toChatRunListItem(runRow);
+
+  const stepsStmt = db.query<ChatStepSqlRow, [string]>(
+    `SELECT id, run_id, kind, status, attempt, started_at, ended_at,
+            input_json, output_json, llm_call_id, error_code, attribution_json
+       FROM chat_pipeline_steps
+      WHERE run_id = ?
+      ORDER BY started_at ASC, id ASC`,
+  );
+  const stepRows = stepsStmt.all(id);
+  const steps: readonly ChatRunStepItem[] = stepRows.map((row) => toChatRunStepItem(row, raw));
+
+  const linkedLlmCalls =
+    listItem.correlationId === null ? [] : queryRunLinkedLlmCalls(db, listItem.correlationId);
+
+  return {
+    ...listItem,
+    steps,
+    linkedLlmCalls,
+    rawIncluded: raw,
+  };
+}
+
+function toChatRunStepItem(row: ChatStepSqlRow, raw: boolean): ChatRunStepItem {
+  const inputAvailable = row.input_json !== null;
+  const inputBytes = row.input_json === null ? 0 : Buffer.byteLength(row.input_json, 'utf8');
+  const gated = GATED_STEP_KINDS.has(row.kind) && inputAvailable;
+  // Non-gated kinds: pass `input_json` through verbatim. Gated kinds:
+  // strip unless `?raw=true` was requested.
+  const inputJson: string | null = gated ? (raw ? row.input_json : null) : row.input_json;
+  return {
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    attempt: row.attempt,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    durationMs: computeDurationMs(row.started_at, row.ended_at),
+    llmCallId: row.llm_call_id,
+    errorCode: row.error_code,
+    outputJson: row.output_json,
+    attributionJson: row.attribution_json,
+    inputJson,
+    inputGated: gated && !raw,
+    inputAvailable,
+    inputBytes,
+  };
+}
+
+function queryRunLinkedLlmCalls(
+  db: Database,
+  correlationId: string,
+): readonly ChatRunLinkedLlmCall[] {
+  const stmt = db.query<
+    {
+      id: string;
+      started_at: string;
+      model: string;
+      endpoint: string;
+      latency_ms: number | null;
+      cost_usd: number | null;
+      error: string | null;
+    },
+    [string, number]
+  >(
+    `SELECT id, started_at, model, endpoint, latency_ms, cost_usd, error
+       FROM llm_calls
+      WHERE correlation_id = ?
+      ORDER BY started_at DESC, id DESC
+      LIMIT ?`,
+  );
+  const rows = stmt.all(correlationId, MAX_LINKED_LLM_CALLS);
+  return rows.map((r) => ({
+    id: r.id,
+    startedAt: r.started_at,
+    model: r.model,
+    endpoint: r.endpoint,
+    latencyMs: r.latency_ms,
+    costUsd: r.cost_usd,
+    hasError: r.error !== null,
+  }));
 }

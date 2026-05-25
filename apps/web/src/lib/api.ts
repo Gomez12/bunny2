@@ -33,6 +33,9 @@ import type {
   AdminObservabilityLlmCallsFilter,
   AdminObservabilityLlmCallsResponse,
   AdminObservabilityLlmCallsRollupsResponse,
+  AdminObservabilityChatRunDetail,
+  AdminObservabilityChatRunsFilter,
+  AdminObservabilityChatRunsResponse,
   AdminGroupDetailResponse,
   AdminGroupListResponse,
   AdminGroupRow,
@@ -1517,6 +1520,47 @@ export async function getAdminObservabilityLlmCall(
 export async function getAdminObservabilityLlmCallsRollups(): Promise<AdminObservabilityLlmCallsRollupsResponse> {
   return request<AdminObservabilityLlmCallsRollupsResponse>(
     '/admin/observability/llm-calls/rollups',
+  );
+}
+
+/**
+ * Phase 4 of `docs/dev/plans/admin-observability-viewer.md` —
+ * `GET /admin/observability/chat-runs`. A "run" groups
+ * `chat_pipeline_steps` via `chat_pipeline_runs.id`; the server
+ * walks `runs → messages → conversations` so the inline row can
+ * carry `layerId` / `userId`. Status is derived from the step-level
+ * `error_count > 0`.
+ */
+export async function listAdminObservabilityChatRuns(
+  filter: AdminObservabilityChatRunsFilter = {},
+): Promise<AdminObservabilityChatRunsResponse> {
+  const params = new URLSearchParams();
+  if (filter.layerId !== undefined && filter.layerId !== '') params.set('layerId', filter.layerId);
+  if (filter.userId !== undefined && filter.userId !== '') params.set('userId', filter.userId);
+  if (filter.status !== undefined) params.set('status', filter.status);
+  if (filter.from !== undefined && filter.from !== '') params.set('from', filter.from);
+  if (filter.to !== undefined && filter.to !== '') params.set('to', filter.to);
+  if (filter.limit !== undefined) params.set('limit', String(filter.limit));
+  if (filter.cursor !== undefined && filter.cursor !== '') params.set('cursor', filter.cursor);
+  const qs = params.toString();
+  const path = `/admin/observability/chat-runs${qs.length === 0 ? '' : `?${qs}`}`;
+  return request<AdminObservabilityChatRunsResponse>(path);
+}
+
+/**
+ * `GET /admin/observability/chat-runs/:id` — drawer detail. Pass
+ * `raw: true` to open the redaction-audit gate on `intent` /
+ * `entities` step `input_json` (raw user message). The server logs
+ * `admin.observability.chat-runs.raw-content.viewed` whenever the
+ * raw path is exercised — this is intentional audit behaviour.
+ */
+export async function getAdminObservabilityChatRun(
+  id: string,
+  options: { raw?: boolean } = {},
+): Promise<AdminObservabilityChatRunDetail> {
+  const qs = options.raw === true ? '?raw=true' : '';
+  return request<AdminObservabilityChatRunDetail>(
+    `/admin/observability/chat-runs/${encodeURIComponent(id)}${qs}`,
   );
 }
 

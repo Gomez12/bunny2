@@ -790,3 +790,96 @@ export interface AdminObservabilityLlmCallsRollupsResponse {
   readonly window24h: AdminObservabilityLlmCallsRollupWindow;
   readonly window7d: AdminObservabilityLlmCallsRollupWindow;
 }
+
+/**
+ * Phase 4 of `docs/dev/plans/admin-observability-viewer.md` — one row
+ * from `GET /admin/observability/chat-runs`. A "run" is one
+ * `chat_pipeline_runs` row; the server walks
+ * `chat_pipeline_runs → chat_messages → chat_conversations` so the
+ * inline columns can surface `layerId` / `userId` (neither lives on
+ * the runs table directly). `status` is derived from `errorCount > 0`
+ * per the task spec; `runStatus` is the underlying enum from
+ * `chat_pipeline_runs.status` ('pending' / 'running' / 'succeeded' /
+ * 'failed') exposed for completeness.
+ */
+export interface AdminObservabilityChatRunRow {
+  readonly id: string;
+  readonly messageId: string;
+  readonly runStatus: string;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly durationMs: number | null;
+  readonly layerId: string | null;
+  readonly userId: string | null;
+  readonly conversationId: string | null;
+  readonly correlationId: string | null;
+  readonly flowId: string | null;
+  readonly stepCount: number;
+  readonly errorCount: number;
+  readonly status: 'ok' | 'err';
+}
+
+/** Filters for `GET /admin/observability/chat-runs`. */
+export interface AdminObservabilityChatRunsFilter {
+  readonly layerId?: string;
+  readonly userId?: string;
+  readonly status?: 'ok' | 'err';
+  readonly from?: string;
+  readonly to?: string;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface AdminObservabilityChatRunsResponse {
+  readonly rows: readonly AdminObservabilityChatRunRow[];
+  readonly nextCursor: string | null;
+}
+
+/**
+ * Per-step row inside the drilldown. `inputJson` is suppressed for
+ * the `intent` and `entities` step kinds unless the request was made
+ * with `?raw=true` — the redaction-audit gate. The `inputGated`
+ * boolean flips to true when this step's input would have been
+ * returned but was withheld; the UI uses it to render the explicit
+ * "Show raw chat content" expander.
+ */
+export interface AdminObservabilityChatRunStep {
+  readonly id: string;
+  readonly kind: string;
+  readonly status: string;
+  readonly attempt: number;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly durationMs: number | null;
+  readonly llmCallId: string | null;
+  readonly errorCode: string | null;
+  readonly outputJson: string | null;
+  readonly attributionJson: string | null;
+  readonly inputJson: string | null;
+  readonly inputGated: boolean;
+  readonly inputAvailable: boolean;
+  readonly inputBytes: number;
+}
+
+/** Linked LLM call surfaced under a chat-run drilldown (by correlation id). */
+export interface AdminObservabilityChatRunLinkedLlmCall {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly model: string;
+  readonly endpoint: string;
+  readonly latencyMs: number | null;
+  readonly costUsd: number | null;
+  readonly hasError: boolean;
+}
+
+/**
+ * Detail body returned by `GET /admin/observability/chat-runs/:id`.
+ * `rawIncluded` reflects whether the response was produced with the
+ * raw-content gate open; the UI uses it to label the source of the
+ * currently-rendered payload.
+ */
+export interface AdminObservabilityChatRunDetail extends AdminObservabilityChatRunRow {
+  readonly steps: readonly AdminObservabilityChatRunStep[];
+  readonly linkedLlmCalls: readonly AdminObservabilityChatRunLinkedLlmCall[];
+  readonly rawIncluded: boolean;
+}

@@ -13,7 +13,8 @@
  *
  * Phase 2 ships `EventsQuery`; phase 3 adds three LLM-calls events
  * (`LlmCallsQuery` / `LlmCallsDetail` / `LlmCallsRollups`); phase 4
- * will append a `ChatRunsQuery` row; phase 6 will append
+ * appends three chat-runs events (`ChatRunsQuery` / `ChatRunsDetail`
+ * / `ChatRunsRawContentViewed`); phase 6 will append
  * `AnalyticsQuery`. The const-tuple keeps the catalogue closed at
  * compile time so a typo in a producer fails the typecheck.
  */
@@ -23,6 +24,9 @@ export const ADMIN_OBSERVABILITY_EVENT_TYPES = {
   LlmCallsQuery: 'admin.observability.llm-calls.query',
   LlmCallsDetail: 'admin.observability.llm-calls.detail',
   LlmCallsRollups: 'admin.observability.llm-calls.rollups',
+  ChatRunsQuery: 'admin.observability.chat-runs.query',
+  ChatRunsDetail: 'admin.observability.chat-runs.detail',
+  ChatRunsRawContentViewed: 'admin.observability.chat-runs.raw-content.viewed',
 } as const;
 
 export type AdminObservabilityEventType =
@@ -81,4 +85,47 @@ export interface AdminObservabilityLlmCallsRollupsPayload {
   readonly durationMs: number;
   readonly count24h: number;
   readonly count7d: number;
+}
+
+/**
+ * Phase 4 — chat-pipeline runs list query payload. Same stable-
+ * dimension shape as the other admin viewers so dashboards can
+ * aggregate by `type` across surfaces.
+ */
+export interface AdminObservabilityChatRunsQueryPayload {
+  readonly durationMs: number;
+  readonly rowCount: number;
+  readonly filterKeys: readonly string[];
+  readonly limit: number;
+  readonly hasCursor: boolean;
+}
+
+/**
+ * Phase 4 — chat-pipeline run detail. `stepCount` and
+ * `linkedLlmCallCount` capture the drilldown shape without leaking
+ * any raw content. `rawIncluded` flips to true when the request was
+ * issued with `?raw=true` (the gated path also emits the dedicated
+ * `ChatRunsRawContentViewed` event so the audit trail names the
+ * exact action).
+ */
+export interface AdminObservabilityChatRunsDetailPayload {
+  readonly durationMs: number;
+  readonly found: boolean;
+  readonly stepCount: number;
+  readonly linkedLlmCallCount: number;
+  readonly rawIncluded: boolean;
+}
+
+/**
+ * Phase 4 — explicit audit trail for the gated raw-content
+ * expander. Logged AND emitted as telemetry whenever an admin
+ * issues `?raw=true` on the chat-runs detail endpoint. Payload
+ * keeps a closed dimension set: the row id and the step kinds
+ * whose raw input was returned. No content. Per the redaction
+ * audit, the gated step kinds are `intent` and `entities`, both
+ * of which carry the user's raw message in `input_json`.
+ */
+export interface AdminObservabilityChatRunsRawContentViewedPayload {
+  readonly runId: string;
+  readonly revealedKinds: readonly ('intent' | 'entities')[];
 }

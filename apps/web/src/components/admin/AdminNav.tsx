@@ -22,12 +22,13 @@ import { Button } from '../ui/button';
  * Sections shown today:
  *   - Users & Groups: Users, Groups
  *   - Operations: Scheduled tasks, Bus DLQ
- *   - Observability: Events (phase 2), LLM calls (phase 3)
+ *   - Observability: Events (phase 2), LLM calls (phase 3),
+ *     Chat pipeline runs (phase 4)
  *
- * Phases 4–6 of the observability plan append `Chat pipeline runs`,
- * and `Analytics` entries to the Observability section as those
- * pages land — stubbing dead links earlier would mislead admins, so
- * the section grows phase by phase.
+ * Phase 6 of the observability plan appends an `Analytics` entry to
+ * the Observability section once the sink ships — stubbing dead
+ * links earlier would mislead admins, so the section grows phase by
+ * phase.
  */
 
 interface AdminNavItem {
@@ -76,6 +77,11 @@ const SECTIONS: readonly AdminNavSection[] = [
         key: 'llmCalls',
         labelKey: 'admin.nav.llmCalls',
         path: '/admin/observability/llm-calls',
+      },
+      {
+        key: 'chatRuns',
+        labelKey: 'admin.nav.chatRuns',
+        path: '/admin/observability/chat-runs',
       },
     ],
   },

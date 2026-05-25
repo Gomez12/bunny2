@@ -34,6 +34,9 @@ import {
   parseLlmCallsQuery,
   encodeLlmCallsCursor,
   parseLlmCallsCursor,
+  parseChatRunsQuery,
+  encodeChatRunsCursor,
+  parseChatRunsCursor,
 } from '../src/http/routes/admin-observability';
 
 let fx: TestApp | null = null;
@@ -765,5 +768,627 @@ describe('GET /admin/observability/events', () => {
     expect(typeof last.rowCount).toBe('number');
     expect(Array.isArray(last.filterKeys)).toBe(true);
     expect(last.filterKeys).toContain('kind');
+  });
+});
+
+// =====================================================================
+// Phase 4 — Chat-pipeline runs viewer
+// =====================================================================
+
+describe('parseChatRunsQuery (unit)', () => {
+  it('parses an empty query into a no-filter request with the default limit', () => {
+    const r = parseChatRunsQuery({});
+    if (r.kind !== 'ok') throw new Error('expected ok');
+    expect(r.filter.layerId).toBe(null);
+    expect(r.filter.userId).toBe(null);
+    expect(r.filter.status).toBe(null);
+    expect(r.filter.from).toBe(null);
+    expect(r.filter.to).toBe(null);
+    expect(r.filter.limit).toBe(50);
+    expect(r.filter.cursor).toBe(null);
+  });
+
+  it('caps an over-large limit at 200', () => {
+    const r = parseChatRunsQuery({ limit: '10000' });
+    if (r.kind !== 'ok') throw new Error('expected ok');
+    expect(r.filter.limit).toBe(200);
+  });
+
+  it('rejects an unknown status with errors.admin.observability.invalidStatus', () => {
+    const r = parseChatRunsQuery({ status: 'maybe' });
+    if (r.kind !== 'error') throw new Error('expected error');
+    expect(r.errorKey).toBe('errors.admin.observability.invalidStatus');
+  });
+
+  it('rejects an invalid timestamp with errors.admin.observability.invalidTimestamp', () => {
+    const r = parseChatRunsQuery({ from: 'not-a-date' });
+    if (r.kind !== 'error') throw new Error('expected error');
+    expect(r.errorKey).toBe('errors.admin.observability.invalidTimestamp');
+  });
+
+  it('round-trips a cursor through encodeChatRunsCursor / parseChatRunsCursor', () => {
+    const original = { ts: '2026-05-25T14:00:00.000Z', id: 'run-042' };
+    const encoded = encodeChatRunsCursor(original);
+    const decoded = parseChatRunsCursor(encoded);
+    if (decoded === null || decoded === 'invalid') throw new Error('expected a cursor');
+    expect(decoded.ts).toBe(original.ts);
+    expect(decoded.id).toBe(original.id);
+  });
+});
+
+describe('GET /admin/observability/chat-runs', () => {
+  // ---- helpers -------------------------------------------------------
+
+  interface SeedRunOpts {
+    readonly runId: string;
+    readonly messageId?: string;
+    readonly startedAt: string;
+    readonly endedAt?: string | null;
+    readonly runStatus?: 'pending' | 'running' | 'succeeded' | 'failed';
+    readonly correlationId?: string;
+    readonly steps?: ReadonlyArray<{
+      readonly id: string;
+      readonly kind: 'intent' | 'entities' | 'retrieval' | 'answer';
+      readonly status?: 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
+      readonly errorCode?: string | null;
+      readonly inputJson?: string | null;
+      readonly outputJson?: string | null;
+      readonly llmCallId?: string | null;
+      readonly startedAt?: string;
+      readonly endedAt?: string | null;
+    }>;
+  }
+
+  function getSeededLayerAndUser(db: import('bun:sqlite').Database): {
+    readonly layerId: string;
+    readonly userId: string;
+  } {
+    const user = db.query<{ id: string }, []>(`SELECT id FROM users LIMIT 1`).get();
+    const layer = db.query<{ id: string }, []>(`SELECT id FROM layers LIMIT 1`).get();
+    if (user === null) throw new Error('expected a seeded user');
+    if (layer === null) throw new Error('expected a seeded layer');
+    return { layerId: layer.id, userId: user.id };
+  }
+
+  function seedConversationOnce(fixture: TestApp): {
+    layerId: string;
+    userId: string;
+    convId: string;
+  } {
+    const { layerId, userId } = getSeededLayerAndUser(fixture.db);
+    const convId = `conv-${crypto.randomUUID().slice(0, 8)}`;
+    fixture.db
+      .query<unknown, [string, string, string, string, string, string, string]>(
+        `INSERT INTO chat_conversations (id, layer_id, user_id, title, locale, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        convId,
+        layerId,
+        userId,
+        'test',
+        'en',
+        new Date().toISOString(),
+        new Date().toISOString(),
+      );
+    return { layerId, userId, convId };
+  }
+
+  function seedChatRun(fixture: TestApp, convId: string, opts: SeedRunOpts): void {
+    const messageId = opts.messageId ?? `${opts.runId}-msg`;
+    const correlationId = opts.correlationId ?? `${opts.runId}-corr`;
+    fixture.db
+      .query<unknown, [string, string, string, string, string, string, string, string | null]>(
+        `INSERT INTO chat_messages
+           (id, conversation_id, role, content, status, correlation_id, flow_id, created_at, finished_at, model)
+         VALUES (?, ?, 'assistant', '', ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        messageId,
+        convId,
+        opts.runStatus === 'failed' ? 'failed' : 'done',
+        correlationId,
+        `${opts.runId}-flow`,
+        opts.startedAt,
+        opts.endedAt ?? opts.startedAt,
+        null,
+      );
+    fixture.db
+      .query<unknown, [string, string, string, string, string | null]>(
+        `INSERT INTO chat_pipeline_runs (id, message_id, status, started_at, ended_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        opts.runId,
+        messageId,
+        opts.runStatus ?? 'succeeded',
+        opts.startedAt,
+        opts.endedAt ?? opts.startedAt,
+      );
+    if (opts.steps !== undefined) {
+      for (const step of opts.steps) {
+        fixture.db
+          .query<
+            unknown,
+            [
+              string,
+              string,
+              string,
+              string,
+              number,
+              string,
+              string | null,
+              string | null,
+              string | null,
+              string | null,
+              string | null,
+            ]
+          >(
+            `INSERT INTO chat_pipeline_steps
+               (id, run_id, kind, status, attempt, started_at, ended_at,
+                input_json, output_json, llm_call_id, error_code)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            step.id,
+            opts.runId,
+            step.kind,
+            step.status ?? 'succeeded',
+            1,
+            step.startedAt ?? opts.startedAt,
+            step.endedAt ?? opts.endedAt ?? null,
+            step.inputJson ?? null,
+            step.outputJson ?? null,
+            step.llmCallId ?? null,
+            step.errorCode ?? null,
+          );
+      }
+    }
+  }
+
+  interface RunsListBody {
+    readonly rows: ReadonlyArray<{
+      readonly id: string;
+      readonly stepCount: number;
+      readonly errorCount: number;
+      readonly status: 'ok' | 'err';
+      readonly layerId: string | null;
+      readonly userId: string | null;
+    }>;
+    readonly nextCursor: string | null;
+  }
+
+  // ---- list endpoint -------------------------------------------------
+
+  it('lists chat-pipeline runs newest-first with run-summary fields', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-list-');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const { convId } = seedConversationOnce(fx);
+    for (let i = 1; i <= 5; i += 1) {
+      seedChatRun(fx, convId, {
+        runId: `run-${String(i).padStart(3, '0')}`,
+        startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, i)).toISOString(),
+        endedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, i, 500)).toISOString(),
+        steps: [
+          {
+            id: `step-${i}-intent`,
+            kind: 'intent',
+            inputJson: '{"userContent":"hello"}',
+            outputJson: '{"intent":"general"}',
+          },
+          {
+            id: `step-${i}-answer`,
+            kind: 'answer',
+            outputJson: '{"contentBytes":42}',
+          },
+        ],
+      });
+    }
+    const res = await fx.app.fetch(
+      new Request('http://localhost/admin/observability/chat-runs?limit=3', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as RunsListBody;
+    expect(body.rows.map((r) => r.id)).toEqual(['run-005', 'run-004', 'run-003']);
+    expect(body.nextCursor).not.toBe(null);
+    const first = body.rows[0];
+    if (first === undefined) throw new Error('expected first row');
+    expect(first.stepCount).toBe(2);
+    expect(first.errorCount).toBe(0);
+    expect(first.status).toBe('ok');
+    expect(first.layerId).not.toBe(null);
+    expect(first.userId).not.toBe(null);
+  });
+
+  it('filters by status=err using the step-level error_code', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-status-');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const { convId } = seedConversationOnce(fx);
+    seedChatRun(fx, convId, {
+      runId: 'run-ok',
+      startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 1)).toISOString(),
+      steps: [{ id: 'step-ok-a', kind: 'intent' }],
+    });
+    seedChatRun(fx, convId, {
+      runId: 'run-err',
+      runStatus: 'failed',
+      startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 2)).toISOString(),
+      steps: [{ id: 'step-err-a', kind: 'answer', status: 'failed', errorCode: 'answer.failed' }],
+    });
+    const errRes = await fx.app.fetch(
+      new Request('http://localhost/admin/observability/chat-runs?status=err', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    const errBody = (await errRes.json()) as RunsListBody;
+    const ids = errBody.rows.map((r) => r.id);
+    expect(ids).toContain('run-err');
+    expect(ids).not.toContain('run-ok');
+    const okRes = await fx.app.fetch(
+      new Request('http://localhost/admin/observability/chat-runs?status=ok', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    const okBody = (await okRes.json()) as RunsListBody;
+    const okIds = okBody.rows.map((r) => r.id);
+    expect(okIds).toContain('run-ok');
+    expect(okIds).not.toContain('run-err');
+  });
+
+  it('paginates with a cursor stable across a concurrent run insert', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-cursor-');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const { convId, layerId } = seedConversationOnce(fx);
+    for (let i = 1; i <= 6; i += 1) {
+      seedChatRun(fx, convId, {
+        runId: `run-${String(i).padStart(3, '0')}`,
+        startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, i)).toISOString(),
+        steps: [{ id: `step-${i}`, kind: 'intent' }],
+      });
+    }
+    const page1Res = await fx.app.fetch(
+      new Request(
+        `http://localhost/admin/observability/chat-runs?limit=3&layerId=${encodeURIComponent(layerId)}`,
+        { headers: { authorization: `Bearer ${token}` } },
+      ),
+    );
+    const page1 = (await page1Res.json()) as RunsListBody;
+    expect(page1.rows.map((r) => r.id)).toEqual(['run-006', 'run-005', 'run-004']);
+    // Concurrent insert: future-dated run between the page calls — it
+    // must not appear on page 2 (cursor stability invariant).
+    seedChatRun(fx, convId, {
+      runId: 'run-099',
+      startedAt: new Date(Date.UTC(2026, 4, 25, 15, 0, 0)).toISOString(),
+      steps: [{ id: 'step-99', kind: 'intent' }],
+    });
+    const cursor = page1.nextCursor;
+    if (cursor === null) throw new Error('expected a cursor');
+    const page2Res = await fx.app.fetch(
+      new Request(
+        `http://localhost/admin/observability/chat-runs?limit=3&layerId=${encodeURIComponent(layerId)}&cursor=${encodeURIComponent(cursor)}`,
+        { headers: { authorization: `Bearer ${token}` } },
+      ),
+    );
+    const page2 = (await page2Res.json()) as RunsListBody;
+    expect(page2.rows.map((r) => r.id)).toEqual(['run-003', 'run-002', 'run-001']);
+    expect(page2.rows.map((r) => r.id)).not.toContain('run-099');
+  });
+
+  it('forbids non-admin callers with errors.admin.forbidden', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-forbid-');
+    await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const nonAdmin = await seedNonAdminUser({ db: fx.db, app: fx.app }, { username: 'eve' });
+    const res = await fx.app.fetch(
+      new Request('http://localhost/admin/observability/chat-runs', {
+        headers: { authorization: `Bearer ${nonAdmin.token}` },
+      }),
+    );
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('errors.admin.forbidden');
+  });
+
+  it('emits the admin.observability.chat-runs.query log + telemetry event', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-tel-');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const { convId, layerId } = seedConversationOnce(fx);
+    seedChatRun(fx, convId, {
+      runId: 'run-tel',
+      startedAt: new Date().toISOString(),
+      steps: [{ id: 'step-tel', kind: 'intent' }],
+    });
+    const logCapture: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logCapture.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+    };
+    interface TelPayload {
+      readonly durationMs: number;
+      readonly rowCount: number;
+      readonly filterKeys: readonly string[];
+    }
+    const seen: TelPayload[] = [];
+    fx.bus.subscribe<TelPayload>('admin.observability.chat-runs.query', async (ev) => {
+      seen.push(ev.payload);
+    });
+    try {
+      const res = await fx.app.fetch(
+        new Request(
+          `http://localhost/admin/observability/chat-runs?layerId=${encodeURIComponent(layerId)}`,
+          { headers: { authorization: `Bearer ${token}` } },
+        ),
+      );
+      expect(res.status).toBe(200);
+    } finally {
+      console.log = origLog;
+    }
+    const entry = logCapture.find((l) => l.includes('admin.observability.chat-runs.query'));
+    expect(entry).toBeDefined();
+    expect(seen.length).toBeGreaterThan(0);
+    const last = seen[seen.length - 1];
+    if (last === undefined) throw new Error('expected telemetry payload');
+    expect(typeof last.durationMs).toBe('number');
+    expect(last.filterKeys).toContain('layerId');
+  });
+
+  // ---- detail endpoint ----------------------------------------------
+
+  interface RunDetailBody {
+    readonly id: string;
+    readonly steps: ReadonlyArray<{
+      readonly kind: string;
+      readonly inputJson: string | null;
+      readonly inputGated: boolean;
+      readonly inputAvailable: boolean;
+      readonly inputBytes: number;
+    }>;
+    readonly linkedLlmCalls: ReadonlyArray<{ readonly id: string }>;
+    readonly rawIncluded: boolean;
+  }
+
+  it('returns ordered steps with the gated intent/entities input excluded by default', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-detail-default-');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const { convId } = seedConversationOnce(fx);
+    seedChatRun(fx, convId, {
+      runId: 'run-detail',
+      startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 0)).toISOString(),
+      endedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 2)).toISOString(),
+      correlationId: 'c-run-detail',
+      steps: [
+        {
+          id: 'step-intent',
+          kind: 'intent',
+          inputJson: '{"userContent":"secret-message"}',
+          outputJson: '{"intent":"general"}',
+          startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 0)).toISOString(),
+          endedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 0, 100)).toISOString(),
+        },
+        {
+          id: 'step-entities',
+          kind: 'entities',
+          inputJson: '{"userContent":"secret-message"}',
+          outputJson: '{"entities":[]}',
+          startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 0, 200)).toISOString(),
+          endedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 0, 350)).toISOString(),
+        },
+        {
+          id: 'step-retrieval',
+          kind: 'retrieval',
+          inputJson: '{"intent":"general"}',
+          outputJson: '{"hits":[]}',
+          startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 0, 400)).toISOString(),
+          endedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 0, 500)).toISOString(),
+        },
+        {
+          id: 'step-answer',
+          kind: 'answer',
+          outputJson: '{"contentBytes":42}',
+          startedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 1)).toISOString(),
+          endedAt: new Date(Date.UTC(2026, 4, 25, 14, 0, 2)).toISOString(),
+        },
+      ],
+    });
+    const res = await fx.app.fetch(
+      new Request('http://localhost/admin/observability/chat-runs/run-detail', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as RunDetailBody;
+    expect(body.steps.map((s) => s.kind)).toEqual(['intent', 'entities', 'retrieval', 'answer']);
+    const intent = body.steps.find((s) => s.kind === 'intent');
+    const entities = body.steps.find((s) => s.kind === 'entities');
+    const retrieval = body.steps.find((s) => s.kind === 'retrieval');
+    if (intent === undefined || entities === undefined || retrieval === undefined) {
+      throw new Error('expected intent/entities/retrieval steps');
+    }
+    // Gated by default.
+    expect(intent.inputJson).toBe(null);
+    expect(intent.inputGated).toBe(true);
+    expect(intent.inputAvailable).toBe(true);
+    expect(intent.inputBytes).toBeGreaterThan(0);
+    expect(entities.inputJson).toBe(null);
+    expect(entities.inputGated).toBe(true);
+    // Non-gated kind passes inputJson through.
+    expect(retrieval.inputJson).not.toBe(null);
+    expect(retrieval.inputGated).toBe(false);
+    expect(body.rawIncluded).toBe(false);
+  });
+
+  it('returns the raw input when ?raw=true AND emits the raw-content.viewed log + telemetry', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-detail-raw-');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const { convId } = seedConversationOnce(fx);
+    seedChatRun(fx, convId, {
+      runId: 'run-raw',
+      startedAt: new Date().toISOString(),
+      correlationId: 'c-run-raw',
+      steps: [
+        {
+          id: 'step-raw-intent',
+          kind: 'intent',
+          inputJson: '{"userContent":"raw-msg"}',
+          outputJson: '{"intent":"general"}',
+        },
+        {
+          id: 'step-raw-entities',
+          kind: 'entities',
+          inputJson: '{"userContent":"raw-msg"}',
+          outputJson: '{"entities":[]}',
+        },
+      ],
+    });
+
+    interface RawTelPayload {
+      readonly runId: string;
+      readonly revealedKinds: readonly ('intent' | 'entities')[];
+    }
+    const seenRaw: RawTelPayload[] = [];
+    fx.bus.subscribe<RawTelPayload>(
+      'admin.observability.chat-runs.raw-content.viewed',
+      async (ev) => {
+        seenRaw.push(ev.payload);
+      },
+    );
+
+    const logCapture: string[] = [];
+    const origLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logCapture.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '));
+    };
+    try {
+      const res = await fx.app.fetch(
+        new Request('http://localhost/admin/observability/chat-runs/run-raw?raw=true', {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as RunDetailBody;
+      expect(body.rawIncluded).toBe(true);
+      const intent = body.steps.find((s) => s.kind === 'intent');
+      if (intent === undefined) throw new Error('expected intent step');
+      expect(intent.inputGated).toBe(false);
+      expect(intent.inputJson).not.toBe(null);
+      expect(intent.inputJson).toContain('raw-msg');
+    } finally {
+      console.log = origLog;
+    }
+
+    // Audit log line was emitted.
+    const auditLine = logCapture.find((l) =>
+      l.includes('admin.observability.chat-runs.raw-content.viewed'),
+    );
+    expect(auditLine).toBeDefined();
+
+    // Telemetry event with stable name was published.
+    expect(seenRaw.length).toBeGreaterThan(0);
+    const last = seenRaw[seenRaw.length - 1];
+    if (last === undefined) throw new Error('expected telemetry payload');
+    expect(last.runId).toBe('run-raw');
+    expect(last.revealedKinds).toContain('intent');
+    expect(last.revealedKinds).toContain('entities');
+  });
+
+  it('surfaces linked llm_calls by correlation_id under the run detail', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-linked-');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const { convId } = seedConversationOnce(fx);
+    // Write the LLM call BEFORE the steps so the FK
+    // `chat_pipeline_steps.llm_call_id → llm_calls.id` is satisfied.
+    const log = createSqliteLlmCallLog(fx.db);
+    log.write({
+      id: 'llm-linked',
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+      model: 'mock-default',
+      endpoint: 'mock://echo',
+      request: '{}',
+      response: '{}',
+      tokensIn: 0,
+      tokensOut: 0,
+      costUsd: 0,
+      latencyMs: 50,
+      correlationId: 'c-linked',
+      flowId: null,
+      layerId: null,
+      userId: null,
+      error: null,
+      modelSource: 'system',
+    });
+    seedChatRun(fx, convId, {
+      runId: 'run-linked',
+      startedAt: new Date().toISOString(),
+      correlationId: 'c-linked',
+      steps: [{ id: 'step-linked', kind: 'answer', llmCallId: 'llm-linked' }],
+    });
+    const res = await fx.app.fetch(
+      new Request('http://localhost/admin/observability/chat-runs/run-linked', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as RunDetailBody;
+    expect(body.linkedLlmCalls.map((c) => c.id)).toContain('llm-linked');
+  });
+
+  it('returns 404 errors.admin.observability.notFound for a missing run id', async () => {
+    fx = await makeTestAppSeeded('bunny2-admin-runs-404-');
+    const { token } = await loginSeededAdminRotated({
+      db: fx.db,
+      bus: fx.bus,
+      app: fx.app,
+      seedLog: fx.seedLog,
+    });
+    const res = await fx.app.fetch(
+      new Request('http://localhost/admin/observability/chat-runs/does-not-exist', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('errors.admin.observability.notFound');
   });
 });

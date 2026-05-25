@@ -189,6 +189,7 @@
       "observability": "Observability",
       "events": "Events",
       "llmCalls": "LLM-calls",
+      "chatRuns": "Chat-pipelineruns",
       "sections": {
         "usersAndGroups": "Gebruikers & groepen",
         "operations": "Operatie",
@@ -309,6 +310,91 @@
           "occurredAt": "Tijdstip",
           "type": "Type",
           "id": "Event-id"
+        }
+      }
+    },
+    "chatRuns": {
+      "title": "Chat-pipelineruns",
+      "description": "Alleen-lezen weergave van chat-pipelineruns. Elke run groepeert zijn stappen (intent, entities, retrieval, answer); klik op een rij voor de stappentijdlijn en gekoppelde LLM-calls.",
+      "refresh": "Vernieuwen",
+      "loadMore": "Meer laden",
+      "endOfResults": "Einde van de resultaten",
+      "empty": "Geen chat-pipelineruns komen overeen met de huidige filters.",
+      "viewDetail": "Details",
+      "filters": {
+        "label": "Filter chat-pipelineruns",
+        "layerId": "Layer-id",
+        "userId": "Gebruikers-id",
+        "status": "Status",
+        "statusAll": "Alles",
+        "statusOk": "Geslaagd",
+        "statusErr": "Fout",
+        "from": "Vanaf",
+        "to": "Tot",
+        "apply": "Toepassen",
+        "reset": "Reset"
+      },
+      "columns": {
+        "startedAt": "Gestart op",
+        "duration": "Duur",
+        "layer": "Laag",
+        "user": "Gebruiker",
+        "steps": "Stappen",
+        "errors": "Fouten",
+        "status": "Status",
+        "actions": "Acties"
+      },
+      "status": {
+        "ok": "Geslaagd",
+        "err": "Fout"
+      },
+      "detail": {
+        "title": "Chat-pipelinerun",
+        "id": "Run-id",
+        "messageId": "Bericht-id",
+        "runStatus": "Run-status",
+        "durationMs": "Duur (ms)",
+        "layerId": "Layer-id",
+        "userId": "Gebruikers-id",
+        "conversationId": "Conversatie-id",
+        "correlationId": "Correlation-id",
+        "flowId": "Flow-id",
+        "steps": "Stappentijdlijn",
+        "stepsEmpty": "Deze run heeft nog geen vastgelegde stappen.",
+        "attempt": "Poging {{attempt}}",
+        "errorCode": "Foutcode",
+        "durationFormatted": "{{ms}} ms",
+        "durationPending": "(in behandeling)",
+        "stepBarLabel": "Stap {{kind}} duur {{ms}} milliseconden",
+        "inputJson": "Stapinvoer",
+        "outputJson": "Stapuitvoer",
+        "attributionJson": "Attributie",
+        "expandJson": "JSON uitklappen",
+        "empty": "(geen waarde)",
+        "inputGatedHint": "Rauwe gebruikersinhoud verborgen ({{bytes}} bytes). Gebruik de toegangspoort hierboven om te tonen.",
+        "stepStatus": {
+          "succeeded": "Geslaagd",
+          "failed": "Mislukt",
+          "skipped": "Overgeslagen",
+          "running": "Bezig"
+        },
+        "rawContent": {
+          "warningTitle": "Rauwe gebruikersinhoud is afgeschermd",
+          "warningBody": "Deze run bevat stappen waarvan de invoer het bericht van de gebruiker letterlijk bevat. Tonen wordt vastgelegd voor audit (admin.observability.chat-runs.raw-content.viewed).",
+          "show": "Rauwe chatinhoud tonen",
+          "loading": "Laden…",
+          "revealed": "Rauwe gebruikersinhoud is nu zichtbaar. Deze toegang is vastgelegd voor audit."
+        },
+        "linkedLlmCalls": "Gekoppelde LLM-calls (op correlation-id)",
+        "linkedLlmCallsEmpty": "Geen LLM-calls delen het correlation-id van deze run.",
+        "linkedLlmCallsColumns": {
+          "startedAt": "Gestart op",
+          "model": "Model",
+          "endpoint": "Endpoint",
+          "latencyMs": "Latency (ms)",
+          "costUsd": "Kosten (USD)",
+          "status": "Status",
+          "id": "Call-id"
         }
       }
     },

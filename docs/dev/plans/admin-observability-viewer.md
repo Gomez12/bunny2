@@ -598,6 +598,92 @@ linkedEventCount }`.
   `llm_calls` rows surfaced via `correlation_id`.
 - Tests: smoke + drilldown render.
 
+#### Phase 4 — outcomes
+
+Shipped 2026-05-25:
+
+- **Endpoints** (both behind the `/admin/*` `requireAdmin` gate):
+  - `GET /admin/observability/chat-runs` — list with cursor
+    pagination. Filters: `layerId`, `userId`, `status` (`ok` /
+    `err`), `from`, `to`, plus `limit` (cap 200, default 50) and
+    `cursor`. Cursor scheme mirrors Phase 2/3 (base64url `{ts,id}`,
+    row-value `(started_at,id) < (?,?)` DESC). The list row carries
+    `id`, `messageId`, `runStatus`, `startedAt`, `endedAt`,
+    `durationMs`, `layerId`, `userId`, `conversationId`,
+    `correlationId`, `flowId`, `stepCount`, `errorCount`, and the
+    derived `status` (`'ok' | 'err'`).
+  - `GET /admin/observability/chat-runs/:id` — drawer detail.
+    Returns the run-level fields plus the ordered list of steps
+    (oldest-first, `started_at ASC, id ASC`) and the linked
+    `llm_calls` rows joined by `correlation_id` (capped at 50).
+- **Grouping key for "run":** `chat_pipeline_runs.id`. Every
+  `chat_pipeline_steps` row carries `run_id = chat_pipeline_runs.id`
+  (the FK), so the run IS the natural group. The list endpoint walks
+  `chat_pipeline_runs → chat_messages (via message_id) →
+chat_conversations (via conversation_id)` because neither
+  `layer_id` nor `user_id` lives on `chat_pipeline_runs` itself; the
+  JOIN surfaces those plus the conversation-level `correlation_id` /
+  `flow_id` so the linked-LLM-calls JOIN has something to key off in
+  the detail call.
+- **Status derivation:** per the task spec, `status` is derived from
+  the step-level error count
+  (`COUNT(*) FROM chat_pipeline_steps WHERE error_code IS NOT NULL`).
+  The run-level `chat_pipeline_runs.status` enum (`pending` /
+  `running` / `succeeded` / `failed`) is also exposed inline as
+  `runStatus` so admins can spot mid-run rows, but it is NOT what the
+  `status` filter operates on.
+- **Gated step kinds:** `intent` AND `entities`. The redaction audit
+  flags both kinds' `input_json` as raw user content (the `entities`
+  step input is `{ intent, userContent }`, where `userContent` is
+  the same raw user message the `intent` step received). The detail
+  response excludes `inputJson` for those kinds by default and sets
+  `inputGated: true`, `inputAvailable: true`, `inputBytes: <size>`;
+  passing `?raw=true` flips the gate.
+- **Raw-content audit-log event:**
+  `admin.observability.chat-runs.raw-content.viewed` — published as
+  a closed-shape bus event with payload
+  `{ runId, revealedKinds: ('intent' | 'entities')[] }` and mirrored
+  by a `console.log` line with the same field set. The field set
+  records the row id and the gated step kinds whose raw input was
+  returned — **never the content**. One log + one telemetry event
+  per `?raw=true` request, matching the single deliberate admin click
+  that opens the gate.
+- **Telemetry catalogue (additions to
+  `ADMIN_OBSERVABILITY_EVENT_TYPES`):**
+  - `admin.observability.chat-runs.query` —
+    `{ durationMs, rowCount, filterKeys, limit, hasCursor }`.
+  - `admin.observability.chat-runs.detail` —
+    `{ durationMs, found, stepCount, linkedLlmCallCount, rawIncluded }`.
+  - `admin.observability.chat-runs.raw-content.viewed` —
+    `{ runId, revealedKinds }`.
+- **Web wiring:**
+  `apps/web/src/pages/admin/AdminChatRunsPage.tsx` (new),
+  route `/admin/observability/chat-runs`, `admin.nav.chatRuns` entry
+  appended to the Observability section in `AdminNav`. The detail
+  drawer reuses the `<dialog>`-based `Dialog`. The step timeline is
+  a pure-CSS Gantt-ish list (each row has a `<div>` width-as-%
+  duration bar); no chart lib was added. The raw-content gate lives
+  inside a `role="alert"` region so screen readers announce the
+  warning when the drawer opens.
+- **Deviations from the wireframe:**
+  - User and layer ids render as raw UUIDs (same Phase 2/3 stance —
+    name resolution stays a Phase 7 polish item).
+  - The wireframe drew step inputs with a per-step toggle
+    (`[⚠ Show raw chat content ▸]` on each row). The shipped UI
+    instead gates the whole detail re-fetch behind a single
+    page-level "Show raw chat content" button — matches the
+    "single deliberate admin action" pattern from §4-extra, makes
+    the audit-log "one click = one log line" mapping unambiguous,
+    and means re-rendering doesn't have to wire per-step state.
+    Per-step status / duration / error code still render inline so
+    the wireframe's information density is preserved.
+- **Indexes:** the list query rides
+  `chat_pipeline_runs(started_at DESC)` (no dedicated index — the
+  table is small + monotonic) and the correlated step-count
+  subqueries ride the existing `idx_chat_pipeline_steps_run_kind`
+  (covers `run_id` lookup). The linked-LLM-calls JOIN uses
+  `idx_llm_calls_correlation`.
+
 ### Phase 5 — Scheduled-task runs + bus ledger (est. 4h)
 
 - Extend `AdminScheduledTasksPage` with a per-task "Runs"
