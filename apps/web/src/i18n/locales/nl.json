@@ -547,7 +547,11 @@
         "loadFailed": "Kon dit contact niet laden. Probeer het opnieuw.",
         "saveFailed": "Kon het contact niet opslaan. Controleer de invoer en probeer het opnieuw.",
         "validation": "Het contact kon niet worden opgeslagen. Controleer de invoer en probeer het opnieuw.",
-        "emailDuplicate": "Elk e-mailadres kan maar één keer worden toegevoegd."
+        "emailDuplicate": "Elk e-mailadres kan maar één keer worden toegevoegd.",
+        "externalLinkConnectorRequired": "Kies een connector voordat je koppelt.",
+        "externalLinkExternalIdRequired": "Het externe id mag niet leeg zijn.",
+        "externalLinkAddFailed": "De externe koppeling kon niet worden toegevoegd. Probeer het opnieuw.",
+        "externalLinkRemoveFailed": "De externe koppeling kon niet worden verwijderd. Probeer het opnieuw."
       },
       "calendar": {
         "loadFailed": "Kon deze afspraak niet laden. Probeer het opnieuw.",
@@ -558,7 +562,11 @@
         "endsBeforeStarts": "De eindtijd mag niet vóór de starttijd liggen.",
         "allDayFormat": "Hele-dag-afspraken gebruiken alleen datums (JJJJ-MM-DD).",
         "attendeeDuplicate": "Elke deelnemer kan maar één keer worden toegevoegd.",
-        "syncFailed": "Synchroniseren met Google Calendar is niet gelukt. Probeer het later opnieuw."
+        "syncFailed": "Synchroniseren met Google Calendar is niet gelukt. Probeer het later opnieuw.",
+        "externalLinkConnectorRequired": "Kies een connector voordat je koppelt.",
+        "externalLinkExternalIdRequired": "Het externe id mag niet leeg zijn.",
+        "externalLinkAddFailed": "De externe koppeling kon niet worden toegevoegd. Probeer het opnieuw.",
+        "externalLinkRemoveFailed": "De externe koppeling kon niet worden verwijderd. Probeer het opnieuw."
       },
       "todos": {
         "loadFailed": "Kon deze taak niet laden. Probeer het opnieuw.",
@@ -568,7 +576,17 @@
         "slugTaken": "Er bestaat al een taak met deze slug in deze laag.",
         "linkedEntityNotFound": "Het gekoppelde contact of bedrijf is niet gevonden in deze laag.",
         "linkedEntityWrongLayer": "Het gekoppelde contact of bedrijf hoort bij een andere laag.",
-        "tagDuplicate": "Elke tag kan maar één keer worden toegevoegd."
+        "tagDuplicate": "Elke tag kan maar één keer worden toegevoegd.",
+        "externalLinkConnectorRequired": "Kies een connector voordat je koppelt.",
+        "externalLinkExternalIdRequired": "Het externe id mag niet leeg zijn.",
+        "externalLinkAddFailed": "De externe koppeling kon niet worden toegevoegd. Probeer het opnieuw.",
+        "externalLinkRemoveFailed": "De externe koppeling kon niet worden verwijderd. Probeer het opnieuw."
+      },
+      "whiteboards": {
+        "externalLinkConnectorRequired": "Kies een connector voordat je koppelt.",
+        "externalLinkExternalIdRequired": "Het externe id mag niet leeg zijn.",
+        "externalLinkAddFailed": "De externe koppeling kon niet worden toegevoegd. Probeer het opnieuw.",
+        "externalLinkRemoveFailed": "De externe koppeling kon niet worden verwijderd. Probeer het opnieuw."
       },
       "connectorIngestFailed": "Kon het bestand niet importeren. Controleer het en probeer het opnieuw.",
       "connectorIngestUnavailable": "Bestandsimport is niet beschikbaar voor dit itemtype."
@@ -795,6 +813,23 @@
       "linkSyncIdle": "Inactief",
       "linkSyncSyncing": "Bezig met synchroniseren…",
       "linkSyncError": "Synchronisatie mislukt",
+      "externalLinks": {
+        "title": "Externe koppelingen",
+        "empty": "Nog geen externe koppelingen. vCard-imports verschijnen hier automatisch; je kunt ook handmatig een koppeling toevoegen.",
+        "connectorLabel": "{{connector}} · {{externalId}}",
+        "addCta": "Externe koppeling toevoegen",
+        "connectorField": "Connector",
+        "externalIdField": "Extern id",
+        "remove": "Koppeling verwijderen",
+        "refresh": "Vernieuwen",
+        "added": "Externe koppeling toegevoegd.",
+        "removed": "Externe koppeling verwijderd.",
+        "addFailed": "De externe koppeling kon niet worden toegevoegd. Probeer het opnieuw.",
+        "removeFailed": "De externe koppeling kon niet worden verwijderd. Probeer het opnieuw.",
+        "syncIdle": "Inactief",
+        "syncSyncing": "Bezig met synchroniseren…",
+        "syncError": "Synchronisatie mislukt"
+      },
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de naam."
     },
@@ -875,6 +910,23 @@
       "linkSyncIdle": "Inactief",
       "linkSyncSyncing": "Bezig met synchroniseren…",
       "linkSyncError": "Synchronisatie mislukt",
+      "externalLinks": {
+        "title": "Externe koppelingen",
+        "empty": "Nog geen externe koppelingen. Google Agenda-imports verschijnen hier automatisch; je kunt ook handmatig een koppeling toevoegen.",
+        "connectorLabel": "{{connector}} · {{externalId}}",
+        "addCta": "Externe koppeling toevoegen",
+        "connectorField": "Connector",
+        "externalIdField": "Extern id",
+        "remove": "Koppeling verwijderen",
+        "refresh": "Vernieuwen",
+        "added": "Externe koppeling toegevoegd.",
+        "removed": "Externe koppeling verwijderd.",
+        "addFailed": "De externe koppeling kon niet worden toegevoegd. Probeer het opnieuw.",
+        "removeFailed": "De externe koppeling kon niet worden verwijderd. Probeer het opnieuw.",
+        "syncIdle": "Inactief",
+        "syncSyncing": "Bezig met synchroniseren…",
+        "syncError": "Synchronisatie mislukt"
+      },
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de titel.",
       "originalLocale": "Oorspronkelijke taal",
@@ -964,6 +1016,23 @@
         "toggleShowDeleted": "Verwijderde tonen",
         "toggleHideDeleted": "Verwijderde verbergen"
       },
+      "externalLinks": {
+        "title": "Externe koppelingen",
+        "empty": "Nog geen externe koppelingen. Voeg er één toe om deze taak aan een record in een ander systeem te koppelen.",
+        "connectorLabel": "{{connector}} · {{externalId}}",
+        "addCta": "Externe koppeling toevoegen",
+        "connectorField": "Connector",
+        "externalIdField": "Extern id",
+        "remove": "Koppeling verwijderen",
+        "refresh": "Vernieuwen",
+        "added": "Externe koppeling toegevoegd.",
+        "removed": "Externe koppeling verwijderd.",
+        "addFailed": "De externe koppeling kon niet worden toegevoegd. Probeer het opnieuw.",
+        "removeFailed": "De externe koppeling kon niet worden verwijderd. Probeer het opnieuw.",
+        "syncIdle": "Inactief",
+        "syncSyncing": "Bezig met synchroniseren…",
+        "syncError": "Synchronisatie mislukt"
+      },
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de titel.",
       "originalLocale": "Oorspronkelijke taal"
@@ -1038,6 +1107,23 @@
         "restored": "Whiteboard hersteld.",
         "toggleShowDeleted": "Verwijderde tonen",
         "toggleHideDeleted": "Verwijderde verbergen"
+      },
+      "externalLinks": {
+        "title": "Externe koppelingen",
+        "empty": "Nog geen externe koppelingen. De verrijkingsmodule kan verwijzingen naar genoemde chats en documenten toevoegen; je kunt ook handmatig een koppeling toevoegen.",
+        "connectorLabel": "{{connector}} · {{externalId}}",
+        "addCta": "Externe koppeling toevoegen",
+        "connectorField": "Connector",
+        "externalIdField": "Extern id",
+        "remove": "Koppeling verwijderen",
+        "refresh": "Vernieuwen",
+        "added": "Externe koppeling toegevoegd.",
+        "removed": "Externe koppeling verwijderd.",
+        "addFailed": "De externe koppeling kon niet worden toegevoegd. Probeer het opnieuw.",
+        "removeFailed": "De externe koppeling kon niet worden verwijderd. Probeer het opnieuw.",
+        "syncIdle": "Inactief",
+        "syncSyncing": "Bezig met synchroniseren…",
+        "syncError": "Synchronisatie mislukt"
       }
     }
   },

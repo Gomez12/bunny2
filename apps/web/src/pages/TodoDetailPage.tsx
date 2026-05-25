@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { EntityExternalLinks } from '../components/EntityExternalLinks';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { ConfirmDialog } from '../components/ui/dialog';
@@ -371,6 +372,16 @@ export function TodoDetailPage(): JSX.Element {
           ) : null}
         </CardContent>
       </Card>
+
+      {view.kind === 'ready' && layerSlug !== null ? (
+        <EntityExternalLinks
+          kind="todo"
+          layerSlug={layerSlug}
+          entitySlug={todoSlug}
+          links={view.todo.externalLinks}
+          onChanged={() => void refresh()}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={deleteConfirmOpen}

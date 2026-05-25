@@ -134,7 +134,28 @@ hidden for viewers who cannot edit the layer.
 
 ---
 
-## 8. Known limits
+## 8. Adding external links
+
+Below the canvas the editor shows an **External links** card. The
+whiteboard enrichment subscriber may already have populated this
+list with rows that point at chats / documents mentioned on the
+canvas; you can also add a link manually:
+
+1. Type the connector name (e.g. `figma`, `miro`, `intranet`) in
+   the **Connector** field.
+2. Type the matching external id (e.g. the upstream URL slug) in
+   the **External id** field.
+3. Click **Add external link**. The link appears in the list with
+   a sync-state badge (`Idle` / `Syncing…` / `Sync failed` — the
+   badge only moves when a connector actually claims the row).
+
+To remove a link, click **Remove link** on the row. The action only
+removes the bunny2-side association; the upstream record is
+untouched.
+
+---
+
+## 9. Known limits
 
 A short list of behaviours that are intentionally **not** in v1:
 
@@ -157,7 +178,7 @@ A short list of behaviours that are intentionally **not** in v1:
 
 ---
 
-## 9. Related reading
+## 10. Related reading
 
 - `docs/user/guides/getting-started.md` — first steps with bunny2.
 - `docs/user/guides/working-with-layers.md` — how layers control

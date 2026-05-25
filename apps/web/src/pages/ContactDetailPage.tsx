@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { CompanyPicker } from '../components/contacts/CompanyPicker';
 import { EmailListEditor } from '../components/contacts/EmailListEditor';
 import { PhoneListEditor } from '../components/contacts/PhoneListEditor';
+import { EntityExternalLinks } from '../components/EntityExternalLinks';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { ConfirmDialog } from '../components/ui/dialog';
@@ -19,7 +20,7 @@ import {
   updateContact,
 } from '../lib/api';
 import { trackEvent } from '../lib/analytics';
-import type { EntityExternalLink, EntitySummary } from '../lib/api-types';
+import type { EntitySummary } from '../lib/api-types';
 import { contactsListWebRoute } from '../lib/contacts-routes';
 import { i18nKeysForKind, isSoftDeleted, restoreTelemetryName } from '../lib/entity-restore';
 import { errorKeyOf } from '../lib/errors';
@@ -32,7 +33,6 @@ import {
   contactDetailView,
   draftFromContact,
   emptyContactFormDraft,
-  linkSyncStateBadgeKey,
   promotePrimaryEmail,
   promotePrimaryPhone,
   removeEmail,
@@ -357,8 +357,14 @@ export function ContactDetailPage(): JSX.Element {
         </CardContent>
       </Card>
 
-      {view.kind === 'ready' ? (
-        <ExternalLinksReadOnlyCard links={view.contact.externalLinks} />
+      {view.kind === 'ready' && layerSlug !== null ? (
+        <EntityExternalLinks
+          kind="contact"
+          layerSlug={layerSlug}
+          entitySlug={contactSlug}
+          links={view.contact.externalLinks}
+          onChanged={() => void refresh()}
+        />
       ) : null}
 
       <ConfirmDialog
@@ -381,51 +387,8 @@ export function ContactDetailPage(): JSX.Element {
 }
 
 // ---------------------------------------------------------------------------
-
-interface ExternalLinksReadOnlyCardProps {
-  readonly links: readonly EntityExternalLink[];
-}
-
-/**
- * Read-only provenance list. The vCard import (`POST .../_ingest/vcard`)
- * creates external-link rows with `connector: 'vcard'`; the user can
- * inspect them here but cannot add or remove (spec: external-links
- * section read-only). The 4b.7+ "manage external links" surface, if it
- * ever ships, will reuse the Companies pattern.
- */
-function ExternalLinksReadOnlyCard(props: ExternalLinksReadOnlyCardProps): JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('entity.contacts.externalLinksTitle')}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {props.links.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('entity.contacts.externalLinksEmpty')}</p>
-        ) : (
-          <ul className="space-y-2 text-sm">
-            {props.links.map((link) => (
-              <li
-                key={link.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
-              >
-                <div className="flex flex-col">
-                  <span className="font-medium">
-                    {t('entity.contacts.linkConnectorLabel', {
-                      connector: link.connector,
-                      externalId: link.externalId,
-                    })}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {t(linkSyncStateBadgeKey(link.syncState))}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+// The previous `ExternalLinksReadOnlyCard` was replaced in Phase 3
+// (ui-exposure-gaps) by the shared `<EntityExternalLinks kind="contact">`
+// block above. The vCard import still seeds the list with
+// `connector: 'vcard'` rows; users can now add and remove links from the
+// UI in addition to inspecting them (closes the audit gap).

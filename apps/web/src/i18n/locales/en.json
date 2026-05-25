@@ -766,7 +766,11 @@
         "loadFailed": "Could not load this contact. Please try again.",
         "saveFailed": "Could not save the contact. Please check the input and try again.",
         "validation": "The contact could not be saved. Please check the input and try again.",
-        "emailDuplicate": "Each email address can only be added once."
+        "emailDuplicate": "Each email address can only be added once.",
+        "externalLinkConnectorRequired": "Pick a connector before linking.",
+        "externalLinkExternalIdRequired": "The external id cannot be empty.",
+        "externalLinkAddFailed": "Could not add the external link. Please try again.",
+        "externalLinkRemoveFailed": "Could not remove the external link. Please try again."
       },
       "calendar": {
         "loadFailed": "Could not load this event. Please try again.",
@@ -777,7 +781,11 @@
         "endsBeforeStarts": "The end time must not be earlier than the start time.",
         "allDayFormat": "All-day events use date-only values (YYYY-MM-DD).",
         "attendeeDuplicate": "Each attendee can only be added once.",
-        "syncFailed": "Could not sync with Google Calendar. Please try again later."
+        "syncFailed": "Could not sync with Google Calendar. Please try again later.",
+        "externalLinkConnectorRequired": "Pick a connector before linking.",
+        "externalLinkExternalIdRequired": "The external id cannot be empty.",
+        "externalLinkAddFailed": "Could not add the external link. Please try again.",
+        "externalLinkRemoveFailed": "Could not remove the external link. Please try again."
       },
       "todos": {
         "loadFailed": "Could not load this todo. Please try again.",
@@ -787,7 +795,17 @@
         "slugTaken": "A todo with this slug already exists in this layer.",
         "linkedEntityNotFound": "The linked contact or company could not be found in this layer.",
         "linkedEntityWrongLayer": "The linked contact or company lives in a different layer.",
-        "tagDuplicate": "Each tag can only be added once."
+        "tagDuplicate": "Each tag can only be added once.",
+        "externalLinkConnectorRequired": "Pick a connector before linking.",
+        "externalLinkExternalIdRequired": "The external id cannot be empty.",
+        "externalLinkAddFailed": "Could not add the external link. Please try again.",
+        "externalLinkRemoveFailed": "Could not remove the external link. Please try again."
+      },
+      "whiteboards": {
+        "externalLinkConnectorRequired": "Pick a connector before linking.",
+        "externalLinkExternalIdRequired": "The external id cannot be empty.",
+        "externalLinkAddFailed": "Could not add the external link. Please try again.",
+        "externalLinkRemoveFailed": "Could not remove the external link. Please try again."
       },
       "connectorIngestFailed": "Could not import the file. Please verify it and try again.",
       "connectorIngestUnavailable": "File import is not available for this item kind."
@@ -1014,6 +1032,23 @@
       "linkSyncIdle": "Idle",
       "linkSyncSyncing": "Syncing…",
       "linkSyncError": "Sync failed",
+      "externalLinks": {
+        "title": "External links",
+        "empty": "No external links yet. vCard imports appear here automatically; you can also add a link manually.",
+        "connectorLabel": "{{connector}} · {{externalId}}",
+        "addCta": "Add external link",
+        "connectorField": "Connector",
+        "externalIdField": "External id",
+        "remove": "Remove link",
+        "refresh": "Refresh",
+        "added": "External link added.",
+        "removed": "External link removed.",
+        "addFailed": "Could not add the external link. Please try again.",
+        "removeFailed": "Could not remove the external link. Please try again.",
+        "syncIdle": "Idle",
+        "syncSyncing": "Syncing…",
+        "syncError": "Sync failed"
+      },
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the name."
     },
@@ -1094,6 +1129,23 @@
       "linkSyncIdle": "Idle",
       "linkSyncSyncing": "Syncing…",
       "linkSyncError": "Sync failed",
+      "externalLinks": {
+        "title": "External links",
+        "empty": "No external links yet. Google Calendar imports appear here automatically; you can also add a link manually.",
+        "connectorLabel": "{{connector}} · {{externalId}}",
+        "addCta": "Add external link",
+        "connectorField": "Connector",
+        "externalIdField": "External id",
+        "remove": "Remove link",
+        "refresh": "Refresh",
+        "added": "External link added.",
+        "removed": "External link removed.",
+        "addFailed": "Could not add the external link. Please try again.",
+        "removeFailed": "Could not remove the external link. Please try again.",
+        "syncIdle": "Idle",
+        "syncSyncing": "Syncing…",
+        "syncError": "Sync failed"
+      },
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the title.",
       "originalLocale": "Original locale",
@@ -1183,6 +1235,23 @@
         "toggleShowDeleted": "Show deleted",
         "toggleHideDeleted": "Hide deleted"
       },
+      "externalLinks": {
+        "title": "External links",
+        "empty": "No external links yet. Add one to associate this todo with a record in another system.",
+        "connectorLabel": "{{connector}} · {{externalId}}",
+        "addCta": "Add external link",
+        "connectorField": "Connector",
+        "externalIdField": "External id",
+        "remove": "Remove link",
+        "refresh": "Refresh",
+        "added": "External link added.",
+        "removed": "External link removed.",
+        "addFailed": "Could not add the external link. Please try again.",
+        "removeFailed": "Could not remove the external link. Please try again.",
+        "syncIdle": "Idle",
+        "syncSyncing": "Syncing…",
+        "syncError": "Sync failed"
+      },
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the title.",
       "originalLocale": "Original locale"
@@ -1257,6 +1326,23 @@
         "restored": "Whiteboard restored.",
         "toggleShowDeleted": "Show deleted",
         "toggleHideDeleted": "Hide deleted"
+      },
+      "externalLinks": {
+        "title": "External links",
+        "empty": "No external links yet. The enrichment subscriber may add references to mentioned chats and documents; you can also add a link manually.",
+        "connectorLabel": "{{connector}} · {{externalId}}",
+        "addCta": "Add external link",
+        "connectorField": "Connector",
+        "externalIdField": "External id",
+        "remove": "Remove link",
+        "refresh": "Refresh",
+        "added": "External link added.",
+        "removed": "External link removed.",
+        "addFailed": "Could not add the external link. Please try again.",
+        "removeFailed": "Could not remove the external link. Please try again.",
+        "syncIdle": "Idle",
+        "syncSyncing": "Syncing…",
+        "syncError": "Sync failed"
       }
     }
   },

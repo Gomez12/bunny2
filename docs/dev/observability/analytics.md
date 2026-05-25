@@ -118,17 +118,26 @@ Call sites:
 
 ### Entities
 
-| Event             | Properties          | Privacy                                                                                                                      |
-| ----------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `entity_restored` | `kind`, `layerSlug` | `kind` is the closed `RestorableEntityKind` enum (`company`/`contact`/`calendar_event`/`todo`/`whiteboard`); no row content. |
+| Event                          | Properties          | Privacy                                                                                                                                                                                                                           |
+| ------------------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_restored`              | `kind`, `layerSlug` | `kind` is the closed `RestorableEntityKind` enum (`company`/`contact`/`calendar_event`/`todo`/`whiteboard`); no row content.                                                                                                      |
+| `entity_external_link_added`   | `kind`, `layerSlug` | `kind` is the closed `ExternalLinkEntityKind` enum (`contact`/`calendar_event`/`todo`/`whiteboard`); Companies still emits its own KvK-specific call site. No connector / external-id / payload values are sent (plan §13 + §10). |
+| `entity_external_link_removed` | `kind`, `layerSlug` | Same closed enum as `entity_external_link_added`; no link id, no connector, no external-id leaks (plan §13 + §10).                                                                                                                |
 
-Call sites (Phase 1 of `docs/dev/plans/ui-exposure-gaps.md`):
+Call sites:
 
-- [`apps/web/src/pages/CompanyDetailPage.tsx`](../../../apps/web/src/pages/CompanyDetailPage.tsx)
-- [`apps/web/src/pages/ContactDetailPage.tsx`](../../../apps/web/src/pages/ContactDetailPage.tsx)
-- [`apps/web/src/pages/CalendarEventDetailPage.tsx`](../../../apps/web/src/pages/CalendarEventDetailPage.tsx)
-- [`apps/web/src/pages/TodoDetailPage.tsx`](../../../apps/web/src/pages/TodoDetailPage.tsx)
-- [`apps/web/src/pages/WhiteboardDetailPage.tsx`](../../../apps/web/src/pages/WhiteboardDetailPage.tsx)
+- `entity_restored` (Phase 1 of `docs/dev/plans/ui-exposure-gaps.md`):
+  - [`apps/web/src/pages/CompanyDetailPage.tsx`](../../../apps/web/src/pages/CompanyDetailPage.tsx)
+  - [`apps/web/src/pages/ContactDetailPage.tsx`](../../../apps/web/src/pages/ContactDetailPage.tsx)
+  - [`apps/web/src/pages/CalendarEventDetailPage.tsx`](../../../apps/web/src/pages/CalendarEventDetailPage.tsx)
+  - [`apps/web/src/pages/TodoDetailPage.tsx`](../../../apps/web/src/pages/TodoDetailPage.tsx)
+  - [`apps/web/src/pages/WhiteboardDetailPage.tsx`](../../../apps/web/src/pages/WhiteboardDetailPage.tsx)
+- `entity_external_link_added` / `_removed` (Phase 3 of `docs/dev/plans/ui-exposure-gaps.md`):
+  - [`apps/web/src/components/EntityExternalLinks.tsx`](../../../apps/web/src/components/EntityExternalLinks.tsx)
+    — consumed by `ContactDetailPage`, `CalendarEventDetailPage`,
+    `TodoDetailPage`, `WhiteboardDetailPage`. Companies is intentionally
+    not migrated yet (see
+    [`docs/dev/follow-ups/shared-entity-external-links-component.md`](../follow-ups/shared-entity-external-links-component.md)).
 
 ## Adding a new event
 

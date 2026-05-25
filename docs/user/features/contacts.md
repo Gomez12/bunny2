@@ -57,7 +57,28 @@ hidden for viewers who cannot edit the layer.
 
 ---
 
-## 4. Related reading
+## 4. Adding external links
+
+The contact detail page shows an **External links** card under the
+form. vCard imports automatically populate this list with rows
+labelled `vcard · <id>` so you can trace which import created the
+contact. You can also add a link manually:
+
+1. Type the connector name (for example `crm`, `salesforce`, or a
+   free-form label like `intranet`) in the **Connector** field.
+2. Type the matching external id (the row id in that connector's
+   system) in the **External id** field.
+3. Click **Add external link**. The link appears in the list with a
+   sync-state badge (`Idle` / `Syncing…` / `Sync failed` — the badge
+   only moves when a connector actually claims the row).
+
+To remove a link, click **Remove link** on the row. The action does
+not delete the upstream record; it only removes the bunny2-side
+association.
+
+---
+
+## 5. Related reading
 
 - `docs/user/guides/working-with-layers.md` — how layers control
   who sees what.

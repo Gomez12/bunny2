@@ -1250,6 +1250,54 @@ export async function restoreEntity(
   );
 }
 
+// ---------- external-link CRUD (Phase 3, ui-exposure-gaps) -----------------
+//
+// Closes the audit gap "external-link CRUD only exposed for Companies".
+// The server route
+//   POST   /l/:slug/<kind>/:entitySlug/external-links
+//   DELETE /l/:slug/<kind>/:entitySlug/external-links/:linkId
+// exists for every entity kind via `mountEntityRoutes`; these helpers
+// dispatch to the right singular kind segment so every entity-page
+// caller has a single uniform helper to import. Companies still has
+// its own KvK-specific helpers (`addCompanyExternalLink` /
+// `removeCompanyExternalLink`) — extracting Companies onto this generic
+// helper is intentionally out of scope per the plan §2 non-goals, so
+// the duplication is documented in
+// `docs/dev/follow-ups/shared-entity-external-links-component.md`.
+
+export type ExternalLinkEntityKind = 'contact' | 'calendar_event' | 'todo' | 'whiteboard';
+
+export interface AddEntityExternalLinkPayload {
+  readonly connector: string;
+  readonly externalId: string;
+  readonly payload?: Record<string, unknown>;
+}
+
+export async function addEntityExternalLink(
+  layerSlug: string,
+  kind: ExternalLinkEntityKind,
+  entitySlug: string,
+  body: AddEntityExternalLinkPayload,
+): Promise<EntityExternalLink> {
+  const res = await request<{ externalLink: EntityExternalLink }>(
+    `/l/${encodeURIComponent(layerSlug)}/${kind}/${encodeURIComponent(entitySlug)}/external-links`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+  return res.externalLink;
+}
+
+export async function removeEntityExternalLink(
+  layerSlug: string,
+  kind: ExternalLinkEntityKind,
+  entitySlug: string,
+  linkId: string,
+): Promise<void> {
+  await request<{ ok: true }>(
+    `/l/${encodeURIComponent(layerSlug)}/${kind}/${encodeURIComponent(entitySlug)}/external-links/${encodeURIComponent(linkId)}`,
+    { method: 'DELETE' },
+  );
+}
+
 // ---------- scheduled tasks (phase 5.6) ------------------------------------
 
 function scheduledTasksBase(layerSlug: string): string {

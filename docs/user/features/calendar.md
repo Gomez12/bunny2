@@ -66,7 +66,27 @@ hidden for viewers who cannot edit the layer.
 
 ---
 
-## 5. Todo projection
+## 5. Adding external links
+
+The event detail page shows an **External links** card under the
+form. Google Calendar sync seeds this list with rows labelled
+`google.calendar · <event-id>` so you can trace which upstream event
+the bunny2 row mirrors. You can also add a link manually:
+
+1. Type the connector name (e.g. `outlook`, `ics`, or a free-form
+   label like `ticketing`) in the **Connector** field.
+2. Type the matching external id in the **External id** field.
+3. Click **Add external link**. The new row appears with a sync-
+   state badge (`Idle` / `Syncing…` / `Sync failed` — the badge only
+   moves when a connector actually claims the row).
+
+To remove a link, click **Remove link** on the row. The action only
+removes the bunny2-side association; it does **not** delete the
+upstream calendar entry.
+
+---
+
+## 6. Todo projection
 
 When a todo in the same layer has a due date, the calendar shows it
 as a read-only entry prefixed with the localized "Todo" label. You
@@ -75,7 +95,7 @@ detail to change the due date or status.
 
 ---
 
-## 6. Related reading
+## 7. Related reading
 
 - `docs/user/guides/working-with-layers.md` — how layers control
   who sees what.

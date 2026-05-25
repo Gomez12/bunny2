@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
+import { EntityExternalLinks } from '../components/EntityExternalLinks';
 import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
@@ -722,6 +723,14 @@ export function WhiteboardDetailPage(): JSX.Element {
           {t('entity.whiteboards.detail.delete')}
         </Button>
       </footer>
+
+      <EntityExternalLinks
+        kind="whiteboard"
+        layerSlug={slug}
+        entitySlug={whiteboardSlug}
+        links={wb.externalLinks}
+        onChanged={() => void refresh()}
+      />
 
       <ConfirmDialog
         open={deleteOpen}

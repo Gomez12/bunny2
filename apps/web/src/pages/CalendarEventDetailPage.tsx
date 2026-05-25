@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { EntityExternalLinks } from '../components/EntityExternalLinks';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { ConfirmDialog } from '../components/ui/dialog';
@@ -392,7 +393,15 @@ export function CalendarEventDetailPage(): JSX.Element {
         </CardContent>
       </Card>
 
-      {view.kind === 'ready' ? <ExternalLinksReadOnlyCard event={view.event} /> : null}
+      {view.kind === 'ready' && layerSlug !== null ? (
+        <EntityExternalLinks
+          kind="calendar_event"
+          layerSlug={layerSlug}
+          entitySlug={eventSlug}
+          links={view.event.externalLinks}
+          onChanged={() => void refresh()}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={deleteConfirmOpen}
@@ -542,52 +551,8 @@ function AttendeeArrayEditor(props: AttendeeArrayEditorProps): JSX.Element {
 }
 
 // ---------------------------------------------------------------------------
-
-interface ExternalLinksReadOnlyCardProps {
-  readonly event: {
-    readonly externalLinks: readonly import('../lib/api-types').EntityExternalLink[];
-  };
-}
-
-function ExternalLinksReadOnlyCard(props: ExternalLinksReadOnlyCardProps): JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('entity.calendar.externalLinksTitle')}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {props.event.externalLinks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('entity.calendar.externalLinksEmpty')}</p>
-        ) : (
-          <ul className="space-y-2 text-sm">
-            {props.event.externalLinks.map((link) => (
-              <li
-                key={link.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
-              >
-                <div className="flex flex-col">
-                  <span className="font-medium">
-                    {t('entity.calendar.linkConnectorLabel', {
-                      connector: link.connector,
-                      externalId: link.externalId,
-                    })}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {syncStateLabel(link.syncState, t)}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function syncStateLabel(state: 'idle' | 'syncing' | 'error', t: (k: string) => string): string {
-  if (state === 'syncing') return t('entity.calendar.linkSyncSyncing');
-  if (state === 'error') return t('entity.calendar.linkSyncError');
-  return t('entity.calendar.linkSyncIdle');
-}
+// The previous `ExternalLinksReadOnlyCard` was replaced in Phase 3
+// (ui-exposure-gaps) by the shared `<EntityExternalLinks
+// kind="calendar_event">` block above. Google Calendar sync continues
+// to seed links with `connector: 'google.calendar'`; users can now add
+// and remove links from the UI in addition to inspecting them.
