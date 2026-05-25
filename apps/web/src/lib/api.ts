@@ -27,6 +27,8 @@ import type {
   AddLayerMemberPayload,
   AddLayerVisibilityPayload,
   AdminBusDlqRow,
+  AdminObservabilityEventsFilter,
+  AdminObservabilityEventsResponse,
   AdminGroupDetailResponse,
   AdminGroupListResponse,
   AdminGroupRow,
@@ -1434,6 +1436,31 @@ export async function replayAdminBusDlq(outboxId: string): Promise<void> {
   await request<{ ok: true }>(`/admin/bus/dlq/${encodeURIComponent(outboxId)}/replay`, {
     method: 'POST',
   });
+}
+
+/**
+ * Phase 2 of `docs/dev/plans/admin-observability-viewer.md` —
+ * `GET /admin/observability/events`. Cursor pagination with stable
+ * `(occurred_at DESC, id DESC)` ordering; filters are documented in
+ * `apps/server/src/http/routes/admin-observability.ts`.
+ */
+export async function listAdminObservabilityEvents(
+  filter: AdminObservabilityEventsFilter = {},
+): Promise<AdminObservabilityEventsResponse> {
+  const params = new URLSearchParams();
+  if (filter.kind !== undefined && filter.kind !== '') params.set('kind', filter.kind);
+  if (filter.from !== undefined && filter.from !== '') params.set('from', filter.from);
+  if (filter.to !== undefined && filter.to !== '') params.set('to', filter.to);
+  if (filter.layerId !== undefined && filter.layerId !== '') params.set('layerId', filter.layerId);
+  if (filter.flowId !== undefined && filter.flowId !== '') params.set('flowId', filter.flowId);
+  if (filter.correlationId !== undefined && filter.correlationId !== '') {
+    params.set('correlationId', filter.correlationId);
+  }
+  if (filter.limit !== undefined) params.set('limit', String(filter.limit));
+  if (filter.cursor !== undefined && filter.cursor !== '') params.set('cursor', filter.cursor);
+  const qs = params.toString();
+  const path = `/admin/observability/events${qs.length === 0 ? '' : `?${qs}`}`;
+  return request<AdminObservabilityEventsResponse>(path);
 }
 
 // ---------- per-layer chat (phase 6.5) -------------------------------------

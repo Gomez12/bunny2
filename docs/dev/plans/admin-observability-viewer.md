@@ -437,6 +437,58 @@ After (phase 1):
 - Telemetry: query latency emitted as `admin.events.query`.
 - Tests: smoke + filter parser unit tests.
 
+#### Phase 2 — outcomes
+
+Shipped 2026-05-25:
+
+- **Endpoint:** `GET /admin/observability/events` —
+  `apps/server/src/http/routes/admin-observability.ts`. Filters:
+  `kind` (LIKE prefix, `%`/`_`/`\` escaped via `ESCAPE '\'`), `from`,
+  `to`, `layerId`, `flowId`, `correlationId`, `limit` (cap 200,
+  default 50), `cursor`. Cursor is `base64url(JSON({ts,id}))`;
+  pagination uses the SQLite row-value comparison
+  `(occurred_at, id) < (?, ?)` ordered DESC so a row inserted
+  between page calls neither duplicates nor skips a paginated row.
+  ISO TEXT comparison throughout (the plan's "ms epoch" wording
+  was wrong — `events.occurred_at` is ISO TEXT per
+  `0001_init.sql`).
+- **Route:** `/admin/observability/events` —
+  `apps/web/src/pages/admin/AdminEventsPage.tsx`.
+  Wired into `App.tsx` behind `isAdmin`, exposed in `AdminNav`
+  under a new "Observability" section (the section header was
+  reserved in phase 1; this phase populates the first item).
+- **Telemetry name:** `admin.observability.events.query` —
+  published as a bus event (telemetry in this project is bus
+  events on the `events` table per
+  `docs/dev/observability/telemetry.md` §4) with
+  `{ durationMs, rowCount, filterKeys, limit, hasCursor }`. Closed
+  catalogue lives in `apps/server/src/observability/events.ts` so a
+  typo in a producer fails the typecheck. Note: every viewer query
+  writes one such row into the same table the viewer reads. That's
+  acceptable — no recursion (handlers don't re-trigger the query)
+  and the rows are catalogue-bounded.
+- **Entry log:** `console.log('[admin.observability.events.query]',
+…)` with the active filter-key set (NOT values) + row count +
+  duration_ms.
+- **Tests:** `apps/server/tests/http-admin-observability.test.ts`
+  covers (a) filter parser unit + cursor round-trip, (b) listing
+  newest-first, (c) cursor stability with a concurrent insert,
+  (d) LIKE-prefix escapes user-supplied `%`, (e) non-admin →
+  `403 errors.admin.forbidden`, (f) entry log + telemetry event
+  emitted with stable shape.
+- **i18n:** new `admin.events.*` namespace + `admin.nav.events` +
+  `errors.admin.observability.*` keys, en + nl.
+- **Deviation from the wireframe:** the detail drawer reuses the
+  existing native-`<dialog>`-based `Dialog` component (focus trap,
+  ESC dismiss, focus return for free). No new `Drawer` /
+  `Sheet` primitive — the plan's wireframe header said "Drawer"
+  but §3 noted "shadcn Drawer (or Sheet)" and there is no Radix
+  dependency in the codebase yet. JSON payload renders in a
+  `<pre tabindex="0">` per §9 a11y. The filter form omits the
+  `aria-live` validation region — Phase 2 has no client-side
+  validation that produces a message, so an empty live region
+  would only add screen-reader noise.
+
 ### Phase 3 — LLM calls viewer (est. 6h)
 
 - `GET /admin/observability/llm-calls` — filters: `model`,

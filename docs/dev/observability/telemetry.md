@@ -163,9 +163,12 @@ In this codebase telemetry "names" appear in two places:
 
 1. **Bus event `type`** — dotted, English, past tense:
    `scheduledtask.run.succeeded`, `chat.message.failed`,
-   `entity.calendar.created`, `bus.dlq.added`. The closed
-   sets are exported as constants (e.g.
-   `SCHEDULED_TASK_EVENT_TYPES`) for machine-checking.
+   `entity.calendar.created`, `bus.dlq.added`,
+   `admin.observability.events.query` (admin observability
+   viewer; phases 3–4 will add `…llm-calls.query` +
+   `…chat-runs.query`). The closed sets are exported as constants
+   (e.g. `SCHEDULED_TASK_EVENT_TYPES`,
+   `ADMIN_OBSERVABILITY_EVENT_TYPES`) for machine-checking.
 2. **Structured-logger `event` field** — same shape, used by
    `logger.info(msg, fields)` so log lines and bus events
    stay grep-able by the same dotted name. Example

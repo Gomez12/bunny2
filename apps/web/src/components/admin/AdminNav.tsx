@@ -19,14 +19,15 @@ import { Button } from '../ui/button';
  * accessibility bar (Arrow/Home/End/ESC/Enter/Space, click-away,
  * focus restore).
  *
- * Sections shown in Phase 1:
+ * Sections shown today:
  *   - Users & Groups: Users, Groups
  *   - Operations: Scheduled tasks, Bus DLQ
+ *   - Observability: Events (phase 2)
  *
- * The "Observability" section is intentionally **not** added here in
- * Phase 1 — its pages land incrementally in Phases 2–6 of the plan,
- * and each phase wires its own menu item then. Stubbing dead links
- * now would mislead admins.
+ * Phases 3–6 of the observability plan append `LLM calls`, `Chat
+ * pipeline runs`, and `Analytics` entries to the Observability
+ * section as those pages land — stubbing dead links earlier would
+ * mislead admins, so the section grows phase by phase.
  */
 
 interface AdminNavItem {
@@ -60,6 +61,17 @@ const SECTIONS: readonly AdminNavSection[] = [
         path: '/admin/scheduled-tasks',
       },
       { key: 'busDlq', labelKey: 'admin.nav.busDlq', path: '/admin/bus/dlq' },
+    ],
+  },
+  {
+    key: 'observability',
+    headingKey: 'admin.nav.sections.observability',
+    items: [
+      {
+        key: 'events',
+        labelKey: 'admin.nav.events',
+        path: '/admin/observability/events',
+      },
     ],
   },
 ];

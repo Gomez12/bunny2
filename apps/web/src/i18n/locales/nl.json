@@ -187,10 +187,49 @@
       "scheduledTasks": "Geplande taken",
       "busDlq": "Bus DLQ",
       "observability": "Observability",
+      "events": "Events",
       "sections": {
         "usersAndGroups": "Gebruikers & groepen",
         "operations": "Operatie",
         "observability": "Observability"
+      }
+    },
+    "events": {
+      "title": "Eventslog",
+      "description": "Alleen-lezen weergave van het canonieke eventlog. Filter om resultaten te beperken; klik op een rij om payload en metadata te bekijken.",
+      "refresh": "Vernieuwen",
+      "loadMore": "Meer laden",
+      "endOfResults": "Einde van de resultaten",
+      "empty": "Geen events komen overeen met de huidige filters.",
+      "viewDetail": "Details",
+      "filters": {
+        "label": "Filter events",
+        "kind": "Type-prefix",
+        "kindHint": "Vergelijkt het event-type als prefix (bijv. \"chat.\").",
+        "kindPlaceholder": "chat.",
+        "from": "Vanaf",
+        "to": "Tot",
+        "layerId": "Layer-id",
+        "flowId": "Flow-id",
+        "correlationId": "Correlation-id",
+        "apply": "Toepassen",
+        "reset": "Reset"
+      },
+      "columns": {
+        "occurredAt": "Tijdstip",
+        "type": "Type",
+        "flowId": "Flow",
+        "correlationId": "Correlation",
+        "actions": "Acties"
+      },
+      "detail": {
+        "title": "Event-detail",
+        "id": "Event-id",
+        "correlationId": "Correlation-id",
+        "flowId": "Flow-id",
+        "payload": "Payload",
+        "metadata": "Metadata",
+        "empty": "(geen waarde)"
       }
     },
     "layers": {
@@ -579,7 +618,11 @@
       "lastAdmin": "Deze wijziging zou de laatste beheerder verwijderen.",
       "cannotResetOwnPassword": "Beheerders moeten hun eigen wachtwoord wijzigen via het accountmenu, niet via het admin reset-endpoint.",
       "notSeeded": "Beheerfuncties zijn nog niet beschikbaar — de initiële beheerseed is niet uitgevoerd.",
-      "badRequest": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw."
+      "badRequest": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw.",
+      "observability": {
+        "invalidCursor": "De paginatie-cursor is ongeldig.",
+        "invalidTimestamp": "Geef een geldige ISO-tijdstempel op voor het tijdsbereik."
+      }
     },
     "entity": {
       "notFound": "Item niet gevonden.",

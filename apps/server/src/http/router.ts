@@ -43,6 +43,7 @@ import { createScheduledTasksRepo } from '../scheduled/repo';
 import { registerScheduledTasksRoutes } from './routes/scheduled-tasks';
 import { registerAdminScheduledTasksRoutes } from './routes/admin-scheduled-tasks';
 import { registerAdminBusRoutes } from './routes/admin-bus';
+import { registerAdminObservabilityRoutes } from './routes/admin-observability';
 import { registerLayerChatRoutes } from './routes/layer-chat';
 import { registerLayerProposalsRoutes } from './routes/layer-proposals';
 import { registerLayerCapabilitiesRoutes } from './routes/layer-capabilities';
@@ -305,6 +306,10 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     bus: deps.bus,
     db: deps.db,
     ...(deps.replayDlq === undefined ? {} : { replayDlq: deps.replayDlq }),
+  });
+  registerAdminObservabilityRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
   });
 
   // Phase 6.4 — per-layer chat HTTP routes (conversations CRUD +

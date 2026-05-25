@@ -239,10 +239,49 @@
       "scheduledTasks": "Scheduled tasks",
       "busDlq": "Bus DLQ",
       "observability": "Observability",
+      "events": "Events",
       "sections": {
         "usersAndGroups": "Users & Groups",
         "operations": "Operations",
         "observability": "Observability"
+      }
+    },
+    "events": {
+      "title": "Events log",
+      "description": "Read-only view of the canonical event log. Apply filters to narrow results; click a row to inspect payload and metadata.",
+      "refresh": "Refresh",
+      "loadMore": "Load more",
+      "endOfResults": "End of results",
+      "empty": "No events match the current filters.",
+      "viewDetail": "Details",
+      "filters": {
+        "label": "Filter events",
+        "kind": "Kind prefix",
+        "kindHint": "Matches event type as a prefix (e.g. \"chat.\").",
+        "kindPlaceholder": "chat.",
+        "from": "From",
+        "to": "To",
+        "layerId": "Layer id",
+        "flowId": "Flow id",
+        "correlationId": "Correlation id",
+        "apply": "Apply",
+        "reset": "Reset"
+      },
+      "columns": {
+        "occurredAt": "Occurred at",
+        "type": "Type",
+        "flowId": "Flow",
+        "correlationId": "Correlation",
+        "actions": "Actions"
+      },
+      "detail": {
+        "title": "Event detail",
+        "id": "Event id",
+        "correlationId": "Correlation id",
+        "flowId": "Flow id",
+        "payload": "Payload",
+        "metadata": "Metadata",
+        "empty": "(no value)"
       }
     },
     "users": {
@@ -775,7 +814,11 @@
       "lastAdmin": "This change would remove the last administrator.",
       "cannotResetOwnPassword": "Administrators must change their own password via the account menu, not the admin reset endpoint.",
       "notSeeded": "Admin features are not available yet — the initial admin seed has not run.",
-      "badRequest": "The request could not be processed. Please check the input and try again."
+      "badRequest": "The request could not be processed. Please check the input and try again.",
+      "observability": {
+        "invalidCursor": "The pagination cursor is invalid.",
+        "invalidTimestamp": "Provide a valid ISO timestamp for the time range."
+      }
     },
     "layer": {
       "badRequest": "The request could not be processed. Please check the input and try again.",

@@ -667,3 +667,37 @@ export interface AdminBusDlqRow {
 export interface AdminScheduledTaskRow extends ScheduledTaskSummary {
   readonly layerSlug: string;
 }
+
+/**
+ * Phase 2 of `docs/dev/plans/admin-observability-viewer.md` — one row
+ * from `GET /admin/observability/events`. `payload` and `metadata`
+ * arrive as raw JSON strings; the viewer renders them collapsed inside
+ * a detail drawer per the redaction-audit rule for the events surface.
+ */
+export interface AdminObservabilityEventRow {
+  readonly id: string;
+  readonly type: string;
+  readonly occurredAt: string;
+  readonly correlationId: string | null;
+  readonly flowId: string | null;
+  readonly payload: string;
+  readonly metadata: string | null;
+}
+
+/** Optional filter set passed to `listAdminObservabilityEvents`. */
+export interface AdminObservabilityEventsFilter {
+  readonly kind?: string;
+  readonly from?: string;
+  readonly to?: string;
+  readonly layerId?: string;
+  readonly flowId?: string;
+  readonly correlationId?: string;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+/** Response shape for `GET /admin/observability/events`. */
+export interface AdminObservabilityEventsResponse {
+  readonly rows: readonly AdminObservabilityEventRow[];
+  readonly nextCursor: string | null;
+}

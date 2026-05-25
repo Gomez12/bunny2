@@ -24,6 +24,7 @@ import { AdminGroupsPage } from './pages/admin/AdminGroupsPage';
 import { AdminScheduledTasksPage } from './pages/admin/AdminScheduledTasksPage';
 import { AdminScheduledTaskRunsPage } from './pages/admin/AdminScheduledTaskRunsPage';
 import { AdminBusDlqPage } from './pages/admin/AdminBusDlqPage';
+import { AdminEventsPage } from './pages/admin/AdminEventsPage';
 import { ScheduledTasksListPage } from './pages/ScheduledTasksListPage';
 import { MyLayersPage } from './pages/MyLayersPage';
 import { LayerSettingsPage } from './pages/LayerSettingsPage';
@@ -239,6 +240,9 @@ function AppShell(): JSX.Element {
             />
           ) : null}
           {isAdmin ? <Route path="/admin/bus/dlq" element={<AdminBusDlqPage />} /> : null}
+          {isAdmin ? (
+            <Route path="/admin/observability/events" element={<AdminEventsPage />} />
+          ) : null}
           <Route path="/l/:layerSlug/dashboard" element={<LayerDashboardPage />} />
           <Route path="/l/:layerSlug/settings" element={<LayerSettingsPage />} />
           <Route path="/l/:layerSlug/companies" element={<CompaniesListPage />} />
@@ -377,6 +381,7 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
   if (pathname.startsWith('/admin/scheduled-tasks'))
     return t('layer.shell.subpages.adminScheduledTasks');
   if (pathname.startsWith('/admin/bus/dlq')) return t('layer.shell.subpages.adminBusDlq');
+  if (pathname.startsWith('/admin/observability/events')) return t('admin.events.title');
   if (pathname.startsWith('/account')) return t('auth.changePassword.title');
   return null;
 }
