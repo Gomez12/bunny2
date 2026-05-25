@@ -1,6 +1,6 @@
 # ADR 0028 — Whiteboard contract (snapshot-on-checkpoint versioning)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-05-25
 - Phase: 11 (sub-phases 11.0, 11.1, 11.7)
 - Related: [`docs/dev/plans/phase-11-whiteboards-excalidraw.md`](../plans/phase-11-whiteboards-excalidraw.md)
@@ -145,8 +145,8 @@ the wrapper trusts upstream's own self-consistency and only
 guards the fields the server actually consumes.
 
 **Why validate the envelope at all**: the server **does** consume
-the envelope. `version`, `type`, `elements` (for text extraction
-+ size cap + element-count badge), and `files` (for the size cap
+the envelope. `version`, `type`, `elements` (for text extraction,
+size cap, and element-count badge), and `files` (for the size cap
 in ADR `0030`) all drive server behaviour. Letting those fields
 in unchecked would mean a malformed PATCH could panic the text
 extractor or skip the size cap.

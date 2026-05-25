@@ -1,6 +1,6 @@
 # ADR 0029 — Excalidraw embedding policy (upstream OSS only)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-05-25
 - Phase: 11 (sub-phases 11.0, 11.5, 11.7)
 - Related: [`docs/dev/plans/phase-11-whiteboards-excalidraw.md`](../plans/phase-11-whiteboards-excalidraw.md)
@@ -77,20 +77,20 @@ a deliberate review pass.
 
 The split is sharp:
 
-| Concern              | Lives in              | Why                                                                                                                              |
-| -------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Drawing primitives   | Excalidraw            | The whole point of using the package                                                                                             |
-| Undo / redo / multi-select | Excalidraw         | Upstream is better at this than any wrapper would be                                                                            |
-| Keyboard map         | Excalidraw            | Wrapper must not duplicate keys; `react-big-calendar` precedent (phase 4c)                                                       |
-| Element-level state  | Excalidraw            | Per ADR 0028 the server treats element bodies as opaque                                                                          |
-| Save (debounced PATCH) | Wrapper             | Auth + flow-id + telemetry headers + retry policy belong to the app, not the canvas                                              |
-| Checkpoint trigger   | Wrapper               | Per ADR 0028 §1 — both manual button and idle-window                                                                             |
-| Auth check           | Wrapper               | `effectiveLayers` happens before the canvas mounts                                                                               |
-| i18n (wrapper strings) | Wrapper              | `entity.whiteboards.*` keys land in the project's locale bundles                                                                 |
-| i18n (canvas strings) | Excalidraw           | Wrapper passes `langCode` through; upstream ships locales                                                                        |
-| Telemetry            | Wrapper               | Save latency, checkpoint bytes, error count — emitted around the PATCH, not from inside the canvas                               |
-| Lock banner          | Wrapper               | "Another session edited this whiteboard a moment ago" UI lives outside the canvas; canvas does not know about other sessions    |
-| Export menu          | Wrapper invokes Excalidraw API | UI chrome is wrapper; `exportToBlob` / `exportToSvg` are upstream APIs called from the wrapper                              |
+| Concern                    | Lives in                       | Why                                                                                                                          |
+| -------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Drawing primitives         | Excalidraw                     | The whole point of using the package                                                                                         |
+| Undo / redo / multi-select | Excalidraw                     | Upstream is better at this than any wrapper would be                                                                         |
+| Keyboard map               | Excalidraw                     | Wrapper must not duplicate keys; `react-big-calendar` precedent (phase 4c)                                                   |
+| Element-level state        | Excalidraw                     | Per ADR 0028 the server treats element bodies as opaque                                                                      |
+| Save (debounced PATCH)     | Wrapper                        | Auth + flow-id + telemetry headers + retry policy belong to the app, not the canvas                                          |
+| Checkpoint trigger         | Wrapper                        | Per ADR 0028 §1 — both manual button and idle-window                                                                         |
+| Auth check                 | Wrapper                        | `effectiveLayers` happens before the canvas mounts                                                                           |
+| i18n (wrapper strings)     | Wrapper                        | `entity.whiteboards.*` keys land in the project's locale bundles                                                             |
+| i18n (canvas strings)      | Excalidraw                     | Wrapper passes `langCode` through; upstream ships locales                                                                    |
+| Telemetry                  | Wrapper                        | Save latency, checkpoint bytes, error count — emitted around the PATCH, not from inside the canvas                           |
+| Lock banner                | Wrapper                        | "Another session edited this whiteboard a moment ago" UI lives outside the canvas; canvas does not know about other sessions |
+| Export menu                | Wrapper invokes Excalidraw API | UI chrome is wrapper; `exportToBlob` / `exportToSvg` are upstream APIs called from the wrapper                               |
 
 The wrapper communicates with Excalidraw only via documented
 props (`initialData`, `onChange`, `langCode`, `theme`, the
@@ -119,7 +119,7 @@ needed) that disable:
   button, plus the `isCollaborating` prop is never true). Live
   collab is a deferred follow-up per plan §3.
 - **Embedded image-from-URL** (image elements with `dataURL =
-  http(s)://…`). Server-side validation in 11.1 rejects any
+http(s)://…`). Server-side validation in 11.1 rejects any
   `files` entry whose `dataURL` is not a `data:` URI, plus a
   per-file size cap (see ADR 0030). Url-sourced images would
   fetch from arbitrary hosts inside the user's session and emit
@@ -148,7 +148,7 @@ follow-up + a security review against the same trust boundary.
   a follow-up should be filed.
 - Bundle weight (~hundreds of KiB minified+gz) is mitigated by
   `React.lazy` route-split on the detail page (plan §10). Widget
-  + list page do not import the canvas.
+  - list page do not import the canvas.
 
 ---
 

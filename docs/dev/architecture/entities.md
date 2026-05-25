@@ -1470,6 +1470,104 @@ This is the SIXTH zero-foundation-tweak commit in the phase-4 block
 
 ---
 
+## 10k. Fifth consumer: whiteboards (11.1..11.6)
+
+The whiteboards kind is the fifth concrete consumer on top of the
+§4.0 foundation. It is the FIRST consumer whose payload is a large
+non-textual document (an Excalidraw scene — hundreds to thousands
+of element objects plus a `files` binary map) rather than a small
+structured record. Three ADRs record the contract:
+[`0028`](../decisions/0028-whiteboard-contract.md) (snapshot-on-
+checkpoint versioning + envelope-only zod validation),
+[`0029`](../decisions/0029-excalidraw-embedding-policy.md)
+(upstream-only embed, wrapper owns persistence / auth / i18n /
+telemetry / lock UI), and
+[`0030`](../decisions/0030-whiteboard-asset-storage.md) (`files`
+stored inline in `payload_json`, 2 MiB per-file cap, phase-15
+handoff path).
+
+### Versioning — snapshot-on-checkpoint
+
+A whiteboard edit session emits 10⁴+ `onChange` callbacks. Writing
+an `entity_versions` row per callback would inflate the table by
+~10³× versus other entity kinds for negligible recovery value, so
+phase 11 bumps `version` and writes an `entity_versions` row only
+on a **checkpoint** — either an explicit "Save version" click in
+the §11.5 UI, or the 2-minute idle-then-edit auto-checkpoint. The
+working copy between checkpoints is persisted by overwriting
+`whiteboards.payload_json` (`updated_at` / `updated_by` move,
+`version` does not). The §4.0 contract suite's `version-bump`
+test still passes — a checkpoint bumps the version; an 11.1-
+specific test additionally asserts that a non-checkpoint write
+does NOT bump it, locking the coarse-grained semantic. See
+ADR [`0028`](../decisions/0028-whiteboard-contract.md) decision 1.
+
+### `files` map storage — inline + 2 MiB cap
+
+The Excalidraw scene's `files` map (binary attachments — pasted
+images, library shapes) is stored **inline** inside
+`payload_json` in v1. Per-file cap is **2 MiB** (`BinaryFileData`
+entry size after JSON serialisation). A PATCH whose `files` map
+exceeds the cap returns `errors.whiteboards.fileTooLarge` (413)
+without persisting. Total scene byte size is also capped (see
+the `scene_byte_size` indexed column in `0021_whiteboards.sql`).
+No side table, no blob storage in v1 — the phase-15 file-storage
+sub-phase will introduce a per-file handoff to externalise
+over-threshold blobs without changing the public scene contract.
+See ADR [`0030`](../decisions/0030-whiteboard-asset-storage.md)
+decisions 1–3.
+
+### Mention-resolution event flow
+
+The whiteboard module declares two enrichment jobs in
+`apps/server/src/entities/whiteboards/enrichment.ts`:
+
+- `whiteboard.sceneSummary` (runs on `created` / `updated`) — walks
+  the text-element extract built by `whiteboardModule.searchableText`
+  (per ADR 0028 decision 2: text elements only, no geometry tokens)
+  and writes a short summary into the entity's `entity_souls` slice.
+- `whiteboard.mentionResolver` (runs on `created` / `updated`) —
+  scans the same text extract for `@slug` and `[[ slug ]]` mentions,
+  resolves each against the same layer's other entities (non-deleted,
+  not the whiteboard itself), and writes one row per resolved mention
+  to `entity_external_links` with `connector = 'whiteboard.mention'`.
+  Re-runs are idempotent; duplicate inserts are no-ops.
+
+The dispatch chain is:
+
+```
+entity.whiteboard.{created,updated}            (per-write, from EntityStore)
+  → enrichment runner debounce (default 5s, per layer rate limit)
+  → whiteboard.sceneSummary    → entity_souls.memory_json update
+  → whiteboard.mentionResolver → entity_external_links rows
+                                  (connector = 'whiteboard.mention')
+
+entity.whiteboards.enrich                       (scheduled, every 24h)
+  → coalesces missed enrichment work across the layer (see
+    `apps/server/src/entities/whiteboards/scheduled.ts`)
+```
+
+Both jobs go through the standard enrichment runner contract
+(§10c) — same per-layer rate limit, same coalescing window, same
+secret-strip discipline. The scheduled sweep is registered via
+`registerWhiteboardsScheduledTaskHandlers()` and appears in
+[`job-inventory.md`](./job-inventory.md) as
+`entity.whiteboards.enrich`.
+
+### Foundation tweaks
+
+**ZERO.** The seven existing extension slots
+(`indexedColumns`, `getConnector` + dispatcher + runner,
+`enrichmentJobs`, `statsProvider`, `EntityConnector.ingest`,
+`enrichmentOverwriteFields`, `summaryColumns`) absorbed the fifth
+consumer without code change to the §4.0 contract — the largest
+payload kind to date does not need a new slot. This is the
+empirical confirmation the contract is stable after five
+consumers across four payload shapes (structured record,
+polymorphic link, calendar event, Excalidraw scene).
+
+---
+
 ## 11. Related docs
 
 - `docs/dev/architecture/overview.md` — the spine; entities sit
@@ -1498,3 +1596,13 @@ This is the SIXTH zero-foundation-tweak commit in the phase-4 block
   endpoint, boot-time rebuild semantics, no-feedback-loop invariant.
 - `docs/dev/plans/done/phase-04-first-entities.md` — the phase plan;
   per-kind sub-phases (4a..4d) and the §13 risk table.
+- `docs/dev/decisions/0028-whiteboard-contract.md` — snapshot-on-
+  checkpoint versioning, text-element-only `searchable_text`,
+  envelope-only zod validation (opaque element bodies).
+- `docs/dev/decisions/0029-excalidraw-embedding-policy.md` —
+  upstream `@excalidraw/excalidraw` only, wrapper owns persistence
+  / auth / i18n / telemetry / lock UI, disabled-in-v1 feature
+  list.
+- `docs/dev/decisions/0030-whiteboard-asset-storage.md` — `files`
+  map inline in `payload_json`, 2 MiB per-file cap, phase-15 file-
+  storage handoff path.

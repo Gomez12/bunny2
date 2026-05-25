@@ -1,6 +1,6 @@
 # ADR 0030 — Whiteboard asset storage (`files` map inline, capped)
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-05-25
 - Phase: 11 (sub-phases 11.0, 11.1, 11.7)
 - Related: [`docs/dev/plans/phase-11-whiteboards-excalidraw.md`](../plans/phase-11-whiteboards-excalidraw.md)
@@ -32,7 +32,7 @@ Three options exist for where to put those bytes:
 1. **Inline in `payload_json`** — keep the `files` map next to
    the elements. Simple; row size grows with image count.
 2. **Side table** (`whiteboard_files`) keyed by `(entity_id,
-   file_id)` — splits binary from JSON, requires extra
+file_id)` — splits binary from JSON, requires extra
    read/write to assemble the scene.
 3. **Real file storage** (filesystem / S3-equivalent via the
    future phase-15 `file_storage` entity) — out of scope today
