@@ -179,8 +179,18 @@ responseTruncated, linkedEventCount }` /
    query/detail shapes as the LLM-calls events; the third is the
    gated-content audit-trail event and carries
    `{ runId, revealedKinds: ['intent' | 'entities'] }` only —
-   no payload content). The closed sets are exported as
-   constants (e.g. `SCHEDULED_TASK_EVENT_TYPES`,
+   no payload content).
+   `admin.observability.bus-outbox.query` /
+   `admin.observability.bus-outbox.detail` (Phase 5 bus outbox
+   ledger viewer; the query event carries the same
+   `{ durationMs, rowCount, filterKeys, limit, hasCursor }`
+   shape as the events / llm-calls / chat-runs queries; the
+   detail event carries
+   `{ durationMs, found, payloadTruncated, metadataTruncated }`
+   so R3 mitigation activity stays observable without leaking
+   the bytes themselves).
+   The closed sets are exported as constants
+   (e.g. `SCHEDULED_TASK_EVENT_TYPES`,
    `ADMIN_OBSERVABILITY_EVENT_TYPES`) for machine-checking.
 2. **Structured-logger `event` field** — same shape, used by
    `logger.info(msg, fields)` so log lines and bus events

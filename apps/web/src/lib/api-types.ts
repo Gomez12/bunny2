@@ -883,3 +883,55 @@ export interface AdminObservabilityChatRunDetail extends AdminObservabilityChatR
   readonly linkedLlmCalls: readonly AdminObservabilityChatRunLinkedLlmCall[];
   readonly rawIncluded: boolean;
 }
+
+/**
+ * Phase 5 of `docs/dev/plans/admin-observability-viewer.md` — bus
+ * outbox ledger expansion. The list row mirrors the `bus_outbox`
+ * schema; `payload_json` / `metadata_json` are detail-drawer only per
+ * the redaction audit. `payloadPreview` is a SUBSTR-clipped excerpt
+ * (matches the DLQ list treatment).
+ */
+export type AdminBusOutboxStatus = 'pending' | 'in_flight' | 'delivered' | 'dead' | 'abandoned';
+
+export interface AdminBusOutboxRow {
+  readonly id: string;
+  readonly type: string;
+  readonly correlationId: string | null;
+  readonly flowId: string | null;
+  readonly occurredAt: string;
+  readonly status: string;
+  readonly attempt: number;
+  readonly claimedAt: string | null;
+  readonly deliveredAt: string | null;
+  readonly error: string | null;
+  readonly payloadPreview: string;
+}
+
+export interface AdminBusOutboxFilter {
+  readonly status?: AdminBusOutboxStatus;
+  readonly type?: string;
+  readonly from?: string;
+  readonly to?: string;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface AdminBusOutboxResponse {
+  readonly rows: readonly AdminBusOutboxRow[];
+  readonly nextCursor: string | null;
+}
+
+/**
+ * Drawer detail from `GET /admin/bus/outbox/:id`. `payload` and
+ * `metadata` may be truncated > 200 KB with the same R3 marker as
+ * the LLM-calls detail; the `*Truncated` / `*OriginalBytes` flags let
+ * the UI label payloads that hit the cap.
+ */
+export interface AdminBusOutboxDetail extends AdminBusOutboxRow {
+  readonly payload: string;
+  readonly payloadTruncated: boolean;
+  readonly payloadOriginalBytes: number;
+  readonly metadata: string | null;
+  readonly metadataTruncated: boolean;
+  readonly metadataOriginalBytes: number;
+}

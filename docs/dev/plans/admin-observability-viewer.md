@@ -693,6 +693,119 @@ chat_conversations (via conversation_id)` because neither
   - `AdminBusDlqPage`) so admins can also see in-flight /
     delivered outbox rows, not just DLQ.
 
+#### Phase 5 — outcomes
+
+Shipped 2026-05-25:
+
+- **Scheduled-task runs drilldown: reused as-is from
+  `ui-exposure-gaps` phase 4.** Commit `f908e9b` shipped the
+  endpoint (`GET /admin/scheduled-tasks/:taskId/runs` in
+  `apps/server/src/http/routes/admin-scheduled-tasks.ts`), the page
+  (`apps/web/src/pages/admin/AdminScheduledTaskRunsPage.tsx`), and
+  the deep-link from `AdminScheduledTasksPage` (the per-row "Runs"
+  action). Phase 5 added nothing here — the drilldown is already
+  discoverable, the endpoint already exists. No telemetry was
+  added per the spec's "otherwise keep what exists" branch (the
+  prior work treated the runs endpoint as a pure diagnostic surface,
+  consistent with the per-layer scheduled-tasks routes).
+- **Bus expansion choice: Option A** — extend `AdminBusDlqPage`
+  rather than split into two pages. Reasoning: the existing page
+  already has the right shell + i18n namespace + route, and the
+  AdminNav stays clean with one Bus entry. The page now renders a
+  two-tab UI (`role="tablist"` + `role="tabpanel"`): **DLQ**
+  (unchanged behaviour, including the Replay confirm dialog) and
+  **Outbox** (new — non-DLQ rows). The nav label updated from
+  "Bus DLQ" → "Bus ledger" + the page title from "Admin · Dead-letter
+  queue" → "Admin · Bus ledger" so the nav entry no longer lies about
+  scope. The page route stays at `/admin/bus/dlq` — moving it would
+  break deep links from prior phases.
+- **New server endpoints (admin-bus.ts):**
+  - `GET /admin/bus/outbox` — cursor pagination on
+    `(occurred_at, id) DESC`; filters: `status` (whitelist:
+    pending / in*flight / delivered / dead / abandoned),
+    `type` (LIKE prefix with `%`/`*`/`\` escaped via
+    `ESCAPE '\'`), `from`, `to`, plus `limit` (cap 200, default 50)
+    and `cursor` (base64url JSON `{ts,id}`). List response excludes
+    `payload_json` and `metadata_json` per the redaction audit;
+    a `SUBSTR(payload_json, 1, 501)`-clipped `payloadPreview`
+    matches the existing DLQ-list treatment. The legacy DLQ endpoint
+    (`GET /admin/bus/dlq`) keeps its `{items}` response shape so the
+    existing web client doesn't have to change.
+  - `GET /admin/bus/outbox/:id` — drawer detail. Returns the row
+    plus the full `payload` and `metadata` JSON. Both payloads are
+    server-truncated > 200 KB with the same R3 marker as
+    `llm_calls` (`...[truncated; full payload available via API]`);
+    booleans `payloadTruncated` / `metadataTruncated` plus
+    `payloadOriginalBytes` / `metadataOriginalBytes` let the UI
+    label payloads that hit the cap. Returns 404
+    `errors.admin.observability.notFound` for an unknown id.
+- **Telemetry catalogue (additions to
+  `ADMIN_OBSERVABILITY_EVENT_TYPES`):**
+  - `admin.observability.bus-outbox.query` —
+    `{ durationMs, rowCount, filterKeys, limit, hasCursor }`.
+  - `admin.observability.bus-outbox.detail` —
+    `{ durationMs, found, payloadTruncated, metadataTruncated }`.
+
+  The closed-shape catalogue stays type-checked at compile time
+  via the const-tuple in `apps/server/src/observability/events.ts`.
+
+- **Entry logs:** `console.log('[admin.observability.bus-outbox.query]',
+…)` and `[admin.observability.bus-outbox.detail]` with the active
+  filter-key set (NOT values) + row count + duration. Matches the
+  Phase 2/3/4 convention.
+- **Web wiring:**
+  - `apps/web/src/pages/admin/AdminBusDlqPage.tsx` now renders a
+    tablist with two panels. The DLQ panel keeps the prior
+    behaviour byte-identical (refresh button, table, ConfirmDialog
+    on Replay). The Outbox panel mirrors the Phase 2 pattern:
+    filter form, paginated table, refresh button, "Load more"
+    cursor button, "End of results" terminal label, row click
+    opens a `<dialog>`-based drawer that lazily fetches the detail
+    via `GET /admin/bus/outbox/:id` and renders the payload +
+    metadata in `<details>` → `<pre tabindex="0">` blocks.
+  - `apps/web/src/lib/api.ts` gained `listAdminBusOutbox` and
+    `getAdminBusOutboxDetail`. `apps/web/src/lib/api-types.ts`
+    gained `AdminBusOutboxRow`, `AdminBusOutboxFilter`,
+    `AdminBusOutboxResponse`, `AdminBusOutboxDetail`, and the
+    `AdminBusOutboxStatus` string-literal union.
+  - No new AdminNav entry — the existing "Bus DLQ" entry was
+    relabelled "Bus ledger" because the page is now the canonical
+    bus-ledger surface.
+- **i18n:** the existing `admin.bus.dlq.*` namespace is unchanged;
+  new keys land under `admin.bus.title`, `admin.bus.tabs.*`,
+  `admin.bus.tablistLabel`, and `admin.bus.outbox.*` (en + nl).
+  The shell-title fallback `layer.shell.subpages.adminBusDlq`
+  changed from "Dead-letter queue" → "Bus ledger" so the page
+  header matches the new scope. `admin.nav.busDlq` is now
+  "Bus ledger" / "Bus-overzicht".
+- **Tests:**
+  - `apps/server/tests/http-admin-bus-outbox.test.ts` covers
+    (a) filter parser unit + cursor round-trip, (b) listing
+    newest-first, (c) cursor stability with a concurrent insert,
+    (d) status filter narrows correctly (delivered rows surface
+    separately from rows in other statuses), (e) non-admin →
+    `403`, (f) telemetry event written on every list call, (g)
+    detail returns the row + payload, (h) > 200 KB payload
+    truncates with the R3 marker + `payloadTruncated=true`,
+    (i) 404 on unknown id, (j) non-admin → 403 on detail.
+  - `apps/server/tests/http-admin-bus-dlq.test.ts` is unchanged —
+    the DLQ endpoint, response shape, and replay path are
+    behaviour-preserving.
+- **Deviations from the spec:**
+  - The spec offered "extend the existing DLQ endpoint with a
+    status filter" as an alternative. We did NOT take that path:
+    `bus_dlq` and `bus_outbox` carry different column sets
+    (`bus_dlq` adds `subscriber_key` / `attempts` / `failed_at`;
+    `bus_outbox` exposes `claimed_at` / `delivered_at` / lifecycle
+    `status`), so one endpoint covering both would have produced
+    a uniformly-typed response with half the columns
+    null-or-meaningless on every row. Two endpoints keep the
+    types honest.
+  - Per-row name resolution (layer-id → slug, user-id → email) is
+    NOT added — neither column lives on `bus_outbox`; the row id +
+    correlation/flow id are already enough to cross-reference
+    other admin viewers.
+
 ### Phase 6 — Analytics sink + viewer (est. 8h)
 
 - Migration: `analytics_events` table —

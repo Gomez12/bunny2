@@ -237,7 +237,7 @@
       "users": "Users",
       "groups": "Groups",
       "scheduledTasks": "Scheduled tasks",
-      "busDlq": "Bus DLQ",
+      "busDlq": "Bus ledger",
       "observability": "Observability",
       "events": "Events",
       "llmCalls": "LLM calls",
@@ -713,6 +713,12 @@
       }
     },
     "bus": {
+      "title": "Bus ledger",
+      "tablistLabel": "Bus ledger sections",
+      "tabs": {
+        "dlq": "DLQ",
+        "outbox": "Outbox"
+      },
       "dlq": {
         "title": "Dead-letter queue",
         "empty": "No dead-letter rows. The bus is healthy.",
@@ -732,6 +738,55 @@
           "cta": "Replay"
         },
         "replayed": "Row replayed."
+      },
+      "outbox": {
+        "title": "Outbox ledger",
+        "description": "Read-only view of the durable bus outbox: pending, in-flight, delivered, dead and abandoned rows. Click a row to inspect the redacted payload and metadata.",
+        "refresh": "Refresh",
+        "loadMore": "Load more",
+        "endOfResults": "End of results",
+        "empty": "No outbox rows match the current filters.",
+        "viewDetail": "Details",
+        "status": {
+          "pending": "Pending",
+          "in_flight": "In flight",
+          "delivered": "Delivered",
+          "dead": "Dead",
+          "abandoned": "Abandoned"
+        },
+        "filters": {
+          "label": "Filter outbox rows",
+          "status": "Status",
+          "statusAll": "All statuses",
+          "type": "Event type prefix",
+          "typePlaceholder": "chat.",
+          "from": "From",
+          "to": "To",
+          "apply": "Apply",
+          "reset": "Reset"
+        },
+        "columns": {
+          "occurredAt": "Occurred at",
+          "type": "Type",
+          "status": "Status",
+          "attempt": "Attempt",
+          "deliveredAt": "Delivered at",
+          "actions": "Actions"
+        },
+        "detail": {
+          "title": "Outbox row detail",
+          "id": "Outbox id",
+          "status": "Status",
+          "correlationId": "Correlation id",
+          "flowId": "Flow id",
+          "deliveredAt": "Delivered at",
+          "attempt": "Attempt",
+          "error": "Error",
+          "payload": "Payload",
+          "metadata": "Metadata",
+          "empty": "(no value)",
+          "truncated": "(truncated; {{bytes}} bytes original)"
+        }
       }
     }
   },
@@ -885,7 +940,7 @@
         "todos": "Todos",
         "scheduledTasks": "Scheduled tasks",
         "adminScheduledTasks": "Admin · Scheduled tasks",
-        "adminBusDlq": "Admin · Dead-letter queue",
+        "adminBusDlq": "Admin · Bus ledger",
         "proposals": "Improvement proposals",
         "capabilities": "Capabilities"
       }

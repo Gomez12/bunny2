@@ -27,6 +27,8 @@ export const ADMIN_OBSERVABILITY_EVENT_TYPES = {
   ChatRunsQuery: 'admin.observability.chat-runs.query',
   ChatRunsDetail: 'admin.observability.chat-runs.detail',
   ChatRunsRawContentViewed: 'admin.observability.chat-runs.raw-content.viewed',
+  BusOutboxQuery: 'admin.observability.bus-outbox.query',
+  BusOutboxDetail: 'admin.observability.bus-outbox.detail',
 } as const;
 
 export type AdminObservabilityEventType =
@@ -128,4 +130,32 @@ export interface AdminObservabilityChatRunsDetailPayload {
 export interface AdminObservabilityChatRunsRawContentViewedPayload {
   readonly runId: string;
   readonly revealedKinds: readonly ('intent' | 'entities')[];
+}
+
+/**
+ * Phase 5 — bus outbox list query payload. Same closed dimension set
+ * as the other admin viewers (durationMs, rowCount, filterKeys, limit,
+ * hasCursor) so dashboards can aggregate by `type` across surfaces.
+ * The bus DLQ side keeps its existing legacy shape (no telemetry —
+ * the DLQ list ships from `admin-bus.ts` and is unchanged in phase 5).
+ */
+export interface AdminObservabilityBusOutboxQueryPayload {
+  readonly durationMs: number;
+  readonly rowCount: number;
+  readonly filterKeys: readonly string[];
+  readonly limit: number;
+  readonly hasCursor: boolean;
+}
+
+/**
+ * Phase 5 — bus outbox detail fetch payload. `payloadTruncated` /
+ * `metadataTruncated` capture the > 200 KB R3 mitigation activity so
+ * operators can see how often a large payload tripped the cap — the
+ * value itself never appears in telemetry.
+ */
+export interface AdminObservabilityBusOutboxDetailPayload {
+  readonly durationMs: number;
+  readonly found: boolean;
+  readonly payloadTruncated: boolean;
+  readonly metadataTruncated: boolean;
 }

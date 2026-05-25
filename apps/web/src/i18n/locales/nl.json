@@ -173,7 +173,7 @@
       "subpages": {
         "scheduledTasks": "Geplande taken",
         "adminScheduledTasks": "Beheer · Geplande taken",
-        "adminBusDlq": "Beheer · Dead-letter-wachtrij",
+        "adminBusDlq": "Beheer · Bus-overzicht",
         "proposals": "Verbetervoorstellen",
         "capabilities": "Capabilities"
       }
@@ -185,7 +185,7 @@
       "users": "Gebruikers",
       "groups": "Groepen",
       "scheduledTasks": "Geplande taken",
-      "busDlq": "Bus DLQ",
+      "busDlq": "Bus-overzicht",
       "observability": "Observability",
       "events": "Events",
       "llmCalls": "LLM-calls",
@@ -498,6 +498,12 @@
       }
     },
     "bus": {
+      "title": "Bus-overzicht",
+      "tablistLabel": "Bus-overzicht secties",
+      "tabs": {
+        "dlq": "DLQ",
+        "outbox": "Outbox"
+      },
       "dlq": {
         "title": "Dead-letter-wachtrij",
         "empty": "Geen dead-letter-rijen. De bus is gezond.",
@@ -517,6 +523,55 @@
           "cta": "Opnieuw afspelen"
         },
         "replayed": "Rij opnieuw afgespeeld."
+      },
+      "outbox": {
+        "title": "Outbox-overzicht",
+        "description": "Alleen-lezen weergave van de durable bus-outbox: pending, in-flight, delivered, dead en abandoned rijen. Klik op een rij om de geredacteerde payload en metadata in te zien.",
+        "refresh": "Vernieuwen",
+        "loadMore": "Meer laden",
+        "endOfResults": "Einde van resultaten",
+        "empty": "Geen outbox-rijen voldoen aan de huidige filters.",
+        "viewDetail": "Details",
+        "status": {
+          "pending": "In afwachting",
+          "in_flight": "In behandeling",
+          "delivered": "Bezorgd",
+          "dead": "Dood",
+          "abandoned": "Opgegeven"
+        },
+        "filters": {
+          "label": "Outbox-rijen filteren",
+          "status": "Status",
+          "statusAll": "Alle statussen",
+          "type": "Eventtype-prefix",
+          "typePlaceholder": "chat.",
+          "from": "Van",
+          "to": "Tot",
+          "apply": "Toepassen",
+          "reset": "Resetten"
+        },
+        "columns": {
+          "occurredAt": "Opgetreden om",
+          "type": "Type",
+          "status": "Status",
+          "attempt": "Poging",
+          "deliveredAt": "Bezorgd om",
+          "actions": "Acties"
+        },
+        "detail": {
+          "title": "Outbox-rij detail",
+          "id": "Outbox-id",
+          "status": "Status",
+          "correlationId": "Correlatie-id",
+          "flowId": "Flow-id",
+          "deliveredAt": "Bezorgd om",
+          "attempt": "Poging",
+          "error": "Fout",
+          "payload": "Payload",
+          "metadata": "Metadata",
+          "empty": "(geen waarde)",
+          "truncated": "(afgekapt; {{bytes}} bytes origineel)"
+        }
       }
     }
   },

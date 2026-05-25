@@ -27,6 +27,9 @@ import type {
   AddLayerMemberPayload,
   AddLayerVisibilityPayload,
   AdminBusDlqRow,
+  AdminBusOutboxDetail,
+  AdminBusOutboxFilter,
+  AdminBusOutboxResponse,
   AdminObservabilityEventsFilter,
   AdminObservabilityEventsResponse,
   AdminObservabilityLlmCallDetail,
@@ -1443,6 +1446,39 @@ export async function replayAdminBusDlq(outboxId: string): Promise<void> {
   await request<{ ok: true }>(`/admin/bus/dlq/${encodeURIComponent(outboxId)}/replay`, {
     method: 'POST',
   });
+}
+
+/**
+ * Phase 5 of `docs/dev/plans/admin-observability-viewer.md` — bus
+ * outbox ledger expansion. Lists non-DLQ rows (pending / in_flight /
+ * delivered / dead / abandoned) with cursor pagination on
+ * `(occurred_at DESC, id DESC)`; mirrors the events / llm-calls
+ * cursor scheme. `payload_json` and `metadata_json` are excluded from
+ * the list response per the redaction audit; use
+ * `getAdminBusOutboxDetail` for the drawer.
+ */
+export async function listAdminBusOutbox(
+  filter: AdminBusOutboxFilter = {},
+): Promise<AdminBusOutboxResponse> {
+  const params = new URLSearchParams();
+  if (filter.status !== undefined) params.set('status', filter.status);
+  if (filter.type !== undefined && filter.type !== '') params.set('type', filter.type);
+  if (filter.from !== undefined && filter.from !== '') params.set('from', filter.from);
+  if (filter.to !== undefined && filter.to !== '') params.set('to', filter.to);
+  if (filter.limit !== undefined) params.set('limit', String(filter.limit));
+  if (filter.cursor !== undefined && filter.cursor !== '') params.set('cursor', filter.cursor);
+  const qs = params.toString();
+  const path = `/admin/bus/outbox${qs.length === 0 ? '' : `?${qs}`}`;
+  return request<AdminBusOutboxResponse>(path);
+}
+
+/**
+ * `GET /admin/bus/outbox/:id` — drawer detail with the (truncated)
+ * payload + metadata JSON. > 200 KB payloads are server-truncated
+ * with an explicit marker (R3 mitigation).
+ */
+export async function getAdminBusOutboxDetail(id: string): Promise<AdminBusOutboxDetail> {
+  return request<AdminBusOutboxDetail>(`/admin/bus/outbox/${encodeURIComponent(id)}`);
 }
 
 /**
