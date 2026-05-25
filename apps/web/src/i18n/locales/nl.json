@@ -188,6 +188,7 @@
       "busDlq": "Bus DLQ",
       "observability": "Observability",
       "events": "Events",
+      "llmCalls": "LLM-calls",
       "sections": {
         "usersAndGroups": "Gebruikers & groepen",
         "operations": "Operatie",
@@ -230,6 +231,85 @@
         "payload": "Payload",
         "metadata": "Metadata",
         "empty": "(geen waarde)"
+      }
+    },
+    "llmCalls": {
+      "title": "LLM-calls",
+      "description": "Alleen-lezen weergave van de LLM-calls telemetrietabel. De aggregaties tonen het lopende 24u / 7d venster; klik op een rij voor het (geredigeerde) request en response.",
+      "refresh": "Vernieuwen",
+      "loadMore": "Meer laden",
+      "endOfResults": "Einde van de resultaten",
+      "empty": "Geen LLM-calls komen overeen met de huidige filters.",
+      "viewDetail": "Details",
+      "rollups": {
+        "label": "LLM-calls samenvatting",
+        "heading": "Samenvatting",
+        "window24h": "Laatste 24 uur",
+        "window7d": "Laatste 7 dagen",
+        "count": "Aantal",
+        "cost": "Kosten",
+        "p50": "p50-latency",
+        "p95": "p95-latency",
+        "errorRate": "Foutpercentage"
+      },
+      "filters": {
+        "label": "Filter LLM-calls",
+        "model": "Model",
+        "endpoint": "Endpoint",
+        "layerId": "Layer-id",
+        "userId": "Gebruikers-id",
+        "status": "Status",
+        "statusAll": "Alles",
+        "statusOk": "Geslaagd",
+        "statusErr": "Fout",
+        "from": "Vanaf",
+        "to": "Tot",
+        "costMin": "Min. kosten (USD)",
+        "latencyMaxMs": "Max. latency (ms)",
+        "apply": "Toepassen",
+        "reset": "Reset"
+      },
+      "columns": {
+        "startedAt": "Gestart op",
+        "model": "Model",
+        "endpoint": "Endpoint",
+        "tokens": "Tok in/uit",
+        "costUsd": "Kosten",
+        "latencyMs": "ms",
+        "status": "Status",
+        "actions": "Acties"
+      },
+      "status": {
+        "ok": "Geslaagd",
+        "err": "Fout"
+      },
+      "detail": {
+        "title": "LLM-call detail",
+        "id": "Call-id",
+        "model": "Model",
+        "endpoint": "Endpoint",
+        "modelSource": "Modelbron",
+        "latencyMs": "Latency (ms)",
+        "costUsd": "Kosten (USD)",
+        "tokensIn": "Tokens in",
+        "tokensOut": "Tokens uit",
+        "correlationId": "Correlation-id",
+        "flowId": "Flow-id",
+        "layerId": "Layer-id",
+        "userId": "Gebruikers-id",
+        "error": "Fout",
+        "request": "Request (geredigeerd)",
+        "response": "Response (geredigeerd)",
+        "expandJson": "JSON uitklappen",
+        "empty": "(geen waarde)",
+        "truncated": "Payload is afgekapt; originele grootte {{bytes}} bytes",
+        "linkedEvents": "Gekoppelde events (op correlation-id)",
+        "linkedEventsEmpty": "Geen gekoppelde events voor deze call.",
+        "linkedEventsColumns": {
+          "occurredAt": "Tijdstip",
+          "type": "Type",
+          "id": "Event-id"
+        }
       }
     },
     "layers": {
@@ -621,7 +701,10 @@
       "badRequest": "Het verzoek kon niet worden verwerkt. Controleer de invoer en probeer het opnieuw.",
       "observability": {
         "invalidCursor": "De paginatie-cursor is ongeldig.",
-        "invalidTimestamp": "Geef een geldige ISO-tijdstempel op voor het tijdsbereik."
+        "invalidTimestamp": "Geef een geldige ISO-tijdstempel op voor het tijdsbereik.",
+        "invalidNumber": "Geef een eindig, niet-negatief getal op voor het numerieke filter.",
+        "invalidStatus": "Het statusfilter moet \"ok\" of \"err\" zijn.",
+        "notFound": "De gevraagde LLM-call is niet gevonden."
       }
     },
     "entity": {

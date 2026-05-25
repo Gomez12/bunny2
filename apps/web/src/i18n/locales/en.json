@@ -240,6 +240,7 @@
       "busDlq": "Bus DLQ",
       "observability": "Observability",
       "events": "Events",
+      "llmCalls": "LLM calls",
       "sections": {
         "usersAndGroups": "Users & Groups",
         "operations": "Operations",
@@ -282,6 +283,85 @@
         "payload": "Payload",
         "metadata": "Metadata",
         "empty": "(no value)"
+      }
+    },
+    "llmCalls": {
+      "title": "LLM calls",
+      "description": "Read-only view of the LLM-calls telemetry table. Aggregates show the rolling 24h / 7d window; click a row for the (redacted) request and response.",
+      "refresh": "Refresh",
+      "loadMore": "Load more",
+      "endOfResults": "End of results",
+      "empty": "No LLM calls match the current filters.",
+      "viewDetail": "Details",
+      "rollups": {
+        "label": "LLM-calls rollups",
+        "heading": "Rollups",
+        "window24h": "Last 24h",
+        "window7d": "Last 7 days",
+        "count": "Count",
+        "cost": "Cost",
+        "p50": "p50 latency",
+        "p95": "p95 latency",
+        "errorRate": "Error rate"
+      },
+      "filters": {
+        "label": "Filter LLM calls",
+        "model": "Model",
+        "endpoint": "Endpoint",
+        "layerId": "Layer id",
+        "userId": "User id",
+        "status": "Status",
+        "statusAll": "All",
+        "statusOk": "Success",
+        "statusErr": "Error",
+        "from": "From",
+        "to": "To",
+        "costMin": "Min cost (USD)",
+        "latencyMaxMs": "Max latency (ms)",
+        "apply": "Apply",
+        "reset": "Reset"
+      },
+      "columns": {
+        "startedAt": "Started at",
+        "model": "Model",
+        "endpoint": "Endpoint",
+        "tokens": "Tok in/out",
+        "costUsd": "Cost",
+        "latencyMs": "ms",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "ok": "Success",
+        "err": "Error"
+      },
+      "detail": {
+        "title": "LLM call detail",
+        "id": "Call id",
+        "model": "Model",
+        "endpoint": "Endpoint",
+        "modelSource": "Model source",
+        "latencyMs": "Latency (ms)",
+        "costUsd": "Cost (USD)",
+        "tokensIn": "Tokens in",
+        "tokensOut": "Tokens out",
+        "correlationId": "Correlation id",
+        "flowId": "Flow id",
+        "layerId": "Layer id",
+        "userId": "User id",
+        "error": "Error",
+        "request": "Request (redacted)",
+        "response": "Response (redacted)",
+        "expandJson": "Expand JSON",
+        "empty": "(no value)",
+        "truncated": "Payload truncated; original size {{bytes}} bytes",
+        "linkedEvents": "Linked events (by correlation id)",
+        "linkedEventsEmpty": "No linked events for this call.",
+        "linkedEventsColumns": {
+          "occurredAt": "Occurred at",
+          "type": "Type",
+          "id": "Event id"
+        }
       }
     },
     "users": {
@@ -817,7 +897,10 @@
       "badRequest": "The request could not be processed. Please check the input and try again.",
       "observability": {
         "invalidCursor": "The pagination cursor is invalid.",
-        "invalidTimestamp": "Provide a valid ISO timestamp for the time range."
+        "invalidTimestamp": "Provide a valid ISO timestamp for the time range.",
+        "invalidNumber": "Provide a finite non-negative number for the numeric filter.",
+        "invalidStatus": "Status filter must be \"ok\" or \"err\".",
+        "notFound": "The requested LLM call was not found."
       }
     },
     "layer": {

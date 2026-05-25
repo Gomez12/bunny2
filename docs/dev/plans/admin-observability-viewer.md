@@ -504,6 +504,91 @@ Shipped 2026-05-25:
 - Telemetry: `admin.llm-calls.query` latency.
 - Tests: smoke + rollup math.
 
+#### Phase 3 — outcomes
+
+Shipped 2026-05-25:
+
+- **Endpoints** (all behind the `/admin/*` `requireAdmin` gate):
+  - `GET /admin/observability/llm-calls` — list with cursor pagination.
+    Filters: `model` (exact), `endpoint` (exact), `layerId`, `userId`,
+    `status` (`ok` → `error IS NULL`, `err` → `error IS NOT NULL` —
+    the schema column is `error TEXT`, not `error_code`), `from`,
+    `to`, `costMin`, `latencyMaxMs`, plus `limit` (cap 200, default 50) and `cursor`. Cursor scheme + LIKE-escape pattern mirror
+    Phase 2 (base64url `{ts,id}`, row-value `(started_at,id) < (?,?)`
+    DESC). Per the redaction audit, the list payload deliberately
+    excludes `request` and `response`; instead it surfaces an
+    `errorPreview` (clipped to 200 chars) plus `hasError` boolean so
+    the inline status column needs no JOIN.
+  - `GET /admin/observability/llm-calls/rollups` — kept as a separate
+    endpoint (NOT folded into the list response) so paginated list
+    calls don't recompute the whole window on every page. Returns
+    `{ window24h, window7d }`; each window carries `count`,
+    `errorCount`, `errorRate`, `totalCostUsd`, `p50LatencyMs`,
+    `p95LatencyMs`. Registered BEFORE the `:id` route so Hono treats
+    `rollups` as a literal path segment, not an id.
+  - `GET /admin/observability/llm-calls/:id` — drawer detail.
+    Returns the full row, the (truncated) `request` / `response`
+    JSON, the `error` string, and the linked `events` rows joined by
+    `correlation_id` (capped at 50 rows).
+- **Rollups query approach:** two SQL statements per window. (1) One
+  aggregate scan against `WHERE started_at >= ?` yielding `COUNT(*)`,
+  `SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END)`,
+  `COALESCE(SUM(cost_usd), 0)`, and a `latency_ms IS NOT NULL` count.
+  (2) Two `ORDER BY latency_ms ASC LIMIT 1 OFFSET ?` lookups for
+  p50 / p95 — SQLite has no `PERCENTILE_CONT`, so a pure-SQL quantile
+  needs an offset-based row lookup keyed off the aggregate count.
+  Both windows ride the indexed `started_at` range; aggregation
+  stays in SQL per the plan §5 directive.
+- **200 KB payload truncation:** server-side, per payload
+  (`request` and `response` independently). We measure the
+  UTF-8 byte length of the stored TEXT (matches what disk + a raw
+  API client would see), slice on a byte boundary, strip a trailing
+  partial UTF-8 sequence, and append the literal marker
+  `...[truncated; full payload available via API]`. The detail
+  response carries `requestTruncated` / `responseTruncated`
+  booleans plus `requestOriginalBytes` / `responseOriginalBytes` so
+  the UI can label payloads that hit the cap. The list endpoint
+  excludes both columns, so the cap only matters on the detail path.
+- **Telemetry catalogue (additions to
+  `ADMIN_OBSERVABILITY_EVENT_TYPES`):**
+  - `admin.observability.llm-calls.query` —
+    `{ durationMs, rowCount, filterKeys, limit, hasCursor }`.
+  - `admin.observability.llm-calls.detail` —
+    `{ durationMs, found, requestTruncated, responseTruncated,
+linkedEventCount }`.
+  - `admin.observability.llm-calls.rollups` —
+    `{ durationMs, count24h, count7d }`.
+- **Web wiring:** `apps/web/src/pages/admin/AdminLlmCallsPage.tsx`
+  (new), route `/admin/observability/llm-calls`,
+  `admin.nav.llmCalls` entry added to the Observability section in
+  `AdminNav`. `pageTitleFor` in `App.tsx` returns
+  `admin.llmCalls.title`. The drawer reuses the existing
+  `<dialog>`-based `Dialog` (focus trap + ESC + focus return) and
+  renders JSON inside a `<details>` → `<pre tabindex="0">` so
+  long payloads stay keyboard-navigable. The status column
+  carries an icon + text ("Success" / "Error") so the signal is
+  not color-only.
+- **Deviations from the wireframe:**
+  - User and layer ids render as raw UUIDs (mirrors Phase 2's
+    `layerId` treatment); the wireframe hinted at resolving them
+    to display name / slug, but doing that requires JOINs that
+    Phase 2 deferred and the redaction audit does not force
+    inline display. Logged as a Phase 7 polish item.
+  - The rollups card uses a two-column grid (24h | 7d) rather than
+    the wireframe's single-line ASCII layout; the underlying
+    metric set is identical (count / cost / p50 / p95 / error
+    rate).
+  - JSON expand uses a native `<details>` element rather than a
+    bespoke `[Expand JSON ▾]` button — keyboard + ARIA come for
+    free, and the trigger label still satisfies the wireframe.
+- **Indexes:** the new endpoints rely on the existing
+  `idx_llm_calls_started` (started_at) and
+  `idx_llm_calls_correlation` (correlation_id) indexes. Other
+  filter columns (`model`, `endpoint`, `layer_id`, `user_id`,
+  `cost_usd`, `latency_ms`) are NOT indexed and currently scan
+  within the bounded `started_at` range. Adding indexes is left
+  to a Phase 7 follow-up if production volume makes scans hot.
+
 ### Phase 4 — Chat-pipeline runs viewer (est. 5h)
 
 - `GET /admin/observability/chat-runs` — filters per

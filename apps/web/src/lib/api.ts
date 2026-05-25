@@ -29,6 +29,10 @@ import type {
   AdminBusDlqRow,
   AdminObservabilityEventsFilter,
   AdminObservabilityEventsResponse,
+  AdminObservabilityLlmCallDetail,
+  AdminObservabilityLlmCallsFilter,
+  AdminObservabilityLlmCallsResponse,
+  AdminObservabilityLlmCallsRollupsResponse,
   AdminGroupDetailResponse,
   AdminGroupListResponse,
   AdminGroupRow,
@@ -1461,6 +1465,59 @@ export async function listAdminObservabilityEvents(
   const qs = params.toString();
   const path = `/admin/observability/events${qs.length === 0 ? '' : `?${qs}`}`;
   return request<AdminObservabilityEventsResponse>(path);
+}
+
+/**
+ * Phase 3 of `docs/dev/plans/admin-observability-viewer.md` —
+ * `GET /admin/observability/llm-calls`. Cursor pagination with
+ * `(started_at DESC, id DESC)` ordering; the redaction-audit-approved
+ * columns (no request/response) are returned for inline rendering.
+ */
+export async function listAdminObservabilityLlmCalls(
+  filter: AdminObservabilityLlmCallsFilter = {},
+): Promise<AdminObservabilityLlmCallsResponse> {
+  const params = new URLSearchParams();
+  if (filter.model !== undefined && filter.model !== '') params.set('model', filter.model);
+  if (filter.endpoint !== undefined && filter.endpoint !== '') {
+    params.set('endpoint', filter.endpoint);
+  }
+  if (filter.layerId !== undefined && filter.layerId !== '') params.set('layerId', filter.layerId);
+  if (filter.userId !== undefined && filter.userId !== '') params.set('userId', filter.userId);
+  if (filter.status !== undefined) params.set('status', filter.status);
+  if (filter.from !== undefined && filter.from !== '') params.set('from', filter.from);
+  if (filter.to !== undefined && filter.to !== '') params.set('to', filter.to);
+  if (filter.costMin !== undefined) params.set('costMin', String(filter.costMin));
+  if (filter.latencyMaxMs !== undefined) params.set('latencyMaxMs', String(filter.latencyMaxMs));
+  if (filter.limit !== undefined) params.set('limit', String(filter.limit));
+  if (filter.cursor !== undefined && filter.cursor !== '') params.set('cursor', filter.cursor);
+  const qs = params.toString();
+  const path = `/admin/observability/llm-calls${qs.length === 0 ? '' : `?${qs}`}`;
+  return request<AdminObservabilityLlmCallsResponse>(path);
+}
+
+/**
+ * `GET /admin/observability/llm-calls/:id` — drawer detail with the
+ * (truncated) request / response JSON and the events joined by
+ * `correlation_id`. The detail endpoint is lazily fetched on row
+ * click so the list response stays small.
+ */
+export async function getAdminObservabilityLlmCall(
+  id: string,
+): Promise<AdminObservabilityLlmCallDetail> {
+  return request<AdminObservabilityLlmCallDetail>(
+    `/admin/observability/llm-calls/${encodeURIComponent(id)}`,
+  );
+}
+
+/**
+ * `GET /admin/observability/llm-calls/rollups` — rolling 24h / 7d
+ * count, total cost, p50/p95 latency, error rate. Aggregations live
+ * server-side (single indexed scan per window + per-quantile lookup).
+ */
+export async function getAdminObservabilityLlmCallsRollups(): Promise<AdminObservabilityLlmCallsRollupsResponse> {
+  return request<AdminObservabilityLlmCallsRollupsResponse>(
+    '/admin/observability/llm-calls/rollups',
+  );
 }
 
 // ---------- per-layer chat (phase 6.5) -------------------------------------

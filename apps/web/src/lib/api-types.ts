@@ -701,3 +701,92 @@ export interface AdminObservabilityEventsResponse {
   readonly rows: readonly AdminObservabilityEventRow[];
   readonly nextCursor: string | null;
 }
+
+/**
+ * Phase 3 of `docs/dev/plans/admin-observability-viewer.md` — one row
+ * from `GET /admin/observability/llm-calls`. Per the redaction audit
+ * (`docs/dev/audits/admin-observability-redaction-2026-05-25.md`),
+ * `request` and `response` are excluded from the list response; the
+ * drawer fetches them via the per-id detail endpoint.
+ */
+export interface AdminObservabilityLlmCallRow {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly model: string;
+  readonly endpoint: string;
+  readonly tokensIn: number | null;
+  readonly tokensOut: number | null;
+  readonly costUsd: number | null;
+  readonly latencyMs: number | null;
+  readonly correlationId: string | null;
+  readonly flowId: string | null;
+  readonly layerId: string | null;
+  readonly userId: string | null;
+  /** Truncated `error` string for inline rendering; full text in the drawer. */
+  readonly errorPreview: string | null;
+  readonly hasError: boolean;
+  readonly modelSource: 'system' | 'layer' | null;
+}
+
+/** Filters for `GET /admin/observability/llm-calls`. */
+export interface AdminObservabilityLlmCallsFilter {
+  readonly model?: string;
+  readonly endpoint?: string;
+  readonly layerId?: string;
+  readonly userId?: string;
+  readonly status?: 'ok' | 'err';
+  readonly from?: string;
+  readonly to?: string;
+  readonly costMin?: number;
+  readonly latencyMaxMs?: number;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface AdminObservabilityLlmCallsResponse {
+  readonly rows: readonly AdminObservabilityLlmCallRow[];
+  readonly nextCursor: string | null;
+}
+
+/** Linked event surfaced by the LLM-call detail drawer (events joined by `correlation_id`). */
+export interface AdminObservabilityLinkedEvent {
+  readonly id: string;
+  readonly type: string;
+  readonly occurredAt: string;
+  readonly correlationId: string | null;
+  readonly flowId: string | null;
+}
+
+/**
+ * Detail body returned by `GET /admin/observability/llm-calls/:id`.
+ * Includes the (truncated) request/response JSON + linked events.
+ * `requestTruncated` / `responseTruncated` flag R3 mitigation activity
+ * so the UI can label payloads that hit the 200 KB cap.
+ */
+export interface AdminObservabilityLlmCallDetail extends AdminObservabilityLlmCallRow {
+  readonly request: string;
+  readonly requestTruncated: boolean;
+  readonly requestOriginalBytes: number;
+  readonly response: string | null;
+  readonly responseTruncated: boolean;
+  readonly responseOriginalBytes: number;
+  readonly error: string | null;
+  readonly linkedEvents: readonly AdminObservabilityLinkedEvent[];
+}
+
+/** Per-window rollup payload returned by the rollups endpoint. */
+export interface AdminObservabilityLlmCallsRollupWindow {
+  readonly count: number;
+  readonly errorCount: number;
+  readonly errorRate: number;
+  readonly totalCostUsd: number;
+  readonly p50LatencyMs: number | null;
+  readonly p95LatencyMs: number | null;
+}
+
+/** Response shape for `GET /admin/observability/llm-calls/rollups`. */
+export interface AdminObservabilityLlmCallsRollupsResponse {
+  readonly window24h: AdminObservabilityLlmCallsRollupWindow;
+  readonly window7d: AdminObservabilityLlmCallsRollupWindow;
+}
