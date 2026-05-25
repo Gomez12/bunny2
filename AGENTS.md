@@ -54,7 +54,7 @@ Use for:
 Required:
 
 1. Read relevant file(s).
-2. Make the smallest safe change.
+2. Make small focused safe changes.
 3. Run the most relevant check only.
 4. Preserve existing logging, telemetry, and analytics.
 5. Update docs only if behavior, setup, API, UI, workflow, or observability changes.
@@ -107,17 +107,14 @@ Required:
 1. Read `docs/dev/tasklist.md`.
 2. Check if task exists.
 3. Add task if missing.
-4. Read relevant docs.
-5. Read relevant code.
-6. Understand impact.
-7. Make small focused changes.
-8. Add or update relevant tests.
-9. Add or update console logging when the changed flow needs runtime visibility.
-10. Add or update file logging when the changed flow needs durable diagnostics.
-11. Add or update telemetry for technical behavior, reliability, and performance.
-12. Add or update analytics for product or user-flow behavior when applicable.
-13. Update docs when behavior, API, setup, UI, workflow, or observability changes.
-14. Run relevant checks.
+4. Read relevant docs and code.
+5. Understand impact.
+6. Make small focused changes.
+7. Add or update relevant tests.
+8. Add or update telemetry for technical behavior, reliability, and performance.
+9. Add or update analytics for product or user-flow behavior when applicable.
+10. Update docs when behavior, API, setup, UI, workflow, or observability changes.
+11. Run relevant checks.
 
 Tasklist is required.
 
@@ -162,20 +159,18 @@ Required:
 2. Add or update task.
 3. Create or update a plan in `docs/dev/plans/`.
 4. Split work into phases.
-5. Add Mermaid planning diagram.
-6. Read relevant docs and code.
-7. Identify affected modules.
-8. Identify tests.
-9. Identify docs impact.
-10. Identify i18n impact.
-11. Identify accessibility impact.
-12. Identify security impact.
-13. Identify logging impact.
-14. Identify telemetry impact.
-15. Identify analytics impact.
-16. Identify risks when real risks exist.
-17. Identify follow-ups only when unfinished work remains.
-18. Run full relevant checks before marking done.
+5. Read relevant docs and code.
+6. Identify affected modules.
+7. Identify tests.
+8. Identify docs impact.
+9. Identify i18n impact.
+10. Identify accessibility impact.
+11. Identify security impact.
+12. Identify telemetry impact.
+13. Identify analytics impact.
+14. Identify risks when real risks exist.
+15. Identify follow-ups only when unfinished work remains.
+16. Run full relevant checks before marking done.
 
 Large changes must include an observability plan.
 
@@ -201,18 +196,15 @@ Required:
 6. Fix the bug.
 7. Confirm the test passes.
 8. Add edge cases when useful.
-9. Add or update console logging when it helps diagnose recurrence.
-10. Add or update file logging when durable diagnostics are useful.
-11. Add or update telemetry for technical failure, recovery, latency, or reliability signals.
-12. Add or update analytics when the bug affects a product or user journey.
-13. Update docs only if behavior, troubleshooting, workflow, or observability changes.
+9. Add or update telemetry for technical failure, recovery, latency, or reliability signals.
+10. Add or update analytics when the bug affects a product or user journey.
+11. Update docs only if behavior, troubleshooting, workflow, or observability changes.
 
 Do not:
 
 - Delete tests to pass.
 - Ignore failing tests.
 - Mark done without checking the fix.
-- Log secrets, tokens, personal data, or sensitive payloads.
 - Add analytics for purely internal bugs unless product behavior is affected.
 
 ---
@@ -240,17 +232,14 @@ Required for Normal UI Change:
 3. Use Tailwind.
 4. Use shadcn/ui where appropriate.
 5. Use shared components.
-6. Use design tokens.
-7. Use i18n for user-facing text.
-8. Check keyboard behavior.
-9. Check focus states.
-10. Check loading, empty, and error states.
-11. Add or update relevant tests.
-12. Add console logging only for meaningful UI runtime diagnostics.
-13. Add file logging only when UI errors are handled server-side, persisted, or routed through an application logger.
-14. Add telemetry for UI errors, performance, and reliability when applicable.
-15. Add analytics for meaningful user actions and product flow events.
-16. Update styleguide when reusable pattern changes.
+6. Use i18n for user-facing text.
+7. Check keyboard behavior.
+8. Check focus states.
+9. Check loading, empty, and error states.
+10. Add or update relevant tests.
+11. Add telemetry for UI errors, performance, and reliability when applicable.
+12. Add analytics for meaningful user actions and product flow events.
+13. Update styleguide when reusable pattern changes.
 
 Required for Large UI Change:
 
@@ -415,18 +404,6 @@ Use this format:
 ```
 
 Allowed statuses:
-
-```txt
-open
-in-progress
-needs-testing
-deferred
-paused
-rejected
-done
-```
-
-Meaning:
 
 | Status          | Meaning                     |
 | --------------- | --------------------------- |
@@ -1600,8 +1577,6 @@ Done when applicable items are true:
 - Tests added or updated.
 - Bug has regression test when practical.
 - Error states tested when affected.
-- Console logging exists where runtime diagnostics matter.
-- File logging exists where durable diagnostics matter.
 - Telemetry exists for technical behavior, reliability, or performance when relevant.
 - Analytics exists for product or user-flow behavior when relevant.
 - i18n used when user-facing text changed.
@@ -1631,8 +1606,6 @@ Done when applicable items are true:
 - Tests added or updated.
 - Regression tests added when fixing bugs.
 - Error states tested.
-- Console logging implemented or explicitly accounted for.
-- File logging implemented or explicitly accounted for.
 - Telemetry implemented or explicitly accounted for.
 - Analytics implemented or explicitly accounted for.
 - Observability docs updated when needed.
@@ -1672,7 +1645,6 @@ Done when applicable items are true:
 - Keep UI consistent.
 - Keep accessibility for UI.
 - Keep security for sensitive flows.
-- Keep console logging and file logging available as the logging baseline.
 - Add or update telemetry for non-small technical production changes.
 - Add or update analytics for non-small product or user-flow changes.
 - Keep build green.
@@ -1707,3 +1679,4 @@ Done when applicable items are true:
 - Delete completed task history.
 - Keep more than 50 done tasks in active tasklist.
 - Run full-process overhead for small safe changes.
+- Repeat actions in the same task if there have been no changes
