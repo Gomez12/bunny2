@@ -24,6 +24,8 @@ import {
   bucketContentLength,
   emptyPipelineStepMap,
   mapServerErrorToChatErrorKey,
+  messageElementSelector,
+  parseChatDeepLink,
   PIPELINE_STEP_ORDER,
   shouldComposerSubmit,
   splitForAnnouncement,
@@ -232,6 +234,33 @@ describe('parseSseFrames (SSE-over-fetch parser)', () => {
     const reader = streamOf(['event:step\ndata:hello\n\n']);
     const frames = await collect(parseSseFrames(reader));
     expect(frames).toEqual([{ event: 'step', data: 'hello' }]);
+  });
+});
+
+describe('parseChatDeepLink', () => {
+  it('returns the `message` query parameter when present', () => {
+    const search = new URLSearchParams('?conversation=abc&message=msg-123');
+    expect(parseChatDeepLink(search)).toEqual({ messageId: 'msg-123' });
+  });
+
+  it('returns a null messageId when the param is missing', () => {
+    const search = new URLSearchParams('?conversation=abc');
+    expect(parseChatDeepLink(search)).toEqual({ messageId: null });
+  });
+
+  it('returns a null messageId when the param is empty', () => {
+    const search = new URLSearchParams('?message=');
+    expect(parseChatDeepLink(search)).toEqual({ messageId: null });
+  });
+});
+
+describe('messageElementSelector', () => {
+  it('produces a CSS attribute selector keyed on data-message-id', () => {
+    expect(messageElementSelector('msg-123')).toBe('[data-message-id="msg-123"]');
+  });
+
+  it('escapes embedded double quotes so the selector stays valid', () => {
+    expect(messageElementSelector('a"b')).toBe('[data-message-id="a\\"b"]');
   });
 });
 

@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { ConfirmDialog, Dialog } from '../components/ui/dialog';
@@ -35,6 +35,8 @@ import {
   bucketContentLength,
   emptyPipelineStepMap,
   mapServerErrorToChatErrorKey,
+  messageElementSelector,
+  parseChatDeepLink,
   PIPELINE_STEP_ORDER,
   pipelineStepLabelKey,
   shouldComposerSubmit,
@@ -75,6 +77,9 @@ export function LayerChatPage(): JSX.Element {
   const { t } = useTranslation();
   const current = useCurrentLayer();
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
+  const [searchParams] = useSearchParams();
+  const { messageId: deepLinkMessageId } = parseChatDeepLink(searchParams);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
   const [conversations, setConversations] = useState<readonly LayerChatConversation[]>([]);
   const [convoLoadError, setConvoLoadError] = useState<string | null>(null);
@@ -161,6 +166,26 @@ export function LayerChatPage(): JSX.Element {
     if (node === null) return;
     node.scrollTop = node.scrollHeight;
   }, [messages, streamingBuffer]);
+
+  // `?message=:id` deep link — scroll the matching bubble into view,
+  // briefly highlight it, and move keyboard focus there for screen
+  // readers. No-op when the target id is not in the rendered thread
+  // (e.g. wrong conversation, message belongs to a sibling layer).
+  useEffect(() => {
+    if (deepLinkMessageId === null || messagesLoading) return;
+    if (typeof document === 'undefined') return;
+    const target = document.querySelector<HTMLElement>(
+      messageElementSelector(deepLinkMessageId),
+    );
+    if (target === null) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // `tabindex="-1"` on the bubble makes the element programmatically
+    // focusable so screen readers announce the message on jump.
+    target.focus({ preventScroll: true });
+    setHighlightedMessageId(deepLinkMessageId);
+    const timer = setTimeout(() => setHighlightedMessageId(null), 2000);
+    return (): void => clearTimeout(timer);
+  }, [deepLinkMessageId, messages, messagesLoading]);
 
   // Abort any in-flight stream on unmount or layer change.
   useEffect(() => {
@@ -502,6 +527,7 @@ export function LayerChatPage(): JSX.Element {
                   onUp={() => void handleThumbsUp(m.id)}
                   onDown={() => openThumbsDown(m.id)}
                   feedbackSubmitting={feedbackSubmitting}
+                  highlighted={highlightedMessageId === m.id}
                 />
               ))}
               {streaming ? (
@@ -614,20 +640,24 @@ interface MessageBubbleProps {
   readonly onUp: () => void;
   readonly onDown: () => void;
   readonly feedbackSubmitting: boolean;
+  readonly highlighted: boolean;
 }
 
 function MessageBubble(props: MessageBubbleProps): JSX.Element {
   const { t } = useTranslation();
-  const { message, feedbackValue, onUp, onDown, feedbackSubmitting } = props;
+  const { message, feedbackValue, onUp, onDown, feedbackSubmitting, highlighted } = props;
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   return (
     <article
+      data-message-id={message.id}
+      tabIndex={-1}
       className={
-        'rounded-md border px-3 py-2 text-sm ' +
+        'rounded-md border px-3 py-2 text-sm transition-shadow focus-visible:outline-none ' +
         (isUser
           ? 'ml-12 border-primary/30 bg-primary/5'
-          : 'mr-12 border-muted-foreground/20 bg-muted')
+          : 'mr-12 border-muted-foreground/20 bg-muted') +
+        (highlighted ? ' ring-2 ring-primary' : '')
       }
     >
       <header className="mb-1 flex items-baseline justify-between gap-2">

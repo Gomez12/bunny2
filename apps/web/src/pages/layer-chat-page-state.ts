@@ -204,6 +204,43 @@ export function appendOrReplaceMessage(
   return out;
 }
 
+// ---------- deep-link helpers -------------------------------------------
+
+/**
+ * Parsed `?message=:id` deep-link parameter shape used by the chat
+ * page. Lives here as a pure helper so the test runtime (which has
+ * no DOM) can assert the contract without booting React Router.
+ *
+ * The board page emits links of the form
+ * `/l/<slug>/chat?conversation=<id>&message=<id>`; the page reads
+ * `message` and scrolls / focuses the corresponding `<article
+ * data-message-id="…">` element after it renders.
+ */
+export interface ChatDeepLinkParams {
+  readonly messageId: string | null;
+}
+
+export interface SearchParamsLike {
+  readonly get: (name: string) => string | null;
+}
+
+export function parseChatDeepLink(search: SearchParamsLike): ChatDeepLinkParams {
+  const raw = search.get('message');
+  if (raw === null || raw.length === 0) return { messageId: null };
+  return { messageId: raw };
+}
+
+/**
+ * DOM selector for a chat-message bubble. Co-located with the parser
+ * so the test pins the contract the page renders (`data-message-id`)
+ * against the contract the deep-link effect queries.
+ */
+export function messageElementSelector(messageId: string): string {
+  // CSS attribute selectors don't accept the raw id wholesale; use
+  // JSON encoding to escape any double quote that might land in an id.
+  return `[data-message-id=${JSON.stringify(messageId)}]`;
+}
+
 /**
  * Bucket the request body's byte length into a coarse range so an
  * analytics caller (when one ships — phase-6.5 only logs to console,
