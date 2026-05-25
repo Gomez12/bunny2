@@ -893,6 +893,56 @@
         "error": "Kon whiteboards niet laden.",
         "viewAll": "Bekijk whiteboards",
         "new": "Nieuw whiteboard"
+      },
+      "list": {
+        "title": "Whiteboards",
+        "empty": "Nog geen whiteboards. Maak het eerste aan.",
+        "error": "Kon whiteboards niet laden.",
+        "new": "Nieuw whiteboard",
+        "loading": "Whiteboards laden…",
+        "retry": "Opnieuw proberen",
+        "thumbnailAlt": "Voorvertoning van {{title}}",
+        "thumbnailPlaceholder": "Nog geen voorvertoning",
+        "elementCount": "{{count}} elementen",
+        "editedAgo": "bewerkt {{when}} door {{author}}",
+        "untitled": "Naamloos whiteboard",
+        "createTitle": "Whiteboard aanmaken",
+        "createTitleLabel": "Titel",
+        "createCta": "Aanmaken",
+        "createCancel": "Annuleren",
+        "createPending": "Aanmaken…"
+      },
+      "detail": {
+        "loading": "Whiteboard laden…",
+        "error": "Kon whiteboard niet laden.",
+        "back": "Terug naar whiteboards",
+        "unsaved": "Niet-opgeslagen wijzigingen",
+        "savedAt": "Opgeslagen {{when}}",
+        "saving": "Opslaan…",
+        "saveVersion": "Versie opslaan",
+        "savedJustNow": "Zojuist",
+        "canvasLoading": "Canvas laden…",
+        "title": "Titel",
+        "rename": "Hernoemen",
+        "delete": "Verwijderen",
+        "deleteConfirmTitle": "Whiteboard verwijderen",
+        "deleteConfirmBody": "Dit whiteboard verwijderen? Het wordt zacht verwijderd en kan door een beheerder hersteld worden.",
+        "deleteCta": "Verwijderen",
+        "deleteCancel": "Annuleren",
+        "export": {
+          "menu": "Exporteren",
+          "png": "Exporteren als PNG",
+          "svg": "Exporteren als SVG"
+        },
+        "lock": {
+          "banner": "Een andere sessie heeft dit whiteboard zojuist bewerkt — jouw wijzigingen overschrijven die tenzij je opnieuw laadt.",
+          "reload": "Opnieuw laden"
+        }
+      },
+      "errors": {
+        "tooLarge": "Dit whiteboard is te groot om op te slaan. Verwijder enkele elementen of bijgevoegde afbeeldingen en probeer opnieuw.",
+        "invalidScene": "De whiteboard-scene kon niet worden opgeslagen omdat de validatie faalde.",
+        "saveFailed": "Het whiteboard kon niet worden opgeslagen. Probeer het opnieuw."
       }
     }
   },

@@ -36,6 +36,8 @@ import { ContactsImportPage } from './pages/ContactsImportPage';
 import { ContactsListPage } from './pages/ContactsListPage';
 import { TodoDetailPage } from './pages/TodoDetailPage';
 import { TodosPage } from './pages/TodosPage';
+import { WhiteboardDetailPage } from './pages/WhiteboardDetailPage';
+import { WhiteboardsListPage } from './pages/WhiteboardsListPage';
 import { LayerProposalsListPage } from './pages/LayerProposalsListPage';
 import { LayerProposalDetailPage } from './pages/LayerProposalDetailPage';
 import { LayerCapabilitiesPage } from './pages/LayerCapabilitiesPage';
@@ -289,6 +291,12 @@ function AppShell(): JSX.Element {
           <Route path="/l/:layerSlug/todos" element={<TodosPage />} />
           <Route path="/l/:layerSlug/todos/new" element={<TodosPage />} />
           <Route path="/l/:layerSlug/todos/:todoSlug" element={<TodoDetailPage />} />
+          <Route path="/l/:layerSlug/whiteboards" element={<WhiteboardsListPage />} />
+          <Route path="/l/:layerSlug/whiteboards/new" element={<WhiteboardsListPage />} />
+          <Route
+            path="/l/:layerSlug/whiteboards/:whiteboardSlug"
+            element={<WhiteboardDetailPage />}
+          />
           <Route path="/l/:layerSlug/scheduled-tasks" element={<ScheduledTasksListPage />} />
           <Route path="/l/:layerSlug/chat" element={<LayerChatPage />} />
           <Route path="/l/:layerSlug/chat/board" element={<LayerChatBoardPage />} />
@@ -391,6 +399,7 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
     if (sub === 'contacts') return t('layer.shell.subpages.contacts');
     if (sub === 'calendar') return t('layer.shell.subpages.calendar');
     if (sub === 'todos') return t('layer.shell.subpages.todos');
+    if (sub === 'whiteboards') return t('entity.whiteboards.list.title');
     if (sub === 'scheduled-tasks') return t('layer.shell.subpages.scheduledTasks');
     if (sub === 'chat') return t('nav.chat');
     if (sub === 'proposals') return t('layer.shell.subpages.proposals');

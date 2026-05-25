@@ -76,6 +76,11 @@ import type {
   UpdateScheduledTaskPayload,
   UpdateTodoPayload,
   UpdateUserPayload,
+  Whiteboard,
+  WhiteboardCheckpointPayload,
+  WhiteboardListWithThumbnailItem,
+  CreateWhiteboardPayload,
+  UpdateWhiteboardPayload,
 } from './api-types';
 import {
   calendarServerBase,
@@ -90,6 +95,12 @@ import {
 } from './companies-routes';
 import { contactServerDetail, contactsServerBase } from './contacts-routes';
 import { todoServerDetail, todosServerBase } from './todos-routes';
+import {
+  whiteboardServerBase,
+  whiteboardServerCheckpoint,
+  whiteboardServerDetail,
+  whiteboardServerListWithThumbnails,
+} from './whiteboards-routes';
 
 interface BunnyBridge {
   readonly apiBase: string;
@@ -1067,6 +1078,95 @@ export async function listRecentWhiteboards(
     `/l/${encodeURIComponent(layerSlug)}/whiteboard/_recent?limit=${encodeURIComponent(String(limit))}`,
   );
   return res.items;
+}
+
+// ---------- whiteboards CRUD (phase 11.5) ----------------------------------
+//
+// Same singular ↔ plural seam as the other entity kinds — see
+// `apps/web/src/lib/whiteboards-routes.ts`. The server router mounts
+// the singular `/l/:slug/whiteboard` segment per the §4.0 entity
+// contract; the web UI's friendlier URL is `/l/:slug/whiteboards`.
+//
+// The list endpoint returns the thumbnail-enriched shape from the
+// dedicated `_list-with-thumbnails` route so the list page can render
+// each row's PNG without an N+1 hit against the detail endpoint. The
+// generic `GET /l/:slug/whiteboard` is reserved for callers that only
+// need `EntitySummary[]` (e.g. chat retrieval, contract tests).
+//
+// `patchWhiteboardCheckpoint` is the workhorse the detail page calls
+// on every debounced save: it carries the scene payload AND the PNG
+// thumbnail the web build rendered via Excalidraw's `exportToBlob`,
+// base64-encoded. The server stores the blob + etag and bumps
+// `last_checkpoint_at` in the same logical checkpoint. The
+// non-checkpoint `patchWhiteboard` is for title-only or scene-only
+// edits that don't touch the thumbnail (no Excalidraw available, e.g.
+// future chat-driven scene edits).
+
+export async function listWhiteboardsWithThumbnails(
+  layerSlug: string,
+): Promise<readonly WhiteboardListWithThumbnailItem[]> {
+  const res = await request<{ items: readonly WhiteboardListWithThumbnailItem[] }>(
+    whiteboardServerListWithThumbnails(layerSlug),
+  );
+  return res.items;
+}
+
+export async function getWhiteboard(
+  layerSlug: string,
+  whiteboardSlug: string,
+): Promise<Whiteboard> {
+  const res = await request<{ entity: Whiteboard }>(
+    whiteboardServerDetail(layerSlug, whiteboardSlug),
+  );
+  return res.entity;
+}
+
+export async function createWhiteboard(
+  layerSlug: string,
+  body: CreateWhiteboardPayload,
+): Promise<Whiteboard> {
+  const res = await request<{ entity: Whiteboard }>(whiteboardServerBase(layerSlug), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.entity;
+}
+
+export async function patchWhiteboard(
+  layerSlug: string,
+  whiteboardSlug: string,
+  body: UpdateWhiteboardPayload,
+): Promise<Whiteboard> {
+  const res = await request<{ entity: Whiteboard }>(
+    whiteboardServerDetail(layerSlug, whiteboardSlug),
+    { method: 'PATCH', body: JSON.stringify(body) },
+  );
+  return res.entity;
+}
+
+export interface WhiteboardCheckpointResult {
+  readonly entity: Whiteboard;
+  readonly lastCheckpointAt: string;
+}
+
+export async function patchWhiteboardCheckpoint(
+  layerSlug: string,
+  whiteboardSlug: string,
+  body: WhiteboardCheckpointPayload,
+): Promise<WhiteboardCheckpointResult> {
+  return request<WhiteboardCheckpointResult>(
+    whiteboardServerCheckpoint(layerSlug, whiteboardSlug),
+    { method: 'PATCH', body: JSON.stringify(body) },
+  );
+}
+
+export async function softDeleteWhiteboard(
+  layerSlug: string,
+  whiteboardSlug: string,
+): Promise<void> {
+  await request<{ ok: true }>(whiteboardServerDetail(layerSlug, whiteboardSlug), {
+    method: 'DELETE',
+  });
 }
 
 // ---------- scheduled tasks (phase 5.6) ------------------------------------

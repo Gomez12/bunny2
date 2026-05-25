@@ -10,6 +10,7 @@ import { getEntityModule, registerEntityModule } from '../registry';
 import type { EntityModule } from '../module';
 import { whiteboardModule, createWhiteboardModule } from './module';
 import { whiteboardEnrichmentJobs } from './enrichment';
+import { mountWhiteboardCustomRoutes } from './routes';
 
 export {
   whiteboardModule,
@@ -50,6 +51,14 @@ export {
   type MountWhiteboardRecentRouteDeps,
   type RecentWhiteboardItem,
 } from './recent';
+
+export {
+  mountWhiteboardCustomRoutes,
+  type MountWhiteboardCustomRoutesDeps,
+  type WhiteboardListWithThumbnailItem,
+} from './routes';
+
+export { SCENE_BYTE_CAP, PER_FILE_BYTE_CAP } from './limits';
 
 export {
   whiteboardPlaceholderConnector,
@@ -145,13 +154,24 @@ export function mountWhiteboardRoutes(
   deps: MountWhiteboardRoutesDeps,
 ): void {
   const module = deps.module ?? whiteboardModule;
+  // Custom routes are registered BEFORE the generic CRUD mount so
+  // Hono's registration-order match resolves `POST /l/:slug/whiteboard`
+  // and `PATCH /l/:slug/whiteboard/:slug{,/_checkpoint}` to the
+  // size-cap-enforcing handlers in `./routes.ts`. The generic mount
+  // still wires GET list, GET detail, DELETE, restore, and the
+  // external-links sub-routes.
+  mountWhiteboardCustomRoutes(app, {
+    module,
+    db: deps.db,
+    bus: deps.bus,
+    llm: deps.llm,
+  });
   const store = createEntityStore<WhiteboardPayload>({
     module,
     db: deps.db,
     bus: deps.bus,
     llm: deps.llm,
   });
-
   mountEntityRoutes(app, {
     module,
     store,

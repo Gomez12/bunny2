@@ -33,7 +33,12 @@ import {
   mountTodoRoutes,
   registerTodoModule,
 } from '../entities/todos';
-import { mountWhiteboardRecentRoute } from '../entities/whiteboards';
+import {
+  buildProductionWhiteboardModule,
+  mountWhiteboardRecentRoute,
+  mountWhiteboardRoutes,
+  registerWhiteboardModule,
+} from '../entities/whiteboards';
 import { createScheduledTasksRepo } from '../scheduled/repo';
 import { registerScheduledTasksRoutes } from './routes/scheduled-tasks';
 import { registerAdminScheduledTasksRoutes } from './routes/admin-scheduled-tasks';
@@ -251,12 +256,33 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
 
   // Phase 11.4 — whiteboards dashboard widget endpoint. Mounts only
   // the recent-list route (`GET /l/:slug/whiteboard/_recent`) needed
-  // by `WhiteboardsWidget`. The full generic CRUD surface
-  // (`/l/:slug/whiteboard/{,/:slug,...}`) lands in 11.5 alongside the
-  // web UI. The recent endpoint is independent of the CRUD mount so
-  // the widget can light up immediately without taking the bundle
-  // weight of `@excalidraw/excalidraw` (which 11.5 lazy-loads).
+  // by `WhiteboardsWidget`. The endpoint is independent of the CRUD
+  // mount so the widget can light up without taking the bundle weight
+  // of `@excalidraw/excalidraw` (which the 11.5 detail page
+  // lazy-loads).
   mountWhiteboardRecentRoute(app, { db: deps.db });
+
+  // Phase 11.5 — whiteboards entity. Same idempotent registration
+  // pattern as todos / calendar / contacts / companies. Production
+  // module has the enrichment jobs from 11.3 already wired in via
+  // `buildProductionWhiteboardModule`. The mount wires:
+  //  - the size-cap-enforcing POST / PATCH handlers from
+  //    `entities/whiteboards/routes.ts` BEFORE the generic mount, so
+  //    they win the route match on identical patterns;
+  //  - the checkpoint endpoint `PATCH /l/:slug/whiteboard/:slug/_checkpoint`
+  //    that accepts the scene + thumbnail bytes the web build POSTs
+  //    on save;
+  //  - `_list-with-thumbnails` for the list page;
+  //  - the generic §4.0 CRUD surface (list summaries, detail, soft-
+  //    delete, restore, external-links) via `mountEntityRoutes`.
+  const productionWhiteboardModule = buildProductionWhiteboardModule();
+  const registeredWhiteboardModule = registerWhiteboardModule(productionWhiteboardModule);
+  mountWhiteboardRoutes(app, {
+    db: deps.db,
+    bus: deps.bus,
+    llm: deps.llmClient,
+    module: registeredWhiteboardModule,
+  });
 
   // Phase 5.4 — scheduled-tasks HTTP surface (per-layer CRUD + admin
   // cross-layer overview + admin DLQ). The repo is shared with the

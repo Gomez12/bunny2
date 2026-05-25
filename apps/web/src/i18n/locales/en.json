@@ -1112,6 +1112,56 @@
         "error": "Could not load whiteboards.",
         "viewAll": "View whiteboards",
         "new": "New whiteboard"
+      },
+      "list": {
+        "title": "Whiteboards",
+        "empty": "No whiteboards yet. Create the first.",
+        "error": "Could not load whiteboards.",
+        "new": "New whiteboard",
+        "loading": "Loading whiteboards…",
+        "retry": "Retry",
+        "thumbnailAlt": "Thumbnail of {{title}}",
+        "thumbnailPlaceholder": "No preview yet",
+        "elementCount": "{{count}} elements",
+        "editedAgo": "edited {{when}} by {{author}}",
+        "untitled": "Untitled whiteboard",
+        "createTitle": "Create a whiteboard",
+        "createTitleLabel": "Title",
+        "createCta": "Create",
+        "createCancel": "Cancel",
+        "createPending": "Creating…"
+      },
+      "detail": {
+        "loading": "Loading whiteboard…",
+        "error": "Could not load whiteboard.",
+        "back": "Back to whiteboards",
+        "unsaved": "Unsaved changes",
+        "savedAt": "Saved {{when}}",
+        "saving": "Saving…",
+        "saveVersion": "Save version",
+        "savedJustNow": "Just now",
+        "canvasLoading": "Loading canvas…",
+        "title": "Title",
+        "rename": "Rename",
+        "delete": "Delete",
+        "deleteConfirmTitle": "Delete whiteboard",
+        "deleteConfirmBody": "Delete this whiteboard? It will be soft-deleted and can be restored by an administrator.",
+        "deleteCta": "Delete",
+        "deleteCancel": "Cancel",
+        "export": {
+          "menu": "Export",
+          "png": "Export as PNG",
+          "svg": "Export as SVG"
+        },
+        "lock": {
+          "banner": "Another session edited this whiteboard a moment ago — your changes will overwrite unless you reload.",
+          "reload": "Reload"
+        }
+      },
+      "errors": {
+        "tooLarge": "This whiteboard is too large to save. Remove some elements or attached images and try again.",
+        "invalidScene": "The whiteboard scene could not be saved because it failed validation.",
+        "saveFailed": "Could not save the whiteboard. Please try again."
       }
     }
   },

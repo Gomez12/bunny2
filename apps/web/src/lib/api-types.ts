@@ -455,6 +455,78 @@ export interface UpdateTodoPayload {
   readonly payload: TodoPayload;
 }
 
+// ---------- whiteboards (phase 11.5) ---------------------------------------
+//
+// Hand-mirrored from `packages/shared/src/whiteboards.ts`. The scene
+// shape is intentionally opaque per ADR 0028 — Excalidraw owns the
+// element schema, the web client passes the JSON straight back into
+// the canvas without inspecting individual elements.
+
+export interface ExcalidrawElement {
+  readonly version: number;
+  readonly type: string;
+  readonly id: string;
+  readonly [key: string]: unknown;
+}
+
+export interface ExcalidrawFileEntry {
+  readonly id: string;
+  readonly mimeType: string;
+  readonly dataURL: string;
+  readonly created: number;
+  readonly lastRetrieved?: number;
+}
+
+export interface ExcalidrawScene {
+  readonly elements: readonly ExcalidrawElement[];
+  readonly appState?: unknown;
+}
+
+export interface WhiteboardPayload {
+  readonly scene: ExcalidrawScene;
+  readonly files: Readonly<Record<string, ExcalidrawFileEntry>>;
+}
+
+export type Whiteboard = Entity<WhiteboardPayload>;
+
+export interface CreateWhiteboardPayload {
+  readonly title: string;
+  readonly slug?: string;
+  readonly originalLocale: string;
+  readonly payload: WhiteboardPayload;
+}
+
+export interface UpdateWhiteboardPayload {
+  readonly title?: string;
+  readonly payload: WhiteboardPayload;
+}
+
+/**
+ * Phase 11.5 — checkpoint PATCH body carrying the scene + thumbnail
+ * bytes the web build rendered via Excalidraw's `exportToBlob`. The
+ * server accepts the bytes (base64-encoded) and writes them to the
+ * `whiteboards.thumbnail_blob` BLOB column inside the same logical
+ * checkpoint as the scene update. The `etag` is opaque to the
+ * server — recommended shape is SHA-256 hex of the bytes.
+ */
+export interface WhiteboardCheckpointPayload {
+  readonly title?: string;
+  readonly payload: WhiteboardPayload;
+  readonly thumbnailBlobBase64?: string;
+  readonly thumbnailEtag?: string;
+}
+
+export interface WhiteboardListWithThumbnailItem {
+  readonly id: string;
+  readonly slug: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly updatedBy: string;
+  readonly lastCheckpointAt: string | null;
+  readonly elementCount: number;
+  readonly thumbnailBlobBase64: string | null;
+}
+
 // ---------- scheduled tasks (phase 5.6) ------------------------------------
 //
 // Hand-mirrored from `packages/shared/src/scheduled-tasks.ts` per the
