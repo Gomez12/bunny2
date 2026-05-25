@@ -96,14 +96,27 @@ the bytes to its parser. The dispatcher does not inspect the bytes.
 
 ```ts
 interface ConnectorIngestResult<Payload> {
-  readonly entities: ReadonlyArray<{
-    readonly title: string;
-    readonly payload: Partial<Payload>;
-    readonly externalId?: string;
-    readonly matchKey?: { kind: 'email' | 'externalId'; value: string };
-  }>;
+  readonly entities: ReadonlyArray<ConnectorIngestEntity<Payload>>;
   readonly warnings: readonly string[];
 }
+
+// Discriminated: `externalId` is required when the connector asks
+// for externalId-based dedup, optional otherwise. The dispatcher
+// uses the field to write `entity_external_links` on a fresh
+// `store.create` so re-ingest dedups against the link.
+type ConnectorIngestEntity<Payload> =
+  | {
+      readonly title: string;
+      readonly payload: Partial<Payload>;
+      readonly externalId?: string;
+      readonly matchKey?: { readonly kind: 'email'; readonly value: string };
+    }
+  | {
+      readonly title: string;
+      readonly payload: Partial<Payload>;
+      readonly externalId: string;
+      readonly matchKey: { readonly kind: 'externalId'; readonly value: string };
+    };
 ```
 
 The connector parses and maps; the dispatcher iterates the array and
@@ -120,8 +133,14 @@ the entity's layer:
   indexed column. The contacts module already maintains this column
   (4b.1) — no new SQL, no new indexed column.
 - `externalId`: lookup via `entity_external_links` for a row with
-  `{ connector, external_id }` in the layer. Reserved for upcoming
-  webhook-style connectors (Google Contacts).
+  `{ connector, external_id }` in the layer. Used by the Google
+  Calendar connector (4c.2) and by future webhook-style connectors
+  (Google Contacts). When this strategy is in play the
+  `ConnectorIngestEntity` type also requires the result item's
+  `externalId` field — the dispatcher writes an
+  `entity_external_links` row on `store.create` so the next ingest
+  pass dedups against the link. See
+  `docs/dev/follow-ups/done/ingest-externalid-dedup.md`.
 
 A `null` / missing `matchKey` ⇒ no dedup ⇒ always create. vCard sets a
 `matchKey` only when the parsed contact has a primary email; cards

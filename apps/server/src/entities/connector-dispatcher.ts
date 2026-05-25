@@ -7,6 +7,7 @@ import {
   type EntityConnectorSyncRequestedPayload,
 } from './events';
 import {
+  insertExternalLink,
   markFailed,
   markSucceeded,
   persistConnectorPayloadPatch,
@@ -424,7 +425,7 @@ export function createConnectorDispatcher(deps: ConnectorDispatcherDeps): Connec
         });
       }
       if (existingId === null) {
-        await store.create({
+        const createdEntity = await store.create({
           layerId: input.layerId,
           title: entity.title,
           originalLocale: input.originalLocale,
@@ -432,6 +433,47 @@ export function createConnectorDispatcher(deps: ConnectorDispatcherDeps): Connec
           actorId: input.actorId,
           ...(corr === undefined ? {} : { correlationId: corr }),
         });
+        // Auto-write `entity_external_links` so the next ingest call
+        // can dedup against the link instead of creating a duplicate.
+        // The contract: when `matchKey.kind === 'externalId'`, the
+        // discriminated `ConnectorIngestEntity` requires `externalId`
+        // on the result item — the dispatcher uses it as the link's
+        // `external_id` column. See
+        // `docs/dev/follow-ups/done/ingest-externalid-dedup.md` and
+        // ADR 0014 §4.
+        //
+        // Defensive: link writes that conflict (unique-key on
+        // `(connector, external_id)`) or fail for any other reason
+        // must not roll back the entity create. The entity is already
+        // persisted; the link is the dedup index for future ingests.
+        // We log structurally so a developer can spot the conflict.
+        if (entity.externalId !== undefined) {
+          try {
+            insertExternalLink(deps.db, {
+              id: crypto.randomUUID(),
+              ref: {
+                id: createdEntity.id,
+                kind: input.kind,
+                layerId: input.layerId,
+                slug: createdEntity.slug,
+              },
+              connector: input.connectorId,
+              externalId: entity.externalId,
+              payload: {},
+              now: clock().toISOString(),
+            });
+          } catch (err) {
+            console.error('[connector-dispatcher] entity_external_links insert failed', {
+              event: 'connector.ingest.linkInsertFailed',
+              kind: input.kind,
+              connectorId: input.connectorId,
+              externalId: entity.externalId,
+              entityId: createdEntity.id,
+              layerId: input.layerId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
         created += 1;
       } else {
         await store.update({

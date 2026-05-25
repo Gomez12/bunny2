@@ -101,21 +101,48 @@ export interface ConnectorIngestPayload {
  * `title` is the row's denormalized title — the dispatcher passes it
  * straight to `store.create` / `store.update`.
  *
- * `externalId` is reserved for future per-entity external-link
- * creation (Google Contacts will set it; vCard import does not — the
- * .vcf file is not an upstream system the contact stays linked to).
+ * When the entity declares `matchKey.kind === 'externalId'` the
+ * dispatcher also inserts an `entity_external_links` row on a fresh
+ * `store.create`, so the next ingest pass can dedup against the link.
+ * The discriminated union below enforces that `externalId` is present
+ * whenever the connector asks for externalId-based dedup — the
+ * dispatcher would otherwise have no value to write into the link's
+ * `external_id` column.
+ *
+ * For `matchKey.kind === 'email'` (and for entities without a
+ * `matchKey` — always create) `externalId` is optional. vCard import
+ * (one-shot file upload) omits it entirely; the .vcf file is not an
+ * upstream system the contact stays linked to.
  */
 export interface ConnectorIngestResult<Payload> {
   readonly entities: ReadonlyArray<ConnectorIngestEntity<Payload>>;
   readonly warnings: readonly string[];
 }
 
-export interface ConnectorIngestEntity<Payload> {
-  readonly title: string;
-  readonly payload: Partial<Payload>;
-  readonly externalId?: string;
-  readonly matchKey?: ConnectorIngestMatchKey;
-}
+/**
+ * Discriminated union: when a connector returns
+ * `matchKey: { kind: 'externalId', value }` the `externalId` field
+ * MUST also be set. The dispatcher writes a row into
+ * `entity_external_links` after `store.create` so future ingest
+ * passes find an existing entity (instead of creating duplicates) —
+ * the link's `external_id` column is sourced from this field. See
+ * `docs/dev/follow-ups/done/ingest-externalid-dedup.md`.
+ */
+export type ConnectorIngestEntity<Payload> =
+  | {
+      readonly title: string;
+      readonly payload: Partial<Payload>;
+      readonly externalId?: string;
+      readonly matchKey?:
+        | { readonly kind: 'email'; readonly value: string }
+        | undefined;
+    }
+  | {
+      readonly title: string;
+      readonly payload: Partial<Payload>;
+      readonly externalId: string;
+      readonly matchKey: { readonly kind: 'externalId'; readonly value: string };
+    };
 
 /**
  * How the dispatcher decides "is this a new entity or an update?" for

@@ -64,4 +64,36 @@ unanswered design questions:
 
 ## Status
 
-open
+done
+
+## Resolution
+
+Closed by tightening `ConnectorIngestEntity` into a discriminated
+union: when `matchKey.kind === 'externalId'` the `externalId` field
+is now required at the type level. The dispatcher
+(`apps/server/src/entities/connector-dispatcher.ts`) writes an
+`entity_external_links` row immediately after a successful
+`store.create` from ingest — mirroring the 4c.2 pull path that posts
+the link via `POST /external-links` before publishing
+`sync.requested`. The link's `external_id` is the result item's
+`externalId`, `connector` is the resolved `connectorId`, and
+`payload_json` starts as `{}` (a future `onLinkCreate` hook can
+stamp connector metadata, mirroring 4a.3's `onPayloadPatch`).
+
+Link-insert failures are logged structurally (event
+`connector.ingest.linkInsertFailed`) and never roll back the entity
+create — the entity is already persisted, so failing the ingest
+would surprise the caller; a failed link write only costs the next
+ingest pass its dedup short-circuit.
+
+The smoke step 14.4 no longer back-fills the link rows by hand: the
+dispatcher writes them now, so the re-ingest assertion exercises
+the real contract. Coverage added in
+`apps/server/tests/entities/calendar-google-connector.test.ts`:
+the existing ingest happy-path test asserts the link rows are
+written, and a new test
+`dedups the second ingest against entity_external_links written by the first`
+proves a re-ingest with the same upstream ids produces zero
+creates. ADR 0014 §4 updated to remove the "reserved for upcoming
+webhook-style connectors" qualification — Google Calendar (4c.2)
+already exercises the externalId strategy.

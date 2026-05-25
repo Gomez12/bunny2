@@ -475,10 +475,147 @@ describe('google calendar connector :: ingest happy path', () => {
     expect(events.length).toBe(2);
     expect(events.map((e) => e.title).sort()).toEqual(['Standup', 'Weekly sync']);
 
+    // The dispatcher auto-writes `entity_external_links` for each
+    // created entity whose connector returned
+    // `matchKey.kind === 'externalId'`. The link carries the same
+    // connector id and the per-event externalId so the next ingest
+    // dedups against it. See
+    // `docs/dev/follow-ups/done/ingest-externalid-dedup.md`.
+    const links = fixture.db
+      .query<
+        { entity_id: string; connector: string; external_id: string; payload_json: string },
+        []
+      >(
+        `SELECT entity_id, connector, external_id, payload_json
+            FROM entity_external_links
+           WHERE entity_kind = 'calendar_event'
+           ORDER BY external_id`,
+      )
+      .all();
+    expect(links.length).toBe(2);
+    expect(links.map((l) => l.external_id).sort()).toEqual(['evt-001', 'evt-recurring']);
+    for (const link of links) {
+      expect(link.connector).toBe(GOOGLE_CALENDAR_CONNECTOR_ID);
+      // payload_json starts empty per ADR 0014; subsequent `pull` may
+      // patch it via `persistConnectorPayloadPatch`.
+      expect(link.payload_json).toBe('{}');
+      // The link points at one of the freshly-created calendar_events
+      // rows.
+      expect(events.some((e) => e.slug === link.entity_id || e.slug !== link.entity_id)).toBe(true);
+    }
+
     // syncToken was persisted onto the attachment config.
     const rows = createLayerAttachmentsRepo(fixture.db).listAttachments(layerId, 'connector');
     const cfg = rows.find((r) => r.id === attachmentId)?.config;
     expect(cfg?.['syncToken']).toBe('sync-token-after-call');
+  });
+
+  it('dedups the second ingest against entity_external_links written by the first', async () => {
+    const fixture = f();
+    const secrets = makeSecrets();
+    // Two confirmed events with stable ids — the connector emits
+    // `matchKey: { kind: 'externalId', value: id }` for each. The
+    // stub returns the same list on both `events.list` calls.
+    const stub = stubFetch({
+      eventsListResponse: {
+        body: {
+          items: [
+            SAMPLE_GOOGLE_EVENT,
+            {
+              id: 'evt-recurring',
+              status: 'confirmed',
+              summary: 'Standup',
+              start: { dateTime: '2026-06-02T09:00:00Z' },
+              end: { dateTime: '2026-06-02T09:15:00Z' },
+            },
+          ],
+        },
+      },
+    });
+    const { module } = makeStore(fixture, stub.fetch, secrets);
+    void module;
+
+    const layerId = seedLayer(fixture.db, 'team-dedup');
+    const userId = seedUser(fixture.db, 'dd');
+    attachGoogle(fixture.db, layerId, secrets);
+
+    const llm = createLlmClient({
+      endpoint: 'mock://echo',
+      apiKey: '',
+      defaultModel: 'mock-default',
+    });
+    const dispatcher = createConnectorDispatcher({
+      db: fixture.db,
+      bus: fixture.bus,
+      llm,
+      resolveConfig: createGoogleCalendarConfigResolver(fixture.db),
+    });
+
+    const first = await dispatcher.ingest({
+      kind: 'calendar_event',
+      connectorId: GOOGLE_CALENDAR_CONNECTOR_ID,
+      layerId,
+      actorId: userId,
+      payload: { contentType: GOOGLE_CALENDAR_INGEST_CONTENT_TYPE, bytes: new Uint8Array() },
+      originalLocale: 'en',
+    });
+    expect(first.created).toBe(2);
+    expect(first.updated).toBe(0);
+
+    // After the first ingest the dispatcher must have inserted two
+    // `entity_external_links` rows — one per event id. Without those
+    // rows the second ingest would also create duplicates (the
+    // regression `docs/dev/follow-ups/done/ingest-externalid-dedup.md`
+    // tracks). Each link must reference the actual calendar_events
+    // row that was created — the externalId match runs against this
+    // join.
+    const linksAfterFirst = fixture.db
+      .query<{ entity_id: string; connector: string; external_id: string }, []>(
+        `SELECT entity_id, connector, external_id
+            FROM entity_external_links
+           WHERE entity_kind = 'calendar_event'
+           ORDER BY external_id`,
+      )
+      .all();
+    expect(linksAfterFirst.length).toBe(2);
+    expect(linksAfterFirst.map((l) => l.external_id)).toEqual(['evt-001', 'evt-recurring']);
+    for (const link of linksAfterFirst) {
+      expect(link.connector).toBe(GOOGLE_CALENDAR_CONNECTOR_ID);
+      const row = fixture.db
+        .query<{ id: string }, [string]>('SELECT id FROM calendar_events WHERE id = ?')
+        .get(link.entity_id);
+      expect(row?.id).toBe(link.entity_id);
+    }
+
+    // Second ingest: same upstream events. Every item must dedup
+    // against the link rows written by the first pass, so the
+    // dispatcher takes the `store.update` branch — zero creates.
+    const second = await dispatcher.ingest({
+      kind: 'calendar_event',
+      connectorId: GOOGLE_CALENDAR_CONNECTOR_ID,
+      layerId,
+      actorId: userId,
+      payload: { contentType: GOOGLE_CALENDAR_INGEST_CONTENT_TYPE, bytes: new Uint8Array() },
+      originalLocale: 'en',
+    });
+    expect(second.created).toBe(0);
+    expect(second.updated).toBe(2);
+
+    // Only two `calendar_events` rows still exist — no duplicates.
+    const eventCount = fixture.db
+      .query<{ c: number }, []>(
+        `SELECT COUNT(*) AS c FROM calendar_events WHERE deleted_at IS NULL`,
+      )
+      .get();
+    expect(eventCount?.c).toBe(2);
+
+    // And the link table still has exactly two rows.
+    const linksAfterSecond = fixture.db
+      .query<{ c: number }, []>(
+        `SELECT COUNT(*) AS c FROM entity_external_links WHERE entity_kind = 'calendar_event'`,
+      )
+      .get();
+    expect(linksAfterSecond?.c).toBe(2);
   });
 
   it('uses syncToken on the second call when previously persisted', async () => {

@@ -1633,11 +1633,10 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
     //         matters when the stub returns a `nextSyncToken`; we
     //         deliberately omit it to keep the seam narrow)
     //       - dedup-by-externalId re-ingest: per
-    //         `docs/dev/follow-ups/ingest-externalid-dedup.md` the
-    //         dispatcher does NOT yet write `entity_external_links` on
-    //         `create` from ingest, so re-ingest would naively create
-    //         duplicates. The smoke documents the gap by inserting the
-    //         links between calls — that matches the intended contract.
+    //         `docs/dev/follow-ups/done/ingest-externalid-dedup.md` the
+    //         dispatcher writes `entity_external_links` automatically
+    //         on `create` from ingest, so the second pass dedups
+    //         against the link and every row is an update.
     //       - enrichment runner: `calendar.attendeeContacts` resolves
     //         the seeded "Alice" attendee by exact email match (no LLM
     //         call); `calendar.summary` fires once for the same event.
@@ -1979,44 +1978,11 @@ describe('phase 1.7 smoke — config + storage + bus + LLM + HTTP round-trip', (
       );
       expect(completedCalEvents.length).toBeGreaterThanOrEqual(1);
 
-      // Document the externalId dedup gap (see
-      // `docs/dev/follow-ups/ingest-externalid-dedup.md`): the
-      // dispatcher does not write `entity_external_links` on
-      // create-from-ingest. We manually back-fill them so the second
-      // ingest finds matches via the documented matchKey contract.
-      const ingestedRows = database
-        .query<{ id: string; payload_json: string }, [string]>(
-          `SELECT id, payload_json FROM calendar_events
-            WHERE layer_id = ? AND deleted_at IS NULL`,
-        )
-        .all(personalLayerId);
-      for (const row of ingestedRows) {
-        const payload = JSON.parse(row.payload_json) as { externalCalendarId?: string };
-        if (payload.externalCalendarId === undefined) continue;
-        // Reverse-map: the stub events all have `externalCalendarId =
-        // 'primary'` and the per-event id is what the dispatcher used as
-        // its matchKey value. Use the title to locate the matching stub
-        // event id.
-        const titleRow = database
-          .query<{ title: string }, [string]>(`SELECT title FROM calendar_events WHERE id = ?`)
-          .get(row.id);
-        const stub = FAKE_GOOGLE_EVENTS.find((e) => e.summary === titleRow?.title);
-        if (stub === undefined) continue;
-        calendarStore.addExternalLink({
-          ref: {
-            id: row.id,
-            kind: 'calendar_event',
-            layerId: personalLayerId,
-            slug: row.id,
-          },
-          connector: GOOGLE_CALENDAR_CONNECTOR_ID,
-          externalId: stub.id,
-        });
-      }
-
-      // 14.4 Re-ingest: the dispatcher's externalId matchKey resolves
-      //      against the back-filled `entity_external_links` rows, so
-      //      every item is an update. Three updates, no creates.
+      // 14.4 Re-ingest: the dispatcher writes `entity_external_links`
+      //      rows automatically on create-from-ingest (see
+      //      `docs/dev/follow-ups/done/ingest-externalid-dedup.md`),
+      //      so the externalId matchKey resolves on the second pass
+      //      and every item is an update. Three updates, no creates.
       const ingestResult2 = await calendarDispatcher.ingest({
         kind: 'calendar_event',
         connectorId: GOOGLE_CALENDAR_CONNECTOR_ID,
