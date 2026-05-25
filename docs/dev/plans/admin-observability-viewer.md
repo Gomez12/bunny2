@@ -160,7 +160,7 @@ flowchart TD
   P7[Phase 7 — Smoke + i18n + a11y + docs + close-out]
 ```
 
-### Phase 0 — Shape (est. 3h)
+### Phase 0 — Shape (est. 3h) — DONE 2026-05-25
 
 - Walk each source table, confirm the field set we want to
   expose (and the field set we deliberately hide — e.g.
@@ -174,6 +174,248 @@ flowchart TD
   Recommended: local SQLite, consistent with logging.md's
   "durable SQLite tables" stance — file under
   `docs/dev/decisions/0031-analytics-local-sink.md`.
+
+#### Phase 0 — outcomes
+
+Deliverables produced 2026-05-25:
+
+- **ADR** —
+  [`docs/dev/decisions/0031-analytics-local-sink.md`](../decisions/0031-analytics-local-sink.md).
+  Decisions: (D1) local `analytics_events` SQLite table is the
+  sink; (D2) ingest **rejects** unknown event names per the
+  catalogue in `analytics.md` (Q1 resolved); (D3) `user_id`
+  hashed server-side at ingest (`user_id_hash`), deliberate
+  asymmetry with `llm_calls.user_id` which keeps the raw UUID;
+  (D4) 90-day default retention via `analytics.events.prune`;
+  (D5) viewer relies on the redaction guarantees catalogued
+  in the audit linked below.
+- **Redaction audit** —
+  [`docs/dev/audits/admin-observability-redaction-2026-05-25.md`](../audits/admin-observability-redaction-2026-05-25.md).
+  Two load-bearing findings:
+  1. `chat_pipeline_steps.input_json` for the `intent` /
+     `entities` step contains the raw user message by design.
+     The phase-4 viewer gates that field behind an explicit
+     "show raw chat content" expander; viewing it is logged
+     as `admin.observability.chat-runs.raw-content.viewed`
+     (row id only, no content).
+  2. `analytics_events.properties_json` must be
+     catalogue-bounded at ingest; without that validation the
+     new table would become the same "possible raw content"
+     surface as the others.
+- **Nav decision:** **dropdown**. The current
+  `apps/web/src/App.tsx` header already shows 4 admin
+  buttons (Users, Groups, Scheduled Tasks, Bus DLQ). Phase 6
+  adds 4 more — that would crowd the header past usable. Phase
+  1 ships an `<AdminNav>` using shadcn `DropdownMenu`,
+  collapsing all admin entries under a single "Admin" label
+  with a per-section heading inside (Users & Groups, Tasks &
+  Bus, Observability). i18n key:
+  `admin.nav.observability` + sibling section headings.
+- **Field exposure rules:** see the per-table breakdown in the
+  redaction audit. Headline rules:
+  - `events.payload` / `.metadata`: drawer only, collapsed.
+  - `llm_calls.request` / `.response`: drawer only, collapsed;
+    server truncates payloads > 200 KB (R3).
+  - `chat_pipeline_steps.input_json` (intent + entities):
+    drawer only, behind an explicit "show raw chat content"
+    toggle.
+  - `chat_pipeline_steps.output_json` (answer step):
+    metadata-only by writer design (`contentBytes`, not the
+    text). Safe inline-collapse.
+  - `bus_outbox.payload_json` / `metadata_json`: drawer only.
+  - `analytics_events.properties_json`: inline OK because the
+    catalogue keeps content bounded.
+
+#### Phase 0 — ASCII wireframes
+
+Each wireframe assumes the phase-1 `<AdminTablePage>` shell:
+page header (title + refresh button) → filter form → table →
+detail drawer. The shell wraps shadcn `Table`, `Drawer` (or
+`Sheet`), `Input`, `Select`, `Button`.
+
+##### Admin · Observability · Events log (phase 2)
+
+```txt
++--------------------------------------------------------------------+
+| Admin · Observability · Events log               [Refresh]         |
+| Read-only view of the canonical event log.                         |
+|--------------------------------------------------------------------|
+| Filters                                                            |
+|  Kind prefix [_______________]   From [2026-05-24T00:00]           |
+|  Layer       [▼ select layer ]   To   [2026-05-25T23:59]           |
+|  Flow id     [_______________]   Correlation id [_______________]  |
+|                                                  [Apply] [Reset]   |
+|--------------------------------------------------------------------|
+| Occurred at        | Type                 | Layer | Flow | Corr id |
+| 2026-05-25 14:02  | chat.message.done    | demo  | f-12 | c-9a    |
+| 2026-05-25 14:01  | chat.step.started    | demo  | f-12 | c-9a    |
+| 2026-05-25 13:58  | bus.dlq.added        | ops   | -    | c-7b    |
+| ...                                                                |
+|                                       [Prev]  page cursor  [Next]  |
+|--------------------------------------------------------------------|
+| Empty:   "No events match the current filters."                    |
+| Error:   "Could not load events. [Retry]"                          |
+| Loading: skeleton rows                                             |
++--------------------------------------------------------------------+
+
+Drawer (row click):
++--------------------------------------------------------------------+
+| chat.message.done                                          [Close] |
+| id: ev_01HABC… · occurred 2026-05-25T14:02:11Z                     |
+| correlation: c-9a · flow: f-12 · layer: demo                       |
+|--------------------------------------------------------------------|
+| Payload                                          [Expand JSON ▾]   |
+|   { "conversationId": "…", "runId": "…", "latencyMs": 1820 }      |
+|--------------------------------------------------------------------|
+| Metadata                                         [Expand JSON ▾]   |
++--------------------------------------------------------------------+
+```
+
+##### Admin · Observability · LLM calls (phase 3)
+
+```txt
++--------------------------------------------------------------------+
+| Admin · Observability · LLM calls                [Refresh]         |
+|--------------------------------------------------------------------|
+| Rollups (rolling 24h / 7d):                                        |
+|   Count: 1,204 / 9,872   Cost: $4.81 / $38.20                      |
+|   p50 latency: 612 ms    p95 latency: 2.1 s                        |
+|   Error rate: 0.3% / 0.4%                                          |
+|--------------------------------------------------------------------|
+| Filters                                                            |
+|  Model    [▼ all]   Endpoint [▼ all]   Status [▼ all]              |
+|  Layer    [▼ all]   User     [▼ all]                               |
+|  From [...]  To [...]  Cost ≥ [..]  Latency ≤ [..] ms              |
+|                                                  [Apply] [Reset]   |
+|--------------------------------------------------------------------|
+| Started at       | Model       | Endpoint | Tok in/out | Cost  | ms |
+| 14:02:11         | claude-…    | /messages| 1024 / 256 | 0.012 | 1820 |
+| 14:01:55         | gpt-4o-mini | /chat    |  812 / 134 | 0.004 |  712 |
+|                                                                    |
+|                                       [Prev]  page cursor  [Next]  |
++--------------------------------------------------------------------+
+
+Drawer (row click):
++--------------------------------------------------------------------+
+| LLM call · claude-3-5-sonnet                              [Close]  |
+| Started 14:02:11 · 1820 ms · $0.012 · model_source: layer          |
+| correlation: c-9a · flow: f-12 · layer: demo · user: u-7b          |
+|--------------------------------------------------------------------|
+| Request (redacted; > 200 KB will show "[truncated]")               |
+|   [Expand JSON ▾]                                                  |
+|--------------------------------------------------------------------|
+| Response (redacted)                                                |
+|   [Expand JSON ▾]                                                  |
+|--------------------------------------------------------------------|
+| Linked events: 4 rows by correlation_id  [Open events viewer →]    |
++--------------------------------------------------------------------+
+```
+
+##### Admin · Observability · Chat-pipeline runs (phase 4)
+
+```txt
++--------------------------------------------------------------------+
+| Admin · Observability · Chat-pipeline runs       [Refresh]         |
+|--------------------------------------------------------------------|
+| Filters                                                            |
+|  Layer   [▼ all]   User [▼ all]                                    |
+|  Status  [▼ all]   From [...]  To [...]                            |
+|                                                  [Apply] [Reset]   |
+|--------------------------------------------------------------------|
+| Run started     | Conv id    | Status    | Steps | Duration | LLM  |
+| 14:02:09        | conv-aa12  | succeeded | 4/4   | 1.9 s    | 1    |
+| 13:58:01        | conv-bb33  | failed    | 2/4   | 0.7 s    | 1    |
+|                                                                    |
+|                                       [Prev]  page cursor  [Next]  |
++--------------------------------------------------------------------+
+
+Drawer (row click):
++--------------------------------------------------------------------+
+| Chat pipeline run · conv-aa12 / run-99                  [Close]    |
+| Started 14:02:09 · ended 14:02:10.9 · status: succeeded            |
+|--------------------------------------------------------------------|
+| Step timeline                                                       |
+|   intent     ────────  succeeded  90 ms   llm: llm-call-1          |
+|   entities   ───────── succeeded 140 ms   llm: llm-call-2          |
+|   retrieval  ──        succeeded  60 ms   (no llm)                 |
+|   answer     ───────────────────── succeeded 1.6 s  llm: llm-call-3|
+|--------------------------------------------------------------------|
+| Per-step detail (click a row above)                                |
+|   intent.output_json   [Expand JSON ▾]                             |
+|   intent.input_json    [⚠ Show raw chat content ▸]                 |
+|     (Toggling this reveals the user's typed message.)              |
++--------------------------------------------------------------------+
+```
+
+##### Admin · Observability · Analytics events (phase 6)
+
+```txt
++--------------------------------------------------------------------+
+| Admin · Observability · Analytics events         [Refresh]         |
+|--------------------------------------------------------------------|
+| Rollups (24h / 7d count per top-5 event names):                    |
+|   chat_message_sent       412 / 3,109                              |
+|   proposal_approved        34 /   201                              |
+|   capability_deactivated    8 /    27                              |
+|--------------------------------------------------------------------|
+| Filters                                                            |
+|  Event name [▼ all]   Layer [▼ all]                                |
+|  From [...]   To [...]                                             |
+|                                                  [Apply] [Reset]   |
+|--------------------------------------------------------------------|
+| Occurred at      | Event                  | Layer | User hash       |
+| 14:02:11         | chat_message_sent      | demo  | 4f3a…           |
+| 14:01:50         | proposal_approved      | demo  | 4f3a…           |
+|                                                                    |
+|                                       [Prev]  page cursor  [Next]  |
++--------------------------------------------------------------------+
+
+Drawer (row click):
++--------------------------------------------------------------------+
+| chat_message_sent · 2026-05-25T14:02:11Z                  [Close]  |
+| Layer: demo · user_id_hash: 4f3a…                                  |
+|--------------------------------------------------------------------|
+| Documented properties (from analytics.md)                           |
+|   layerSlug:       string                                          |
+|   conversationId:  stable id                                       |
+|   lengthBucket:    enum  (S | M | L)                               |
+|--------------------------------------------------------------------|
+| This row's properties                                              |
+|   { "layerSlug": "demo", "conversationId": "…",                    |
+|     "lengthBucket": "S" }                                          |
++--------------------------------------------------------------------+
+```
+
+##### Admin top-nav (phase 1)
+
+```txt
+Before (today):
++--------------------------------------------------------------------+
+| Bunny2 · Layer demo  [Status][Chat][Layers][Users][Groups]         |
+|                      [Scheduled tasks][Bus DLQ]            [User▾] |
++--------------------------------------------------------------------+
+
+After (phase 1):
++--------------------------------------------------------------------+
+| Bunny2 · Layer demo  [Status][Chat][Layers]    [Admin ▾]   [User▾] |
++--------------------------------------------------------------------+
+                                              │
+                                              ▼
+                       +-----------------------------+
+                       | Admin                       |
+                       |   Users & Groups            |
+                       |   · Users                   |
+                       |   · Groups                  |
+                       |   Operations                |
+                       |   · Scheduled tasks         |
+                       |   · Bus DLQ / outbox        |
+                       |   Observability             |
+                       |   · Events                  |
+                       |   · LLM calls               |
+                       |   · Chat pipeline runs      |
+                       |   · Analytics               |
+                       +-----------------------------+
+```
 
 ### Phase 1 — Shell + nav (est. 3h)
 
