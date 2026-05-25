@@ -25,6 +25,12 @@ export { whiteboardStatsProvider, type WhiteboardStats } from './stats';
 
 export { type WhiteboardThumbnail } from './thumbnail';
 
+export {
+  whiteboardPlaceholderConnector,
+  WHITEBOARD_PLACEHOLDER_CONNECTOR_ID,
+  WHITEBOARD_PLACEHOLDER_NOT_CONFIGURED_KEY,
+} from './connectors/placeholder';
+
 /**
  * Phase 11.1 — wire-up helper for the whiteboards module.
  *
@@ -80,16 +86,23 @@ export function registerWhiteboardModule(
  * Phase 11.1 — build the whiteboard module for production. Mirrors
  * `buildProductionTodoModule()` so the wiring site in
  * `apps/server/src/http/router.ts` (lands later in phase 11) can call
- * a uniform `build…` helper per kind. In v1 the body is intentionally
- * empty: NO connectors ship (11.2 lands the placeholder slot only),
- * NO enrichment jobs ship in 11.1 (11.3 lands the scene summariser +
- * mention resolver).
+ * a uniform `build…` helper per kind. In v1 the body intentionally
+ * leaves the `connectors` slot empty: the §11.2 placeholder
+ * (`whiteboardPlaceholderConnector`) exists in the module's
+ * `connectors/` folder for future Miro / tldraw / `.excalidraw` import
+ * connectors to land additively, but it is NOT wired into production —
+ * a placeholder whose `verify(...)` always refuses with
+ * `errors.connectors.notConfigured` would surface a permanent failing
+ * attachment row on the connectors admin page. NO enrichment jobs
+ * shipped in 11.1 either (11.3 lands the scene summariser + mention
+ * resolver).
  *
  * Returns a module whose `connectors` field is `undefined` (not
  * `[]`) so the registry's `rebuildConnectorIndex` correctly leaves
  * the `whiteboard` bucket absent — matching
- * `listConnectorsForKind('whiteboard') === []` as a contract
- * assertion.
+ * `listConnectorsForKind('whiteboard') === []`. Tests that want to
+ * exercise the slot inject the placeholder explicitly via
+ * `createWhiteboardModule({ connectors: [whiteboardPlaceholderConnector] })`.
  */
 export function buildProductionWhiteboardModule(): EntityModule<WhiteboardPayload> {
   return createWhiteboardModule({ enrichmentJobs: whiteboardEnrichmentJobs });
