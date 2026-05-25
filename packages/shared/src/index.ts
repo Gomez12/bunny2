@@ -8,6 +8,7 @@ export * from './companies';
 export * from './contacts';
 export * from './calendar';
 export * from './todos';
+export * from './whiteboards';
 export * from './scheduled-tasks';
 export * from './chat';
 export * from './proposals';

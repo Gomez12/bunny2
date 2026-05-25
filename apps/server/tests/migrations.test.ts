@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0019_chat_conversation_auto_summary');
+      expect(currentSchemaVersion(db)).toBe('0021_whiteboards');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -145,6 +145,12 @@ describe('migrations', () => {
       // settings table; audit columns added to `improvement_proposals`
       // (verified per-column in `improvement-proposals-repo-phase8`).
       expect(tables).toContain('layer_proposal_settings');
+      // 0021 — fifth concrete entity kind (phase 11.1).
+      expect(tables).toContain('whiteboards');
+      // 0021 indexes — whiteboards.
+      expect(indexes).toContain('idx_whiteboards_layer');
+      expect(indexes).toContain('idx_whiteboards_layer_updated_at');
+      expect(indexes).toContain('idx_whiteboards_deleted_at');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -267,6 +273,7 @@ describe('migrations', () => {
         '0017_proposals_phase8',
         '0018_layer_chat_settings',
         '0019_chat_conversation_auto_summary',
+        '0021_whiteboards',
       ]);
     } finally {
       db2.close();
