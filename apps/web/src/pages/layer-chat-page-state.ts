@@ -217,6 +217,7 @@ export function appendOrReplaceMessage(
  * data-message-id="…">` element after it renders.
  */
 export interface ChatDeepLinkParams {
+  readonly conversationId: string | null;
   readonly messageId: string | null;
 }
 
@@ -225,9 +226,32 @@ export interface SearchParamsLike {
 }
 
 export function parseChatDeepLink(search: SearchParamsLike): ChatDeepLinkParams {
-  const raw = search.get('message');
-  if (raw === null || raw.length === 0) return { messageId: null };
-  return { messageId: raw };
+  const rawMessage = search.get('message');
+  const rawConversation = search.get('conversation');
+  return {
+    conversationId:
+      rawConversation === null || rawConversation.length === 0 ? null : rawConversation,
+    messageId: rawMessage === null || rawMessage.length === 0 ? null : rawMessage,
+  };
+}
+
+/**
+ * Pure selector: resolves which conversation should be active given a
+ * `?conversation=` deep-link param and the currently-loaded list. When
+ * the param names a conversation present in the list, that one wins.
+ * Otherwise we fall back to the first conversation (the historical
+ * default), or `null` when the list is empty.
+ */
+export function resolveActiveConversationId(
+  conversations: readonly { readonly id: string }[],
+  deepLinkConversationId: string | null,
+): string | null {
+  if (deepLinkConversationId !== null) {
+    const match = conversations.find((c) => c.id === deepLinkConversationId);
+    if (match !== undefined) return match.id;
+  }
+  const first = conversations[0];
+  return first === undefined ? null : first.id;
 }
 
 /**

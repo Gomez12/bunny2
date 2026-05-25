@@ -39,6 +39,7 @@ import {
   parseChatDeepLink,
   PIPELINE_STEP_ORDER,
   pipelineStepLabelKey,
+  resolveActiveConversationId,
   shouldComposerSubmit,
   splitForAnnouncement,
   type PipelineStepFrame,
@@ -78,7 +79,8 @@ export function LayerChatPage(): JSX.Element {
   const current = useCurrentLayer();
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
   const [searchParams] = useSearchParams();
-  const { messageId: deepLinkMessageId } = parseChatDeepLink(searchParams);
+  const { conversationId: deepLinkConversationId, messageId: deepLinkMessageId } =
+    parseChatDeepLink(searchParams);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
   const [conversations, setConversations] = useState<readonly LayerChatConversation[]>([]);
@@ -115,15 +117,20 @@ export function LayerChatPage(): JSX.Element {
       setConversations(list);
       setConvoLoadError(null);
       if (activeId === null && list.length > 0) {
-        const first = list[0];
-        if (first !== undefined) setActiveId(first.id);
+        // 6.6 follow-up: honor `?conversation=` deep links from the
+        // chat board so a card click lands on the right thread instead
+        // of the most-recently-updated conversation. Falls back to
+        // `list[0]` when the param is absent or names a conversation
+        // the caller cannot see.
+        const next = resolveActiveConversationId(list, deepLinkConversationId);
+        if (next !== null) setActiveId(next);
       }
     } catch (err: unknown) {
       const key = errorKeyOf(err);
       setConvoLoadError(mapServerErrorToChatErrorKey(key));
       console.error('[chat.page] conversations load failed', { errorKey: key });
     }
-  }, [layerSlug, activeId]);
+  }, [layerSlug, activeId, deepLinkConversationId]);
 
   useEffect(() => {
     void refreshConversations();

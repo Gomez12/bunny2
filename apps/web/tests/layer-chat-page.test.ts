@@ -27,6 +27,7 @@ import {
   messageElementSelector,
   parseChatDeepLink,
   PIPELINE_STEP_ORDER,
+  resolveActiveConversationId,
   shouldComposerSubmit,
   splitForAnnouncement,
   type PipelineStepFrame,
@@ -238,19 +239,60 @@ describe('parseSseFrames (SSE-over-fetch parser)', () => {
 });
 
 describe('parseChatDeepLink', () => {
-  it('returns the `message` query parameter when present', () => {
+  it('returns the `message` and `conversation` query parameters when present', () => {
     const search = new URLSearchParams('?conversation=abc&message=msg-123');
-    expect(parseChatDeepLink(search)).toEqual({ messageId: 'msg-123' });
+    expect(parseChatDeepLink(search)).toEqual({
+      conversationId: 'abc',
+      messageId: 'msg-123',
+    });
   });
 
   it('returns a null messageId when the param is missing', () => {
     const search = new URLSearchParams('?conversation=abc');
-    expect(parseChatDeepLink(search)).toEqual({ messageId: null });
+    expect(parseChatDeepLink(search)).toEqual({
+      conversationId: 'abc',
+      messageId: null,
+    });
   });
 
   it('returns a null messageId when the param is empty', () => {
     const search = new URLSearchParams('?message=');
-    expect(parseChatDeepLink(search)).toEqual({ messageId: null });
+    expect(parseChatDeepLink(search)).toEqual({
+      conversationId: null,
+      messageId: null,
+    });
+  });
+
+  it('returns a null conversationId when the param is missing or empty', () => {
+    expect(parseChatDeepLink(new URLSearchParams(''))).toEqual({
+      conversationId: null,
+      messageId: null,
+    });
+    expect(parseChatDeepLink(new URLSearchParams('?conversation='))).toEqual({
+      conversationId: null,
+      messageId: null,
+    });
+  });
+});
+
+describe('resolveActiveConversationId', () => {
+  const list = [{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }];
+
+  it('returns the deep-linked conversation when it exists in the list', () => {
+    expect(resolveActiveConversationId(list, 'c2')).toBe('c2');
+  });
+
+  it('falls back to list[0] when the deep-link param is null', () => {
+    expect(resolveActiveConversationId(list, null)).toBe('c1');
+  });
+
+  it('falls back to list[0] when the deep-linked id is not in the list', () => {
+    expect(resolveActiveConversationId(list, 'missing')).toBe('c1');
+  });
+
+  it('returns null when the list is empty regardless of deep-link', () => {
+    expect(resolveActiveConversationId([], 'c1')).toBeNull();
+    expect(resolveActiveConversationId([], null)).toBeNull();
   });
 });
 
