@@ -55,6 +55,7 @@ import type {
   LayerDetailResponse,
   LayerListResponse,
   LayerLocale,
+  LayerMembersResponse,
   LayerVisibilityListItem,
   ListLayersQuery,
   LoginResponse,
@@ -460,6 +461,17 @@ export async function removeLayerMember(slug: string, memberId: string): Promise
     `/layers/${encodeURIComponent(slug)}/members/${encodeURIComponent(memberId)}`,
     { method: 'DELETE' },
   );
+}
+
+/**
+ * Phase 2 (UI exposure gaps) — read the hydrated member list. The
+ * server returns `{users, groups}` with `SafeUser` / `SafeGroup` nested
+ * so the Members tab can render names without a second round-trip.
+ * 403 if the caller is not allowed to edit the layer, 404 if they are
+ * not a member, 400 on a non-project layer.
+ */
+export async function listLayerMembers(slug: string): Promise<LayerMembersResponse> {
+  return request<LayerMembersResponse>(`/layers/${encodeURIComponent(slug)}/members`);
 }
 
 // ---------- /me/visible-users + /me/visible-groups -------------------------

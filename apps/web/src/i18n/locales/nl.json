@@ -432,6 +432,26 @@
       }
     }
   },
+  "layers": {
+    "members": {
+      "list": {
+        "loading": "Leden laden…",
+        "loadError": "Kon de ledenlijst niet laden.",
+        "usersTitle": "Gebruikers",
+        "usersEmpty": "Nog geen gebruikersleden.",
+        "groupsTitle": "Groepen",
+        "groupsEmpty": "Nog geen groepsleden."
+      },
+      "remove": {
+        "cta": "Verwijderen",
+        "confirmTitle": "Dit lid verwijderen?",
+        "confirmBodyUser": "{{name}} uit deze laag verwijderen? Hij of zij verliest toegang totdat het lidmaatschap opnieuw wordt toegevoegd.",
+        "confirmBodyGroup": "De groep {{name}} uit deze laag verwijderen? Iedere gebruiker in die groep verliest hierdoor toegang totdat het lidmaatschap opnieuw wordt toegevoegd.",
+        "removed": "Lid verwijderd.",
+        "soleOwnerTooltip": "Je bent de enige eigenaar van deze laag. Promoveer eerst een ander lid tot eigenaar voordat je jezelf verwijdert."
+      }
+    }
+  },
   "menu": {
     "contextMenu": {
       "heading": "Contextmenu",

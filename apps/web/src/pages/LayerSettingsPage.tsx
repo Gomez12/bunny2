@@ -16,11 +16,13 @@ import {
   fetchLayerChatSettings,
   getSystemLocales,
   listLayerAttachments,
+  listLayerMembers,
   listLayerVisibility,
   listVisibleGroups,
   listVisibleUsers,
   registerLayerAttachment,
   removeLayerAttachment,
+  removeLayerMember,
   removeLayerVisibility,
   saveLayerChatSettings,
   setLayerLocales,
@@ -33,8 +35,11 @@ import type {
   Layer,
   LayerAttachment,
   LayerAttachmentKind,
+  LayerMembersResponse,
   LayerVisibilityListItem,
 } from '../lib/api-types';
+import { trackEvent } from '../lib/analytics';
+import { isSoleOwner } from './layer-members-state';
 import { errorKeyOf } from '../lib/errors';
 import { refreshLayers, useSession } from '../lib/session';
 import { pushToast } from '../lib/toast';
@@ -323,8 +328,16 @@ function GeneralTab(props: TabProps): JSX.Element {
   );
 }
 
+interface RemoveTarget {
+  readonly memberId: string;
+  readonly kind: 'user' | 'group';
+  readonly displayName: string;
+}
+
 function MembersTab(props: TabProps): JSX.Element {
   const { t } = useTranslation();
+  const session = useSession();
+  const actorId = session.user?.id ?? null;
   // Layer-members-picker follow-up: `/me/visible-users` + `/me/visible-groups`
   // expose the directory-disclosure boundary for non-admins. We hydrate
   // both into a Combobox-like select so the owner can pick instead of
@@ -337,6 +350,28 @@ function MembersTab(props: TabProps): JSX.Element {
   const [role, setRole] = useState<'member' | 'owner'>('member');
   const [submitting, setSubmitting] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+
+  // Phase 2 (UI exposure gaps) — hydrated member list. Loaded on mount
+  // and refreshed after add/remove so the rendered list always matches
+  // the server. A separate load-error state from the picker keeps the
+  // two failure modes distinguishable.
+  const [members, setMembers] = useState<LayerMembersResponse | null>(null);
+  const [membersErrorKey, setMembersErrorKey] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
+  const [removePending, setRemovePending] = useState(false);
+  const [removeErrorKey, setRemoveErrorKey] = useState<string | null>(null);
+
+  const refreshMembers = useCallback(async (): Promise<void> => {
+    if (props.layer.type !== 'project') return;
+    try {
+      const next = await listLayerMembers(props.layer.slug);
+      setMembers(next);
+      setMembersErrorKey(null);
+    } catch (err: unknown) {
+      setMembersErrorKey(errorKeyOf(err));
+      console.error('[layer.members] list load failed', { errorKey: errorKeyOf(err) });
+    }
+  }, [props.layer.slug, props.layer.type]);
 
   useEffect(() => {
     if (props.layer.type !== 'project') return;
@@ -361,6 +396,10 @@ function MembersTab(props: TabProps): JSX.Element {
     };
   }, [props.layer.type]);
 
+  useEffect(() => {
+    void refreshMembers();
+  }, [refreshMembers]);
+
   if (props.layer.type !== 'project') {
     return (
       <p className="text-sm text-muted-foreground">{t('admin.layers.members.derivedNotice')}</p>
@@ -381,6 +420,7 @@ function MembersTab(props: TabProps): JSX.Element {
       await addLayerMember(props.layer.slug, body);
       pushToast({ kind: 'success', message: t('admin.layers.members.added') });
       setMemberId('');
+      await refreshMembers();
     } catch (err: unknown) {
       setErrorKey(errorKeyOf(err));
     } finally {
@@ -388,13 +428,149 @@ function MembersTab(props: TabProps): JSX.Element {
     }
   }
 
+  async function handleRemoveConfirm(): Promise<void> {
+    if (removeTarget === null || removePending) return;
+    setRemovePending(true);
+    setRemoveErrorKey(null);
+    const startedAt = Date.now();
+    // Telemetry placeholder per `docs/dev/observability/telemetry.md` §4 —
+    // mirrors Phase 1's restore convention. The dotted name surfaces in
+    // dev logs so the metric is grep-able once a real sink lands.
+    const telemetry = 'layer.member.remove';
+    try {
+      await removeLayerMember(props.layer.slug, removeTarget.memberId);
+      console.log(`[${telemetry}]`, { success: true, latencyMs: Date.now() - startedAt });
+      trackEvent('layer_member_removed', {
+        layerSlug: props.layer.slug,
+        kind: removeTarget.kind,
+      });
+      pushToast({ kind: 'success', message: t('layers.members.remove.removed') });
+      setRemoveTarget(null);
+      await refreshMembers();
+    } catch (err: unknown) {
+      console.log(`[${telemetry}]`, { success: false, latencyMs: Date.now() - startedAt });
+      setRemoveErrorKey(errorKeyOf(err));
+    } finally {
+      setRemovePending(false);
+    }
+  }
+
+  function handleRemoveClose(): void {
+    if (removePending) return;
+    setRemoveTarget(null);
+    setRemoveErrorKey(null);
+  }
+
   const disabled = !props.canEdit || submitting;
   const options = kind === 'user' ? users : groups;
   const loading = users === null || groups === null;
 
+  // Sole-owner guard: disabling self-remove when this row is the
+  // layer's last owner. Predicate is pure (`isSoleOwner`) and tested
+  // separately so this branch stays declarative.
+  const actorIsSoleOwner = actorId !== null && members !== null && isSoleOwner(actorId, members);
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">{t('admin.layers.members.projectNotice')}</p>
+
+      {/* Phase 2 — members list (users + groups sections). */}
+      {membersErrorKey !== null ? (
+        <p role="alert" className="text-sm text-destructive">
+          {t('layers.members.list.loadError', { defaultValue: t('errors.network') })}
+        </p>
+      ) : members === null ? (
+        <p className="text-sm text-muted-foreground">{t('layers.members.list.loading')}</p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">{t('layers.members.list.usersTitle')}</h3>
+            {members.users.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('layers.members.list.usersEmpty')}</p>
+            ) : (
+              <ul className="divide-y rounded-md border">
+                {members.users.map((m) => {
+                  const isSelf = actorId !== null && m.userId === actorId;
+                  const blockSelf = isSelf && actorIsSoleOwner;
+                  const removeDisabled = !props.canEdit || removePending || blockSelf;
+                  return (
+                    <li
+                      key={m.userId}
+                      className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-mono">{m.user.username}</span>
+                        <span className="ml-2 text-muted-foreground">{m.user.displayName}</span>
+                        <span className="ml-2 rounded-md border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                          {m.role}
+                        </span>
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        disabled={removeDisabled}
+                        title={blockSelf ? t('layers.members.remove.soleOwnerTooltip') : undefined}
+                        onClick={() =>
+                          setRemoveTarget({
+                            memberId: m.userId,
+                            kind: 'user',
+                            displayName: m.user.displayName,
+                          })
+                        }
+                      >
+                        {t('layers.members.remove.cta')}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold">{t('layers.members.list.groupsTitle')}</h3>
+            {members.groups.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {t('layers.members.list.groupsEmpty')}
+              </p>
+            ) : (
+              <ul className="divide-y rounded-md border">
+                {members.groups.map((m) => (
+                  <li
+                    key={m.groupId}
+                    className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="font-mono">{m.group.slug}</span>
+                      <span className="ml-2 text-muted-foreground">{m.group.name}</span>
+                      <span className="ml-2 rounded-md border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                        {m.role}
+                      </span>
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      disabled={!props.canEdit || removePending}
+                      onClick={() =>
+                        setRemoveTarget({
+                          memberId: m.groupId,
+                          kind: 'group',
+                          displayName: m.group.name,
+                        })
+                      }
+                    >
+                      {t('layers.members.remove.cta')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
 
       {loadErrorKey !== null ? (
         <p role="alert" className="text-sm text-destructive">
@@ -482,6 +658,27 @@ function MembersTab(props: TabProps): JSX.Element {
           </Button>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title={t('layers.members.remove.confirmTitle')}
+        body={
+          removeTarget === null
+            ? ''
+            : t(
+                removeTarget.kind === 'user'
+                  ? 'layers.members.remove.confirmBodyUser'
+                  : 'layers.members.remove.confirmBodyGroup',
+                { name: removeTarget.displayName },
+              )
+        }
+        confirmLabel={t('layers.members.remove.cta')}
+        destructive
+        busy={removePending}
+        errorKey={removeErrorKey}
+        onConfirm={() => void handleRemoveConfirm()}
+        onClose={handleRemoveClose}
+      />
     </div>
   );
 }

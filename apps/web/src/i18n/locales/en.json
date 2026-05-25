@@ -628,6 +628,26 @@
       }
     }
   },
+  "layers": {
+    "members": {
+      "list": {
+        "loading": "Loading members…",
+        "loadError": "Could not load the member list.",
+        "usersTitle": "Users",
+        "usersEmpty": "No user members yet.",
+        "groupsTitle": "Groups",
+        "groupsEmpty": "No group members yet."
+      },
+      "remove": {
+        "cta": "Remove",
+        "confirmTitle": "Remove this member?",
+        "confirmBodyUser": "Remove {{name}} from this layer? They will lose access until re-added.",
+        "confirmBodyGroup": "Remove the {{name}} group from this layer? Every user in the group loses access through it until re-added.",
+        "removed": "Member removed.",
+        "soleOwnerTooltip": "You are the only owner of this layer. Promote another member to owner before removing yourself."
+      }
+    }
+  },
   "menu": {
     "contextMenu": {
       "heading": "Context menu",

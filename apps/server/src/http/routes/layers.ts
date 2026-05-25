@@ -353,6 +353,87 @@ export function registerLayersRoutes(
     return c.json({ ok: true });
   });
 
+  // ---------- GET /layers/:slug/members -----------------------------------
+
+  /**
+   * Phase 2 (UI exposure gaps) — list members of a project layer with
+   * display fields hydrated so the Members tab can render names instead
+   * of bare uuids. Mirrors `AdminGroupDetailResponse`: each row carries
+   * the original membership (`role`, `createdAt`) PLUS the full
+   * `SafeUser` / `SafeGroup` for the principal — the web bundle does not
+   * fan out a second hydration round-trip.
+   *
+   * Authz matches the matching DELETE handler below: 404 from
+   * `requireLayer` for a non-member; 403 for a member without edit
+   * rights; 400 for a non-project layer (members on project layers
+   * only — derived membership has no rows to list and a silent empty
+   * payload would be confusing).
+   *
+   * Soft-deleted users / groups are filtered out: a stale row in
+   * `layer_user_members` referencing a removed account would otherwise
+   * surface a `null`-ish entry in the picker.
+   */
+  app.get('/layers/:slug/members', requireLayer, (c) => {
+    const user = c.get('user');
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+
+    if (layer.type !== 'project') {
+      return c.json(MEMBERS_ON_PROJECT, 400);
+    }
+    if (!canEditLayer({ user, layer, db: deps.db, isSiteAdmin: computeIsSiteAdmin(user.id) })) {
+      return c.json(FORBIDDEN, 403);
+    }
+
+    const users = membersRepo
+      .listUserMembers(layer.id)
+      .map((m) => {
+        const u = usersRepo.findUserById(m.userId);
+        if (u === null || u.deletedAt !== null) return null;
+        return {
+          userId: m.userId,
+          role: m.role,
+          createdAt: m.createdAt,
+          user: {
+            id: u.id,
+            username: u.username,
+            displayName: u.displayName,
+            mustChangePassword: u.mustChangePassword,
+            createdAt: u.createdAt,
+            updatedAt: u.updatedAt,
+            deletedAt: u.deletedAt,
+            version: u.version,
+          },
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    const groups = membersRepo
+      .listGroupMembers(layer.id)
+      .map((m) => {
+        const g = groupsRepo.findGroupById(m.groupId);
+        if (g === null || g.deletedAt !== null) return null;
+        return {
+          groupId: m.groupId,
+          role: m.role,
+          createdAt: m.createdAt,
+          group: {
+            id: g.id,
+            slug: g.slug,
+            name: g.name,
+            description: g.description,
+            createdAt: g.createdAt,
+            updatedAt: g.updatedAt,
+            deletedAt: g.deletedAt,
+            version: g.version,
+          },
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
+    return c.json({ users, groups });
+  });
+
   // ---------- POST /layers/:slug/members ----------------------------------
 
   app.post('/layers/:slug/members', requireLayer, async (c) => {

@@ -100,8 +100,9 @@ Within each phase:
 - `apps/server/src/http/routes/entity-router.ts`
   (`_stats` decision: keep + document, or drop the auto-mount).
 
-No server-side code changes are required for phases 1–4 — every
-endpoint already exists. Phase 5 may touch the generic router.
+Phase 2 adds a `GET /layers/:slug/members` endpoint (the Members tab
+needs to read the hydrated list, not just write to it); phases 1, 3,
+4 remain client-only. Phase 5 may touch the generic router.
 
 ## 5. Phases
 

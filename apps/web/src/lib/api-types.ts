@@ -155,6 +155,30 @@ export interface LayerLocale {
   readonly createdAt: string;
 }
 
+// Phase 2 (UI exposure gaps) — `GET /layers/:slug/members` hydrates the
+// principal alongside the membership row so the Members tab can render
+// names instead of bare uuids. Mirrors `AdminGroupDetailResponse`:
+// membership metadata stays at the top level, the looked-up record
+// nests under `user` / `group`.
+export interface LayerUserMemberRow {
+  readonly userId: string;
+  readonly role: string;
+  readonly createdAt: string;
+  readonly user: SafeUser;
+}
+
+export interface LayerGroupMemberRow {
+  readonly groupId: string;
+  readonly role: string;
+  readonly createdAt: string;
+  readonly group: SafeGroup;
+}
+
+export interface LayerMembersResponse {
+  readonly users: readonly LayerUserMemberRow[];
+  readonly groups: readonly LayerGroupMemberRow[];
+}
+
 export interface LayerAttachment {
   readonly id: string;
   readonly layerId: string;
