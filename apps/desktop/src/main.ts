@@ -8,6 +8,7 @@ import {
   resolveSampleConfig,
 } from './paths';
 import { buildSidecarEnv, pickFreePort, spawnSidecar, type SidecarHandle } from './sidecar';
+import { installContextMenu } from './context-menu';
 
 const PRODUCT_NAME = 'bunny2';
 // Force Electron to use a clean product name for `userData` resolution.
@@ -167,6 +168,8 @@ function createWindow(): BrowserWindow {
     },
   });
   win.once('ready-to-show', () => win.show());
+
+  installContextMenu(win, { isDev, resourcesPath, isPackaged });
 
   if (isDev) {
     void win.loadURL(process.env['BUNNY2_DEV_URL'] ?? 'http://localhost:5173');

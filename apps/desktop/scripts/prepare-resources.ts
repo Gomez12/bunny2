@@ -71,6 +71,18 @@ function buildServer(): void {
   console.log(`[prepare] server -> ${dst}`);
 }
 
+function copyLocales(): void {
+  // Mirror the renderer's locale JSON so Electron main can resolve
+  // user-facing labels (e.g. right-click menu, see
+  // `apps/desktop/src/context-menu.ts`) without bundling i18next or
+  // growing the preload IPC surface.
+  const src = path.join(repoRoot, 'apps', 'web', 'src', 'i18n', 'locales');
+  const dst = path.join(resourcesDir, 'locales');
+  cleanDir(dst);
+  copyDir(src, dst);
+  console.log(`[prepare] locales -> ${dst}`);
+}
+
 function fetchBun(args: readonly string[]): void {
   console.log('[prepare] fetching Bun runtime');
   const script = path.join(desktopRoot, 'scripts', 'fetch-bun-runtimes.ts');
@@ -90,6 +102,7 @@ function main(): void {
 
   buildWeb();
   buildServer();
+  copyLocales();
   buildDesktopTs();
   if (!skipFetch) {
     fetchBun(all ? ['--all'] : []);

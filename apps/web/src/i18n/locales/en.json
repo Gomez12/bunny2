@@ -569,6 +569,30 @@
       }
     }
   },
+  "menu": {
+    "contextMenu": {
+      "heading": "Context menu",
+      "undo": "Undo",
+      "redo": "Redo",
+      "cut": "Cut",
+      "copy": "Copy",
+      "paste": "Paste",
+      "pasteAndMatchStyle": "Paste and match style",
+      "delete": "Delete",
+      "selectAll": "Select all",
+      "copyLink": "Copy link address",
+      "openLinkInBrowser": "Open link in external browser",
+      "copyImage": "Copy image",
+      "copyImageAddress": "Copy image address",
+      "saveImageAs": "Save image as…",
+      "addToDictionary": "Add to dictionary",
+      "back": "Back",
+      "forward": "Forward",
+      "reload": "Reload",
+      "viewPageSource": "View page source",
+      "inspectElement": "Inspect element"
+    }
+  },
   "errors": {
     "network": "Could not reach the server. Please try again.",
     "chat": {

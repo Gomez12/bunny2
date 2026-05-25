@@ -93,6 +93,37 @@ llm_calls;` returns at least 1.
 
 ---
 
+## Right-click context menu
+
+The renderer installs a context-aware right-click menu in
+`apps/desktop/src/context-menu.ts`. Run this checklist after the
+status + chat checks above. Labels resolve through the renderer's
+i18n catalogue (`apps/web/src/i18n/locales/{en,nl}.json`); set
+`BUNNY2_LOCALE=nl` before launching to verify the Dutch labels.
+
+- [ ] Right-click an empty area of the page → menu shows Back,
+      Forward, Reload, View page source. Inspect element appears only
+      in dev (`BUNNY2_DEV=1`).
+- [ ] Select some text → right-click the selection → menu shows
+      Copy and Select all (no Cut/Paste because the area is read-only).
+- [ ] Focus the chat textarea → right-click it → menu shows
+      Undo / Redo / Cut / Copy / Paste / Paste and match style /
+      Delete / Select all. Disabled entries (e.g. Paste when the
+      clipboard is empty) stay visible but are greyed out.
+- [ ] Type a misspelled word in the chat textarea, right-click it →
+      menu lists 1–N spelling suggestions plus "Add to dictionary".
+      Clicking a suggestion replaces the misspelling.
+- [ ] Right-click a link → menu shows "Open link in external browser"
+      and "Copy link address". Opening sends the URL through the OS
+      handler, not the Electron window.
+- [ ] Right-click an image → menu shows Copy image, Copy image
+      address, Save image as…. Save downloads to the OS download dir.
+- [ ] Launch with `BUNNY2_LOCALE=nl` → all entries above show Dutch
+      labels (Knippen / Kopiëren / Plakken / …).
+- [ ] Quit and re-launch in packaged mode → no Inspect element entry.
+
+---
+
 ## What to do when something fails
 
 - **App launches but the renderer shows "Network error":** the sidecar

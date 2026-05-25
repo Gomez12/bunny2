@@ -374,6 +374,30 @@
       }
     }
   },
+  "menu": {
+    "contextMenu": {
+      "heading": "Contextmenu",
+      "undo": "Ongedaan maken",
+      "redo": "Opnieuw",
+      "cut": "Knippen",
+      "copy": "Kopiëren",
+      "paste": "Plakken",
+      "pasteAndMatchStyle": "Plakken en opmaak overnemen",
+      "delete": "Verwijderen",
+      "selectAll": "Alles selecteren",
+      "copyLink": "Linkadres kopiëren",
+      "openLinkInBrowser": "Link openen in externe browser",
+      "copyImage": "Afbeelding kopiëren",
+      "copyImageAddress": "Afbeeldingsadres kopiëren",
+      "saveImageAs": "Afbeelding opslaan als…",
+      "addToDictionary": "Toevoegen aan woordenboek",
+      "back": "Terug",
+      "forward": "Vooruit",
+      "reload": "Herladen",
+      "viewPageSource": "Paginabron weergeven",
+      "inspectElement": "Element inspecteren"
+    }
+  },
   "errors": {
     "network": "Kan de server niet bereiken. Probeer het opnieuw.",
     "chat": {
