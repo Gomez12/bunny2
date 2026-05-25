@@ -1037,6 +1037,38 @@ export async function listTodoProjectionsForCalendar(
   return res;
 }
 
+// ---------- whiteboards recent list (phase 11.4) ---------------------------
+//
+// Dashboard widget endpoint. Mirrors the singular ↔ plural seam every
+// other §4 entity established: the server route is singular
+// (`/l/:slug/whiteboard/_recent`), the web URL is plural
+// (`/l/:slug/whiteboards` for the "view all" CTA — lands in 11.5).
+//
+// The endpoint returns a thin shape (`id`, `slug`, `title`,
+// `updatedAt`, `updatedBy`, `thumbnailBlobBase64`) so the widget can
+// render thumbnails inline without a second round-trip. Thumbnails
+// are NULL until the 11.5 PATCH/checkpoint flow lands — the widget's
+// placeholder branch is the dominant case in 11.4.
+
+export interface RecentWhiteboardItem {
+  readonly id: string;
+  readonly slug: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly updatedBy: string;
+  readonly thumbnailBlobBase64: string | null;
+}
+
+export async function listRecentWhiteboards(
+  layerSlug: string,
+  limit = 5,
+): Promise<readonly RecentWhiteboardItem[]> {
+  const res = await request<{ items: readonly RecentWhiteboardItem[] }>(
+    `/l/${encodeURIComponent(layerSlug)}/whiteboard/_recent?limit=${encodeURIComponent(String(limit))}`,
+  );
+  return res.items;
+}
+
 // ---------- scheduled tasks (phase 5.6) ------------------------------------
 
 function scheduledTasksBase(layerSlug: string): string {
@@ -1617,17 +1649,15 @@ export interface LayerChatSettingsInput {
 export async function fetchLayerChatSettings(
   layerSlug: string,
 ): Promise<LayerChatSettingsResponse> {
-  return request<LayerChatSettingsResponse>(
-    `/l/${encodeURIComponent(layerSlug)}/settings/chat`,
-  );
+  return request<LayerChatSettingsResponse>(`/l/${encodeURIComponent(layerSlug)}/settings/chat`);
 }
 
 export async function saveLayerChatSettings(
   layerSlug: string,
   input: LayerChatSettingsInput,
 ): Promise<LayerChatSettingsResponse> {
-  return request<LayerChatSettingsResponse>(
-    `/l/${encodeURIComponent(layerSlug)}/settings/chat`,
-    { method: 'PUT', body: JSON.stringify(input) },
-  );
+  return request<LayerChatSettingsResponse>(`/l/${encodeURIComponent(layerSlug)}/settings/chat`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
 }

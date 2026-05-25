@@ -1103,6 +1103,16 @@
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the title.",
       "originalLocale": "Original locale"
+    },
+    "whiteboards": {
+      "widget": {
+        "title": "Whiteboards",
+        "loading": "Loading whiteboards…",
+        "empty": "No whiteboards in this layer yet. Create the first one to get started.",
+        "error": "Could not load whiteboards.",
+        "viewAll": "View whiteboards",
+        "new": "New whiteboard"
+      }
     }
   },
   "connectors": {

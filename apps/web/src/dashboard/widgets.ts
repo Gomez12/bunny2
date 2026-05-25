@@ -11,5 +11,6 @@ import './TodosWidget';
 import './RecentRunsWidget';
 import './RecentChatsWidget';
 import './ProposalsWidget';
+import './WhiteboardsWidget';
 
 export { listDashboardWidgets, type DashboardWidget, type WidgetProps } from './widget-registry';

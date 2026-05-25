@@ -46,6 +46,12 @@ export { whiteboardStatsProvider, type WhiteboardStats } from './stats';
 export { type WhiteboardThumbnail } from './thumbnail';
 
 export {
+  mountWhiteboardRecentRoute,
+  type MountWhiteboardRecentRouteDeps,
+  type RecentWhiteboardItem,
+} from './recent';
+
+export {
   whiteboardPlaceholderConnector,
   WHITEBOARD_PLACEHOLDER_CONNECTOR_ID,
   WHITEBOARD_PLACEHOLDER_NOT_CONFIGURED_KEY,

@@ -884,6 +884,16 @@
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de titel.",
       "originalLocale": "Oorspronkelijke taal"
+    },
+    "whiteboards": {
+      "widget": {
+        "title": "Whiteboards",
+        "loading": "Whiteboards laden…",
+        "empty": "Nog geen whiteboards in deze laag. Maak het eerste aan om te starten.",
+        "error": "Kon whiteboards niet laden.",
+        "viewAll": "Bekijk whiteboards",
+        "new": "Nieuw whiteboard"
+      }
     }
   },
   "connectors": {

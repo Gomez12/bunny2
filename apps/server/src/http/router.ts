@@ -33,6 +33,7 @@ import {
   mountTodoRoutes,
   registerTodoModule,
 } from '../entities/todos';
+import { mountWhiteboardRecentRoute } from '../entities/whiteboards';
 import { createScheduledTasksRepo } from '../scheduled/repo';
 import { registerScheduledTasksRoutes } from './routes/scheduled-tasks';
 import { registerAdminScheduledTasksRoutes } from './routes/admin-scheduled-tasks';
@@ -247,6 +248,15 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     llm: deps.llmClient,
     module: registeredTodoModule,
   });
+
+  // Phase 11.4 — whiteboards dashboard widget endpoint. Mounts only
+  // the recent-list route (`GET /l/:slug/whiteboard/_recent`) needed
+  // by `WhiteboardsWidget`. The full generic CRUD surface
+  // (`/l/:slug/whiteboard/{,/:slug,...}`) lands in 11.5 alongside the
+  // web UI. The recent endpoint is independent of the CRUD mount so
+  // the widget can light up immediately without taking the bundle
+  // weight of `@excalidraw/excalidraw` (which 11.5 lazy-loads).
+  mountWhiteboardRecentRoute(app, { db: deps.db });
 
   // Phase 5.4 — scheduled-tasks HTTP surface (per-layer CRUD + admin
   // cross-layer overview + admin DLQ). The repo is shared with the
