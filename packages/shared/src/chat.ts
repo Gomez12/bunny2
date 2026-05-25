@@ -242,3 +242,64 @@ export const ChatBoardItemSchema = z
   })
   .strict();
 export type ChatBoardItem = z.infer<typeof ChatBoardItemSchema>;
+
+// ---------- per-layer chat settings (follow-up) ---------------------
+//
+// Per-layer overrides for the chat LLM model + embedding budget. The
+// settings row is 1:1 with `layers(id)`; NULL on a field = "inherit
+// the system default". Absent row = inherit every default. The
+// server-side `LayerChatSettings` row carries the same shape plus
+// audit timestamps; the wire payload here is the editable subset.
+
+const CHAT_MODEL_MAX_LEN = 200;
+
+/**
+ * Editable shape for the per-layer chat settings PUT endpoint. Every
+ * field is nullable: a non-null value pins the override, `null`
+ * (re)inherits the system default.
+ */
+export const LayerChatSettingsInputSchema = z
+  .object({
+    model: z.string().min(1).max(CHAT_MODEL_MAX_LEN).nullable(),
+    embeddingDailyCap: z.number().int().min(0).nullable(),
+    embeddingMonthlyCap: z.number().int().min(0).nullable(),
+  })
+  .strict();
+export type LayerChatSettingsInput = z.infer<typeof LayerChatSettingsInputSchema>;
+
+/**
+ * Read-side shape for `GET /l/:slug/settings/chat`. The route widens
+ * the input schema with `layerId` + ISO timestamps so the UI can
+ * show "last updated".
+ */
+export const LayerChatSettingsSchema = z
+  .object({
+    layerId: z.string().uuid(),
+    model: z.string().max(CHAT_MODEL_MAX_LEN).nullable(),
+    embeddingDailyCap: z.number().int().min(0).nullable(),
+    embeddingMonthlyCap: z.number().int().min(0).nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict();
+export type LayerChatSettings = z.infer<typeof LayerChatSettingsSchema>;
+
+/**
+ * GET response — includes current-day + last-30-days spend so the
+ * settings page can render a "today / month so far" readout without
+ * a second round-trip. Token counts only — never raw payloads.
+ */
+export const LayerChatSettingsResponseSchema = z
+  .object({
+    source: z.enum(['default', 'saved']),
+    settings: LayerChatSettingsSchema,
+    spend: z
+      .object({
+        day: z.string(),
+        tokensToday: z.number().int().min(0),
+        tokensLast30Days: z.number().int().min(0),
+      })
+      .strict(),
+  })
+  .strict();
+export type LayerChatSettingsResponse = z.infer<typeof LayerChatSettingsResponseSchema>;

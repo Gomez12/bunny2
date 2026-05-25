@@ -41,6 +41,7 @@ import { registerLayerChatRoutes } from './routes/layer-chat';
 import { registerLayerProposalsRoutes } from './routes/layer-proposals';
 import { registerLayerCapabilitiesRoutes } from './routes/layer-capabilities';
 import { registerLayerProposalSettingsRoutes } from './routes/layer-proposal-settings';
+import { registerLayerChatSettingsRoutes } from './routes/layer-chat-settings';
 import { createSqliteLlmCallLog } from '../llm/call-log';
 import {
   createEntityStore as createGenericEntityStore,
@@ -376,6 +377,14 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     ...(deps.capabilityRegistry !== undefined
       ? { capabilityRegistry: deps.capabilityRegistry }
       : {}),
+  });
+
+  // Per-layer chat settings (model override + embedding caps). Lives
+  // in its own route mount so the chat-pipeline and the settings UI
+  // share a single resolver source.
+  registerLayerChatSettingsRoutes(app, {
+    db: deps.db,
+    resolver: deps.resolver,
   });
 
   // Phase 7.6 — per-layer proposals + capabilities routes. Wired only

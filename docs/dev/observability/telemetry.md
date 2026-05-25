@@ -75,15 +75,16 @@ streams.
 | `layer_id`       | `metadata.layerId`                              | Stable layer UUID; never a slug.             |
 | `user_id`        | `metadata.userId`                               | Stable user UUID.                            |
 | `error`          | `String(err)` on failure                        | `NULL` on success.                           |
+| `model_source`   | `metadata.modelSource` (`'system'` / `'layer'`) | Records whether the model came from the system default or a per-layer `layer_chat_settings.model` override (per-layer chat settings follow-up). `NULL` for callers that do not stamp it; historical rows backfilled to `'system'`. |
 
 ### Stable dimensions
 
 The metadata-promoted columns are the **only** stable
 dimensions for grouping LLM calls:
 `model`, `endpoint`, `layer_id`, `user_id`, `flow_id`,
-`correlation_id`. Avoid grouping by anything inside the
-`request` / `response` JSON — that's debug data, not a metric
-dimension.
+`correlation_id`, `model_source`. Avoid grouping by anything
+inside the `request` / `response` JSON — that's debug data, not a
+metric dimension.
 
 ### Cost
 
@@ -252,9 +253,13 @@ clipped string fields (DLQ `error`, scheduled-task `error`).
   telemetry wrapper — would reject calls whose estimated
   cost exceeds a per-flow budget without bypassing the
   telemetry row.
-- **Per-layer embedding budget telemetry.** Open follow-up
-  [`chat-per-layer-embedding-budget.md`](../follow-ups/chat-per-layer-embedding-budget.md);
-  would add `embedding.tokens.spent` per layer per day.
+- **Per-layer embedding budget telemetry.** Implemented by the
+  per-layer chat settings follow-up (plan
+  [`chat-per-layer-settings.md`](../plans/done/chat-per-layer-settings.md)):
+  `embedding.tokens.spent` counter + structured log per successful
+  encode (`{ layerId, day, tokensSpent }`); `chat.embeddings.deferred`
+  counter when a cap is hit. The persistent counters live in
+  `layer_embedding_spend`.
 - **A `LOG_LEVEL`-equivalent telemetry-level switch.** Every
   call is logged at 100%; sampling is not configurable.
   Retention prune is the only "fewer rows" lever.

@@ -1563,3 +1563,54 @@ export async function saveLayerProposalSettings(
     { method: 'PUT', body: JSON.stringify(input) },
   );
 }
+
+// ---------- per-layer chat settings (model + embedding budget) ------------
+//
+// Mirrors the server's zod `LayerChatSettingsInputSchema` /
+// `LayerChatSettingsResponseSchema` 1:1. Every field is nullable — NULL
+// means "inherit the system default".
+
+export interface LayerChatSettings {
+  readonly layerId: string;
+  readonly model: string | null;
+  readonly embeddingDailyCap: number | null;
+  readonly embeddingMonthlyCap: number | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface LayerChatSettingsSpend {
+  readonly day: string;
+  readonly tokensToday: number;
+  readonly tokensLast30Days: number;
+}
+
+export interface LayerChatSettingsResponse {
+  readonly source: 'default' | 'saved';
+  readonly settings: LayerChatSettings;
+  readonly spend: LayerChatSettingsSpend;
+}
+
+export interface LayerChatSettingsInput {
+  readonly model: string | null;
+  readonly embeddingDailyCap: number | null;
+  readonly embeddingMonthlyCap: number | null;
+}
+
+export async function fetchLayerChatSettings(
+  layerSlug: string,
+): Promise<LayerChatSettingsResponse> {
+  return request<LayerChatSettingsResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/settings/chat`,
+  );
+}
+
+export async function saveLayerChatSettings(
+  layerSlug: string,
+  input: LayerChatSettingsInput,
+): Promise<LayerChatSettingsResponse> {
+  return request<LayerChatSettingsResponse>(
+    `/l/${encodeURIComponent(layerSlug)}/settings/chat`,
+    { method: 'PUT', body: JSON.stringify(input) },
+  );
+}

@@ -20,8 +20,9 @@ import { createChatMessagesRepo } from '../../chat/repos/chat-messages-repo';
 import { createChatPipelineRunsRepo } from '../../chat/repos/chat-pipeline-runs-repo';
 import { createChatPipelineStepsRepo } from '../../chat/repos/chat-pipeline-steps-repo';
 import { createChatMessageFeedbackRepo } from '../../chat/repos/chat-message-feedback-repo';
-import { runPipeline } from '../../chat/pipeline';
+import { createChatModelResolver, runPipeline } from '../../chat/pipeline';
 import type { EntityKind, EntityStoreForRetrieval, PipelineStepEvent } from '../../chat/pipeline';
+import { createLayerChatSettingsRepo } from '../../chat/repos/layer-chat-settings-repo';
 import { createRequireLayer } from '../middleware/layer';
 import type { HonoVariables } from '../types';
 import type { LocalesConfig } from '../../config/schema';
@@ -157,6 +158,15 @@ export function registerLayerChatRoutes(
   const runsRepo = createChatPipelineRunsRepo(deps.db);
   const stepsRepo = createChatPipelineStepsRepo(deps.db);
   const feedbackRepo = createChatMessageFeedbackRepo(deps.db);
+  // Per-layer chat-model follow-up — the resolver consults
+  // `layer_chat_settings.model` and falls back to the LLM client's
+  // default. Built per-route mount so a `db` swap (tests) picks up
+  // the fresh repo.
+  const layerChatSettingsRepo = createLayerChatSettingsRepo(deps.db);
+  const chatModelResolver = createChatModelResolver({
+    settingsRepo: layerChatSettingsRepo,
+    systemDefault: deps.llm.defaultModel,
+  });
 
   // ---------- POST /l/:slug/chat/conversations ----------------------------
 
@@ -379,6 +389,7 @@ export function registerLayerChatRoutes(
               chunkSink: writeToken,
               abortSignal: abortController.signal,
               onStepEvent: writeStep,
+              chatModelResolver,
               ...(deps.now !== undefined ? { clock: deps.now } : {}),
               ...(deps.capabilityRegistry !== undefined
                 ? { capabilityRegistry: deps.capabilityRegistry }

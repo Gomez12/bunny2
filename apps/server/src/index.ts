@@ -60,6 +60,8 @@ import { createImprovementProposalArtifactsRepo } from './proposals/repos/improv
 import { LayerProposalSettingsRepo } from './proposals/repos/layer-proposal-settings-repo';
 import { createChatConversationsRepo } from './chat/repos/chat-conversations-repo';
 import { createChatMessagesRepo } from './chat/repos/chat-messages-repo';
+import { createLayerChatSettingsRepo } from './chat/repos/layer-chat-settings-repo';
+import { createLayerEmbeddingSpendRepo } from './chat/repos/layer-embedding-spend-repo';
 import { createLayersRepo } from './repos/layers-repo';
 
 // Phase 5.2 — process role split. `parseRole` accepts the CLI flag
@@ -574,11 +576,18 @@ registerProposalsScheduledTaskHandlers({
   console.log(`[${appName}] capability.agents: ${attachedCount} re-attached`);
 }
 
+// Per-layer chat-settings follow-up — both repos are wired into the
+// subscriber so cap-hit defers (instead of dropping) the encode and
+// successful encodes increment `layer_embedding_spend`.
+const layerChatSettingsRepo = createLayerChatSettingsRepo(db);
+const layerEmbeddingSpendRepo = createLayerEmbeddingSpendRepo(db);
 const embeddingSubscriber = createEmbeddingSubscriber({
   bus,
   embedder,
   writer: lanceWriter,
   modules: listEntityModules(),
+  settingsRepo: layerChatSettingsRepo,
+  spendRepo: layerEmbeddingSpendRepo,
   fetchEntity: (kind, id) => {
     // Lazy per-kind store lookup mirroring the enrichment runner's
     // `resolveStoreForModule` cache above. We only build a store the

@@ -165,13 +165,15 @@ export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> 
             })
           : null;
 
-      const metadata = {
+      const metadata: Readonly<Record<string, unknown>> = {
         correlationId: ctx.correlationId,
         flowId: ctx.flowId,
         layerId: ctx.layerId,
         userId: ctx.userId,
         step: 'answer',
-      } as const;
+        ...(ctx.chatModel !== undefined ? { modelSource: ctx.chatModel.source } : {}),
+      };
+      const modelOverride = ctx.chatModel?.model;
 
       // Build a linked signal: combine the request signal (HTTP
       // client disconnect) with the answerer's hard 60s timeout.
@@ -187,8 +189,8 @@ export function createAnswerStep(): PipelineStep<AnswerStepInput, AnswerOutput> 
           deps.chunkSink !== undefined && typeof deps.llm.chatStream === 'function';
 
         const inner = streamingPossible
-          ? await runStreaming(messages, metadata, linkedSignal, deps, timeoutController)
-          : await runNonStreaming(messages, metadata, linkedSignal, deps, timeoutController);
+          ? await runStreaming(messages, metadata, linkedSignal, deps, timeoutController, modelOverride)
+          : await runNonStreaming(messages, metadata, linkedSignal, deps, timeoutController, modelOverride);
         // Tack on the attribution JSON computed above so the
         // orchestrator can persist it into `chat_pipeline_steps`.
         // `null` here keeps the column NULL (phase-6 default); a
@@ -207,11 +209,13 @@ async function runNonStreaming(
   signal: AbortSignal,
   deps: PipelineDeps,
   timeoutController: AbortController,
+  modelOverride: string | undefined,
 ): Promise<PipelineStepResult<AnswerOutput>> {
   try {
     const res = await deps.llm.chat({
       messages,
       temperature: 0.1,
+      ...(modelOverride !== undefined ? { model: modelOverride } : {}),
       metadata,
       signal,
     });
@@ -248,6 +252,7 @@ async function runStreaming(
   signal: AbortSignal,
   deps: PipelineDeps,
   timeoutController: AbortController,
+  modelOverride: string | undefined,
 ): Promise<PipelineStepResult<AnswerOutput>> {
   const chatStream = deps.llm.chatStream;
   if (chatStream === undefined) {
@@ -261,12 +266,13 @@ async function runStreaming(
   let accumulated = '';
   let tokensIn: number | null = null;
   let tokensOut: number | null = null;
-  let finalModel: string = deps.llm.defaultModel;
+  let finalModel: string = modelOverride ?? deps.llm.defaultModel;
 
   try {
     const iter = chatStream({
       messages,
       temperature: 0.1,
+      ...(modelOverride !== undefined ? { model: modelOverride } : {}),
       metadata,
       signal,
     });

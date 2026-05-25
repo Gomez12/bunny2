@@ -24,6 +24,14 @@ export {
 
 export { InvalidStepOutputError, extractJsonObject } from './step-utils';
 
+export { createChatModelResolver } from './model-resolver';
+export type {
+  ChatModelResolver,
+  ChatModelResolverDeps,
+  ResolvedChatModel,
+  ModelSource,
+} from './model-resolver';
+
 export {
   PIPELINE_ENTITY_KINDS,
   EntityKindSchema,

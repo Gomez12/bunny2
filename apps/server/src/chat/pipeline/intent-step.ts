@@ -54,12 +54,14 @@ export function createIntentStep(): PipelineStep<IntentStepInput, IntentOutput> 
           { role: 'user', content: input.userContent },
         ],
         temperature: 0,
+        ...(ctx.chatModel !== undefined ? { model: ctx.chatModel.model } : {}),
         metadata: {
           correlationId: ctx.correlationId,
           flowId: ctx.flowId,
           layerId: ctx.layerId,
           userId: ctx.userId,
           step: 'intent',
+          ...(ctx.chatModel !== undefined ? { modelSource: ctx.chatModel.source } : {}),
         },
       });
       const raw = extractJsonObject(res.content);

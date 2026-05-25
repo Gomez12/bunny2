@@ -158,6 +158,15 @@ export interface PipelineContext {
   readonly history: readonly HistoryTurn[];
   /** The user message content; same string the route received. */
   readonly userContent: string;
+  /**
+   * Per-layer chat model resolution. Each LLM-backed step (intent /
+   * entities / answer) MUST forward `chatModel.model` as the per-call
+   * model override and stamp `metadata.modelSource = chatModel.source`
+   * so `llm_calls.model_source` lands `'system'` vs `'layer'`. Absent
+   * (legacy fixtures that build a context by hand) falls back to the
+   * LLM client default.
+   */
+  readonly chatModel?: { readonly model: string; readonly source: 'system' | 'layer' };
 }
 
 export interface PipelineDeps {

@@ -13,6 +13,7 @@ import {
   addLayerMember,
   addLayerVisibility,
   deleteLayer,
+  fetchLayerChatSettings,
   getSystemLocales,
   listLayerAttachments,
   listLayerVisibility,
@@ -21,8 +22,10 @@ import {
   registerLayerAttachment,
   removeLayerAttachment,
   removeLayerVisibility,
+  saveLayerChatSettings,
   setLayerLocales,
   updateLayer,
+  type LayerChatSettingsResponse,
   type VisibleGroup,
   type VisibleUser,
 } from '../lib/api';
@@ -61,6 +64,7 @@ const TAB_VALUES = [
   'locales',
   'attachments',
   'proposals',
+  'chat',
 ] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
@@ -121,6 +125,11 @@ export function LayerSettingsPage(): JSX.Element {
       value: 'proposals',
       label: t('nav.layerSettings.proposals'),
       panel: <LayerSettingsProposalsTab layer={layer} canEdit={canEdit} />,
+    },
+    {
+      value: 'chat',
+      label: t('layer.settings.chat.tabLabel'),
+      panel: <ChatTab layer={layer} canEdit={canEdit} />,
     },
   ];
 
@@ -816,6 +825,173 @@ function LocalesTab(props: TabProps): JSX.Element {
       <div className="flex justify-end">
         <Button type="submit" disabled={disabled}>
           {t('admin.layers.locales.save')}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chat tab — per-layer LLM model override + embedding budget.
+//
+// Three controls:
+//  - model: text input (free-form per the existing config convention).
+//  - daily / monthly embedding caps: number inputs.
+// Plus a read-only "today / last 30 days" spend readout.
+//
+// Save sends the whole shape; empty model / empty caps clear the row
+// to NULL so the layer falls back to the system default.
+function ChatTab(props: TabProps): JSX.Element {
+  const { t } = useTranslation();
+  const [response, setResponse] = useState<LayerChatSettingsResponse | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [model, setModel] = useState('');
+  const [dailyCap, setDailyCap] = useState('');
+  const [monthlyCap, setMonthlyCap] = useState('');
+  const [pending, setPending] = useState(false);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async (): Promise<void> => {
+      try {
+        const r = await fetchLayerChatSettings(props.layer.slug);
+        if (cancelled) return;
+        setResponse(r);
+        setModel(r.settings.model ?? '');
+        setDailyCap(r.settings.embeddingDailyCap === null ? '' : String(r.settings.embeddingDailyCap));
+        setMonthlyCap(
+          r.settings.embeddingMonthlyCap === null ? '' : String(r.settings.embeddingMonthlyCap),
+        );
+      } catch (err: unknown) {
+        if (!cancelled) setLoadError(errorKeyOf(err));
+      }
+    })();
+    return (): void => {
+      cancelled = true;
+    };
+  }, [props.layer.slug]);
+
+  function parseCap(raw: string): { ok: true; value: number | null } | { ok: false } {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) return { ok: true, value: null };
+    const n = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n) || String(n) !== trimmed) {
+      return { ok: false };
+    }
+    return { ok: true, value: n };
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
+    e.preventDefault();
+    if (pending || !props.canEdit) return;
+    setErrorKey(null);
+    const daily = parseCap(dailyCap);
+    const monthly = parseCap(monthlyCap);
+    if (!daily.ok || !monthly.ok) {
+      setErrorKey('errors.validation');
+      return;
+    }
+    const trimmedModel = model.trim();
+    setPending(true);
+    try {
+      const saved = await saveLayerChatSettings(props.layer.slug, {
+        model: trimmedModel.length === 0 ? null : trimmedModel,
+        embeddingDailyCap: daily.value,
+        embeddingMonthlyCap: monthly.value,
+      });
+      setResponse(saved);
+      pushToast({ kind: 'success', message: t('layer.settings.chat.saved') });
+    } catch (err: unknown) {
+      setErrorKey(errorKeyOf(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const disabled = !props.canEdit || pending;
+
+  if (loadError !== null) {
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        {t(loadError, { defaultValue: t('errors.network') })}
+      </p>
+    );
+  }
+  if (response === null) {
+    return <p className="text-sm text-muted-foreground">{t('common.loading')}</p>;
+  }
+
+  return (
+    <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4" noValidate>
+      <p className="text-sm text-muted-foreground">{t('layer.settings.chat.intro')}</p>
+      <div className="space-y-2">
+        <Label htmlFor="layer-chat-model">{t('layer.settings.chat.modelLabel')}</Label>
+        <Input
+          id="layer-chat-model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          disabled={disabled}
+          autoComplete="off"
+          placeholder={t('layer.settings.chat.modelPlaceholder')}
+          aria-describedby="layer-chat-model-hint"
+        />
+        <p id="layer-chat-model-hint" className="text-xs text-muted-foreground">
+          {t('layer.settings.chat.modelHint')}
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="layer-chat-daily-cap">{t('layer.settings.chat.dailyCapLabel')}</Label>
+          <Input
+            id="layer-chat-daily-cap"
+            type="number"
+            min={0}
+            step={1}
+            inputMode="numeric"
+            value={dailyCap}
+            onChange={(e) => setDailyCap(e.target.value)}
+            disabled={disabled}
+            placeholder={t('layer.settings.chat.capPlaceholder')}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="layer-chat-monthly-cap">{t('layer.settings.chat.monthlyCapLabel')}</Label>
+          <Input
+            id="layer-chat-monthly-cap"
+            type="number"
+            min={0}
+            step={1}
+            inputMode="numeric"
+            value={monthlyCap}
+            onChange={(e) => setMonthlyCap(e.target.value)}
+            disabled={disabled}
+            placeholder={t('layer.settings.chat.capPlaceholder')}
+          />
+        </div>
+      </div>
+      <div className="rounded-md border bg-muted/30 p-3 text-sm">
+        <p className="font-medium">{t('layer.settings.chat.spendTitle')}</p>
+        <p className="text-muted-foreground">
+          {t('layer.settings.chat.spendToday', {
+            tokens: response.spend.tokensToday.toLocaleString(),
+            day: response.spend.day,
+          })}
+        </p>
+        <p className="text-muted-foreground">
+          {t('layer.settings.chat.spendLast30', {
+            tokens: response.spend.tokensLast30Days.toLocaleString(),
+          })}
+        </p>
+      </div>
+      {errorKey !== null ? (
+        <p role="alert" aria-live="polite" className="text-sm text-destructive">
+          {t(errorKey, { defaultValue: t('errors.network') })}
+        </p>
+      ) : null}
+      <div className="flex justify-end">
+        <Button type="submit" disabled={disabled}>
+          {t('layer.settings.chat.save')}
         </Button>
       </div>
     </form>

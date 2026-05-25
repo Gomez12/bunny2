@@ -32,6 +32,7 @@ import type { LlmCallLog } from '../../llm/call-log';
 import type { LlmClient } from '../../llm/types';
 import { withTelemetry } from '../../llm/telemetry';
 import type { CapabilityRegistry } from '../../proposals/capability-registry';
+import type { ChatModelResolver } from './model-resolver';
 import type { ChatConversationsRepo } from '../repos/chat-conversations-repo';
 import type { ChatMessage, ChatMessagesRepo } from '../repos/chat-messages-repo';
 import type { ChatPipelineRunsRepo } from '../repos/chat-pipeline-runs-repo';
@@ -149,6 +150,13 @@ export interface RunPipelineDeps {
    * skips the fragment-injection step and behaves exactly like 6.x.
    */
   readonly capabilityRegistry?: CapabilityRegistry;
+  /**
+   * Per-layer chat-model resolver. Optional: when omitted, every
+   * step's LLM call falls through to the client's default model and
+   * no `model_source` dimension is recorded (legacy behaviour for
+   * tests that don't care about the per-layer model dimension).
+   */
+  readonly chatModelResolver?: ChatModelResolver;
 }
 
 export interface RunPipelineResult {
@@ -221,6 +229,7 @@ export async function runPipeline(
 
   // ----- pipeline context -----
   const history = loadHistory(deps.messagesRepo, input.conversationId, input.userMessageId);
+  const resolvedChatModel = deps.chatModelResolver?.resolve(input.layerId);
   const ctx: PipelineContext = {
     conversationId: input.conversationId,
     userMessageId: input.userMessageId,
@@ -233,7 +242,19 @@ export async function runPipeline(
     flowId,
     history,
     userContent: input.userContent,
+    ...(resolvedChatModel !== undefined ? { chatModel: resolvedChatModel } : {}),
   };
+  if (resolvedChatModel !== undefined) {
+    logger.info('pipeline.model.resolved', {
+      event: 'pipeline.model.resolved',
+      conversationId: input.conversationId,
+      layerId: input.layerId,
+      // Model name itself is non-sensitive but limit cardinality on
+      // counter labels — we count by `source` only.
+      modelSource: resolvedChatModel.source,
+    });
+    counters.inc('chat.pipeline.model.resolved', 1, { source: resolvedChatModel.source });
+  }
 
   // ----- run the four steps -----
   const intentStep = createIntentStep();

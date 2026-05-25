@@ -23,6 +23,14 @@ export interface LlmCallRow {
   readonly layerId: string | null;
   readonly userId: string | null;
   readonly error: string | null;
+  /**
+   * Per-layer chat model follow-up — records whether the model used
+   * was the system default or a per-layer override. `null` for
+   * historical rows + for callers that do not stamp
+   * `metadata.modelSource`. The migration backfills existing rows
+   * to `'system'` so downstream group-by queries are honest.
+   */
+  readonly modelSource: 'system' | 'layer' | null;
 }
 
 export interface LlmCallLog {
@@ -57,13 +65,14 @@ export function createSqliteLlmCallLog(db: Database): LlmCallLog {
       string | null,
       string | null,
       string | null,
+      string | null,
     ]
   >(
     `INSERT INTO llm_calls
        (id, started_at, ended_at, model, endpoint, request, response,
         tokens_in, tokens_out, cost_usd, latency_ms,
-        correlation_id, flow_id, layer_id, user_id, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        correlation_id, flow_id, layer_id, user_id, error, model_source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
   const countStmt = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM llm_calls');
@@ -89,6 +98,7 @@ export function createSqliteLlmCallLog(db: Database): LlmCallLog {
         row.layerId,
         row.userId,
         row.error,
+        row.modelSource,
       );
     },
     count(): number {

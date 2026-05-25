@@ -491,6 +491,21 @@
         "errorNetwork": "Could not save proposal settings.",
         "sourceDefault": "Using default values — no settings saved yet.",
         "sourceSaved": "Saved on {{updatedAt}} by {{updatedBy}}."
+      },
+      "chat": {
+        "tabLabel": "Chat",
+        "intro": "Override the system LLM model and cap embedding spend for this layer. Leave a field blank to inherit the system default.",
+        "modelLabel": "Chat model",
+        "modelPlaceholder": "Leave blank to inherit the system default",
+        "modelHint": "Used by the chat pipeline’s router, resolver and answerer steps for this layer.",
+        "dailyCapLabel": "Daily embedding cap (tokens)",
+        "monthlyCapLabel": "Monthly embedding cap (tokens, last 30 days)",
+        "capPlaceholder": "No cap",
+        "spendTitle": "Embedding spend",
+        "spendToday": "Today ({{day}}): {{tokens}} tokens",
+        "spendLast30": "Last 30 days: {{tokens}} tokens",
+        "save": "Save chat settings",
+        "saved": "Chat settings saved."
       }
     },
     "dashboard": {

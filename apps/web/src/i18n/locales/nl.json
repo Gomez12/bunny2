@@ -67,6 +67,21 @@
         "errorNetwork": "Kon instellingen voor voorstellen niet opslaan.",
         "sourceDefault": "Standaardwaarden — nog geen instellingen opgeslagen.",
         "sourceSaved": "Opgeslagen op {{updatedAt}} door {{updatedBy}}."
+      },
+      "chat": {
+        "tabLabel": "Chat",
+        "intro": "Overschrijf het systeem-LLM-model en begrens het embeddingverbruik voor deze laag. Laat een veld leeg om de systeemstandaard te gebruiken.",
+        "modelLabel": "Chatmodel",
+        "modelPlaceholder": "Leeg laten voor de systeemstandaard",
+        "modelHint": "Wordt gebruikt door de router-, resolver- en antwoordstap van de chatpipeline voor deze laag.",
+        "dailyCapLabel": "Dagelijkse embeddinglimiet (tokens)",
+        "monthlyCapLabel": "Maandelijkse embeddinglimiet (tokens, laatste 30 dagen)",
+        "capPlaceholder": "Geen limiet",
+        "spendTitle": "Embeddingverbruik",
+        "spendToday": "Vandaag ({{day}}): {{tokens}} tokens",
+        "spendLast30": "Laatste 30 dagen: {{tokens}} tokens",
+        "save": "Chatinstellingen opslaan",
+        "saved": "Chatinstellingen opgeslagen."
       }
     },
     "dashboard": {

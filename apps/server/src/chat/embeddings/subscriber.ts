@@ -61,6 +61,9 @@ import type {
 import { entityEventType } from '../../entities';
 import type { Embedder } from './embedder';
 import { getLanceTableForKind, type LanceWriter } from './lance-tables';
+import type { LayerChatSettingsRepo } from '../repos/layer-chat-settings-repo';
+import type { LayerEmbeddingSpendRepo } from '../repos/layer-embedding-spend-repo';
+import { isoDay } from '../repos/layer-embedding-spend-repo';
 
 export interface EmbeddingSubscriberDeps {
   readonly bus: MessageBus;
@@ -78,6 +81,21 @@ export interface EmbeddingSubscriberDeps {
   readonly logger?: SubscriberLogger;
   /** Stable counters for tests; production wires to console.log. */
   readonly counters?: SubscriberCounters;
+  /**
+   * Per-layer embedding budget — optional. When both repos are
+   * provided, the subscriber consults `layer_chat_settings.{daily,
+   * monthly}_cap` before each encode; on cap-hit the upsert is
+   * skipped, a structured warning is logged, and a `deferred`
+   * counter increments. The next `updated` event (or the daily
+   * backfill sweep) retries the row.
+   *
+   * Absent → the subscriber matches the phase-6 behaviour byte-for-
+   * byte. Tests that don't care about the budget omit both repos.
+   */
+  readonly settingsRepo?: LayerChatSettingsRepo;
+  readonly spendRepo?: LayerEmbeddingSpendRepo;
+  /** Override now() in tests so the `day` bucket is deterministic. */
+  readonly clock?: () => Date;
 }
 
 /**
@@ -119,8 +137,76 @@ const noopCounters: SubscriberCounters = { inc: () => undefined };
 export function createEmbeddingSubscriber(deps: EmbeddingSubscriberDeps): EmbeddingSubscriber {
   const logger = deps.logger ?? defaultLogger;
   const counters = deps.counters ?? noopCounters;
+  const clock = deps.clock ?? ((): Date => new Date());
   const unsubs: Unsubscribe[] = [];
   let started = false;
+
+  /**
+   * Returns the layer's daily + monthly caps, or `null` when no
+   * budget is wired (in which case the subscriber behaves like
+   * phase 6 — every encode runs unconditionally).
+   */
+  function readBudgetCaps(layerId: string): {
+    readonly dailyCap: number | null;
+    readonly monthlyCap: number | null;
+  } | null {
+    if (deps.settingsRepo === undefined || deps.spendRepo === undefined) return null;
+    const row = deps.settingsRepo.find(layerId);
+    return {
+      dailyCap: row?.embeddingDailyCap ?? null,
+      monthlyCap: row?.embeddingMonthlyCap ?? null,
+    };
+  }
+
+  /**
+   * Returns `true` when an encode for this layer would exceed any
+   * configured cap. Pure check — does NOT mutate any counter; the
+   * caller increments after a successful encode.
+   */
+  function isOverBudget(
+    layerId: string,
+    text: string,
+    caps: { readonly dailyCap: number | null; readonly monthlyCap: number | null },
+  ): { readonly capHit: 'daily' | 'monthly'; readonly estimatedTokens: number } | null {
+    if (deps.spendRepo === undefined) return null;
+    if (caps.dailyCap === null && caps.monthlyCap === null) return null;
+    const estimated = Math.max(1, Math.ceil(text.length / 4));
+    const day = isoDay(clock());
+    if (caps.dailyCap !== null) {
+      const spentToday = deps.spendRepo.getDayTokens(layerId, day);
+      if (spentToday + estimated > caps.dailyCap) {
+        return { capHit: 'daily', estimatedTokens: estimated };
+      }
+    }
+    if (caps.monthlyCap !== null) {
+      const last30 = deps.spendRepo.sumLastDays(layerId, day, 30);
+      if (last30 + estimated > caps.monthlyCap) {
+        return { capHit: 'monthly', estimatedTokens: estimated };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Record actual spend on a successful encode. The embedder does
+   * not currently report token counts, so we use the `chars / 4`
+   * heuristic for now. The Embedder interface can grow a token-
+   * count return later; this helper is the single seam to update.
+   */
+  function recordSpend(layerId: string, text: string): number {
+    if (deps.spendRepo === undefined) return 0;
+    const day = isoDay(clock());
+    const tokens = Math.max(1, Math.ceil(text.length / 4));
+    deps.spendRepo.addTokens(layerId, day, tokens);
+    counters.inc('embedding.tokens.spent', tokens);
+    logger.info('embedding.tokens.spent', {
+      event: 'embedding.tokens.spent',
+      layerId,
+      day,
+      tokensSpent: tokens,
+    });
+    return tokens;
+  }
 
   return {
     start(): void {
@@ -198,6 +284,31 @@ export function createEmbeddingSubscriber(deps: EmbeddingSubscriberDeps): Embedd
       await safeRemove(table, ref.id, ref.kind, ref.layerId);
       return;
     }
+    // Per-layer embedding-budget gate (no-op when no budget repos
+    // are wired). On cap-hit we DROP the encode but keep the row
+    // ready for the daily backfill — see plan §"Observability".
+    const caps = readBudgetCaps(ref.layerId);
+    if (caps !== null) {
+      const over = isOverBudget(ref.layerId, searchableText, caps);
+      if (over !== null) {
+        counters.inc('chat.embeddings.deferred');
+        logger.warn('embedding deferred (budget hit)', {
+          event: 'chat.embeddings.deferred',
+          reason: `cap_${over.capHit}`,
+          kind: ref.kind,
+          entityId: ref.id,
+          layerId: ref.layerId,
+          estimatedTokens: over.estimatedTokens,
+          dailyCap: caps.dailyCap,
+          monthlyCap: caps.monthlyCap,
+        });
+        // The daily `chat.embeddings.backfill` job re-discovers
+        // rows that are missing from LanceDB and re-encodes them;
+        // we deliberately do NOT call the LanceWriter so the row
+        // simply stays absent until the cap window resets.
+        return;
+      }
+    }
     const startedAt = Date.now();
     try {
       const vector = await deps.embedder.encode(searchableText);
@@ -209,6 +320,7 @@ export function createEmbeddingSubscriber(deps: EmbeddingSubscriberDeps): Embedd
         text: searchableText,
         vector,
       });
+      recordSpend(ref.layerId, searchableText);
       counters.inc('chat.embeddings.upsert.ok');
       logger.info('upsert ok', {
         event: 'chat.embeddings.upsert',
@@ -255,6 +367,24 @@ export function createEmbeddingSubscriber(deps: EmbeddingSubscriberDeps): Embedd
       await safeRemove(table, ref.id, ref.kind, ref.layerId);
       return;
     }
+    const caps = readBudgetCaps(fetched.layerId);
+    if (caps !== null) {
+      const over = isOverBudget(fetched.layerId, fetched.searchableText, caps);
+      if (over !== null) {
+        counters.inc('chat.embeddings.deferred');
+        logger.warn('embedding deferred on restore (budget hit)', {
+          event: 'chat.embeddings.deferred',
+          reason: `cap_${over.capHit}`,
+          kind: fetched.kind,
+          entityId: fetched.id,
+          layerId: fetched.layerId,
+          estimatedTokens: over.estimatedTokens,
+          dailyCap: caps.dailyCap,
+          monthlyCap: caps.monthlyCap,
+        });
+        return;
+      }
+    }
     const startedAt = Date.now();
     try {
       const vector = await deps.embedder.encode(fetched.searchableText);
@@ -266,6 +396,7 @@ export function createEmbeddingSubscriber(deps: EmbeddingSubscriberDeps): Embedd
         text: fetched.searchableText,
         vector,
       });
+      recordSpend(fetched.layerId, fetched.searchableText);
       counters.inc('chat.embeddings.upsert.ok');
       logger.info('restore upsert ok', {
         event: 'chat.embeddings.restore',

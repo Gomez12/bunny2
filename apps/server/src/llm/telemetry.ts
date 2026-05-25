@@ -57,6 +57,7 @@ export function withTelemetry(client: LlmClient, opts: TelemetryOpts): LlmClient
       const flowId = stringOrNull(meta.flowId);
       const layerId = stringOrNull(meta.layerId);
       const userId = stringOrNull(meta.userId);
+      const modelSource = pickModelSource(meta.modelSource);
 
       const requestJson = JSON.stringify(redact(req));
 
@@ -80,6 +81,7 @@ export function withTelemetry(client: LlmClient, opts: TelemetryOpts): LlmClient
           layerId,
           userId,
           error: null,
+          modelSource,
         };
         opts.log.write(row);
         return res;
@@ -102,6 +104,7 @@ export function withTelemetry(client: LlmClient, opts: TelemetryOpts): LlmClient
           layerId,
           userId,
           error: stringifyError(err),
+          modelSource,
         };
         opts.log.write(row);
         throw err;
@@ -136,6 +139,7 @@ export function withTelemetry(client: LlmClient, opts: TelemetryOpts): LlmClient
       const flowId = stringOrNull(meta.flowId);
       const layerId = stringOrNull(meta.layerId);
       const userId = stringOrNull(meta.userId);
+      const modelSource = pickModelSource(meta.modelSource);
 
       const requestJson = JSON.stringify(redact(req));
 
@@ -209,6 +213,7 @@ export function withTelemetry(client: LlmClient, opts: TelemetryOpts): LlmClient
         layerId,
         userId,
         error: caughtError === null ? null : aborted ? 'aborted' : stringifyError(caughtError),
+        modelSource,
       };
       opts.log.write(row);
 
@@ -233,6 +238,15 @@ function isAbortError(err: unknown): boolean {
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * Promote `metadata.modelSource` to the matching `llm_calls` column.
+ * Unknown / missing values fall back to `null` so historical callers
+ * (and any code that never stamps the dimension) keep working.
+ */
+function pickModelSource(value: unknown): 'system' | 'layer' | null {
+  return value === 'system' || value === 'layer' ? value : null;
 }
 
 function stringifyError(err: unknown): string {

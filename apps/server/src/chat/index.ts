@@ -72,6 +72,17 @@ export {
 } from './runs-prune-handler';
 export { CHAT_REVIEW_LAYER_KIND, chatReviewLayerHandler } from './review-layer-handler';
 export { loadSkillFragments, type LoadedSkillFragment } from './skills/load-fragments';
+export {
+  createLayerChatSettingsRepo,
+  type LayerChatSettings,
+  type LayerChatSettingsRepo,
+  type UpsertLayerChatSettingsInput,
+} from './repos/layer-chat-settings-repo';
+export {
+  createLayerEmbeddingSpendRepo,
+  isoDay,
+  type LayerEmbeddingSpendRepo,
+} from './repos/layer-embedding-spend-repo';
 export { listTools, type RegisteredTool } from './tools/list-tools';
 export {
   buildSearchSummariesAliasedHandler,
