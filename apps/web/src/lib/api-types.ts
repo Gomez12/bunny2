@@ -276,6 +276,14 @@ export interface EntitySummary {
   readonly title: string;
   readonly subtitle: string | null;
   readonly searchableText: string;
+  /**
+   * Per-kind extras projected by `EntityModule.summaryColumns` on the
+   * server (companies-list-columns follow-up). Absent for kinds that
+   * don't declare summary columns; the caller treats missing as an
+   * empty object. Values are JSON-serialisable but otherwise
+   * untyped at this layer — per-kind consumers narrow as needed.
+   */
+  readonly extras?: Readonly<Record<string, unknown>>;
 }
 
 export interface Entity<Payload> extends EntitySummary {

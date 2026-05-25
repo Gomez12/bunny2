@@ -8,7 +8,7 @@ import type {
   EntitySummary,
 } from '@bunny2/shared';
 import type { LlmClient } from '../llm';
-import type { EntityIndexedColumn, EntityModule } from './module';
+import type { EntityIndexedColumn, EntityModule, EntitySummaryColumnRow } from './module';
 import {
   ENTITY_EVENT_TYPES,
   entityEventType,
@@ -321,15 +321,23 @@ export function createEntityStore<Payload>(
       );
     }
     const summary = module.toSummary({ ref, meta, payload, title: row.title });
+    // Only fetch the soul row when the module declares summary
+    // columns — avoids a needless lookup on every detail/edit fetch
+    // for kinds that don't project enrichment-recency.
+    const soulUpdatedAt =
+      module.summaryColumns !== undefined && module.summaryColumns.length > 0
+        ? (fetchSoulUpdatedAt([row.id]).get(row.id) ?? null)
+        : null;
+    const summaryWithExtras = applyExtras(summary, payload, row, soulUpdatedAt);
     const externalLinks = repoListExternalLinks(db, { entityId: row.id, kind: module.kind });
     return {
-      ...summary,
+      ...summaryWithExtras,
       payload,
       externalLinks,
     };
   }
 
-  function rowToSummary(row: KindRow): EntitySummary {
+  function rowToSummary(row: KindRow, soulUpdatedAt: string | null = null): EntitySummary {
     const ref: EntityRef = {
       id: row.id,
       kind: module.kind,
@@ -354,7 +362,80 @@ export function createEntityStore<Payload>(
         `entity-store: corrupt payload_json on ${module.kind} id=${row.id} — manual repair needed`,
       );
     }
-    return module.toSummary({ ref, meta, payload, title: row.title });
+    const base = module.toSummary({ ref, meta, payload, title: row.title });
+    return applyExtras(base, payload, row, soulUpdatedAt);
+  }
+
+  /**
+   * Batch-aware variant of `rowToSummary` for list / search paths.
+   * One soul-lookup query for the whole listing when the module
+   * declares `summaryColumns`; otherwise no extra IO.
+   */
+  function rowsToSummaries(rows: readonly KindRow[]): EntitySummary[] {
+    if (rows.length === 0) return [];
+    const hasSummaryColumns =
+      module.summaryColumns !== undefined && module.summaryColumns.length > 0;
+    if (!hasSummaryColumns) return rows.map((r) => rowToSummary(r));
+    const souls = fetchSoulUpdatedAt(rows.map((r) => r.id));
+    return rows.map((r) => rowToSummary(r, souls.get(r.id) ?? null));
+  }
+
+  /**
+   * Evaluate the module's `summaryColumns` (if any) against the row's
+   * payload + audit metadata and merge the result into the summary's
+   * `extras` field. Modules without `summaryColumns` get the bare
+   * summary; the field stays absent on the wire — the web client
+   * treats absence as an empty object.
+   *
+   * Added in the companies-list-columns follow-up.
+   */
+  function applyExtras(
+    summary: EntitySummary,
+    payload: Payload,
+    row: KindRow,
+    soulUpdatedAt: string | null,
+  ): EntitySummary {
+    const summaryColumns = module.summaryColumns;
+    if (summaryColumns === undefined || summaryColumns.length === 0) return summary;
+    const projectionRow: EntitySummaryColumnRow = {
+      id: row.id,
+      layerId: row.layer_id,
+      slug: row.slug,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      deletedAt: row.deleted_at,
+      version: row.version,
+      soulUpdatedAt,
+    };
+    const extras: Record<string, unknown> = {};
+    for (const col of summaryColumns) {
+      extras[col.id] = col.project(payload, projectionRow);
+    }
+    return { ...summary, extras };
+  }
+
+  /**
+   * Batch-fetch `entity_souls.updated_at` for a set of entity ids in
+   * one query. Returns a Map keyed by entity id — missing entries
+   * mean "no soul row yet" (no enrichment has written for that
+   * entity). Used by `applyExtras` so per-row projections can decide
+   * "was this row recently enriched?" without an N+1 lookup.
+   */
+  function fetchSoulUpdatedAt(entityIds: readonly string[]): Map<string, string> {
+    if (entityIds.length === 0) return new Map();
+    const placeholders = entityIds.map(() => '?').join(', ');
+    const rows = db
+      .query<
+        { entity_id: string; updated_at: string },
+        string[]
+      >(
+        `SELECT entity_id, updated_at FROM entity_souls
+          WHERE entity_kind = ? AND entity_id IN (${placeholders})`,
+      )
+      .all(module.kind, ...entityIds);
+    const out = new Map<string, string>();
+    for (const r of rows) out.set(r.entity_id, r.updated_at);
+    return out;
   }
 
   function metaForVersionLog(row: KindRow): string {
@@ -661,7 +742,7 @@ export function createEntityStore<Payload>(
         `ORDER BY updated_at DESC LIMIT ? OFFSET ?`;
       const stmt = db.query<KindRow, (string | number)[]>(sql);
       const rows = stmt.all(...layerIds, ...timeArgs, limit, offset);
-      return rows.map(rowToSummary);
+      return rowsToSummaries(rows);
     },
 
     searchSummaries(layerIds, query, opts = {}) {
@@ -679,7 +760,7 @@ export function createEntityStore<Payload>(
         `ORDER BY updated_at DESC LIMIT ?`;
       const stmt = db.query<KindRow, (string | number)[]>(sql);
       const rows = stmt.all(...layerIds, needle, needle, limit);
-      return rows.map(rowToSummary);
+      return rowsToSummaries(rows);
     },
 
     addExternalLink(input) {

@@ -1,8 +1,41 @@
 # Follow-up — Companies list page: richer columns + enrichment badge
 
-- Status: open
+- Status: done
 - Created: 2026-05-24 (phase 4a.5 close-out)
+- Resolved: 2026-05-25
 - Phases referencing it: 4a.5 (gap acknowledged at sub-phase close-out)
+
+## Resolution
+
+Picked option 1 — a generic foundation extension. `EntityModule<P>`
+now accepts an optional `summaryColumns?: readonly EntitySummaryColumn<P>[]`
+slot. Each column declares an `id` and a `project(payload, row)`
+callback. The §4.0 store evaluates the projections and emits the
+merged object on `EntitySummary.extras` (new optional field on the
+schema). When the module declares no `summaryColumns`, the field
+stays absent on the wire — the web client treats absence as an empty
+object.
+
+Companies declares two columns:
+- `city` — reads straight off `payload.address?.city`.
+- `enrichmentLastRunAt` — the raw `entity_souls.updated_at`
+  timestamp the runner stamps on every successful enrichment. The
+  store batch-fetches the soul rows once per `listSummaries` call
+  (not per row); the web layer applies the 24h recency heuristic
+  via the new `isWithinHours` helper.
+
+`apps/web/src/pages/CompaniesListPage.tsx` renders the new `City`
+and `Enriched` columns and switches the `Updated` cell to a
+relative-time formatter (`Intl.RelativeTimeFormat`) via the new
+shared `apps/web/src/lib/relative-time.ts` util. i18n keys
+`entity.companies.colCity` / `colEnriched` /
+`enrichmentRecent|Stale|Never` added to en + nl.
+
+Tests:
+- §4.0 contract suite — kinds without `summaryColumns` emit no
+  `extras` field on the wire (asserted via JSON round-trip).
+- Companies-specific test — `city` and `enrichmentLastRunAt`
+  project correctly, including the null-soul fallback.
 
 ## What remains
 

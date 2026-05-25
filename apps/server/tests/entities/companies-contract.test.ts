@@ -258,6 +258,92 @@ describe('companies module :: shape', () => {
     const names = (companyModule.indexedColumns ?? []).map((c) => c.name).sort();
     expect(names).toEqual(['kvk_number', 'website']);
   });
+
+  it('declares city and enrichmentLastRunAt as summary columns', () => {
+    const ids = (companyModule.summaryColumns ?? []).map((c) => c.id).sort();
+    expect(ids).toEqual(['city', 'enrichmentLastRunAt']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// companyModule.summaryColumns end-to-end — the §4.0 store projects city +
+// enrichmentLastRunAt onto every list-summary `extras` object. The soul
+// timestamp lookup is batched once per listing call (see
+// `rowsToSummaries` in `apps/server/src/entities/store.ts`).
+// ---------------------------------------------------------------------------
+
+describe('companies module :: summary extras', () => {
+  let fx: Fixture | null = null;
+  afterEach(() => {
+    if (fx !== null) {
+      fx.cleanup();
+      fx = null;
+    }
+  });
+
+  it('projects city from payload.address.city and enrichmentLastRunAt from entity_souls.updated_at', async () => {
+    fx = makeFixture();
+    const layerId = seedLayer(fx.db, `e-${crypto.randomUUID().slice(0, 6)}`);
+    const userId = seedUser(fx.db, `u-${crypto.randomUUID().slice(0, 6)}`);
+    const store = createEntityStore<CompanyPayload>({
+      module: companyModule,
+      db: fx.db,
+      bus: fx.bus,
+      llm: createLlmClient({
+        endpoint: 'mock://echo',
+        apiKey: '',
+        defaultModel: 'mock-default',
+      }),
+    });
+
+    const withCity = await store.create({
+      layerId,
+      slug: 'with-city',
+      title: 'With City',
+      originalLocale: 'en',
+      payload: {
+        kvkNumber: kvkNumberForSeed('with-city'),
+        address: { city: 'Rotterdam' },
+      },
+      actorId: userId,
+    });
+    const withoutCity = await store.create({
+      layerId,
+      slug: 'no-city',
+      title: 'No City',
+      originalLocale: 'en',
+      payload: { kvkNumber: kvkNumberForSeed('no-city') },
+      actorId: userId,
+    });
+
+    // Seed entity_souls for the WithCity row only — NoCity must
+    // surface a null enrichmentLastRunAt.
+    const soulIso = '2026-05-25T08:00:00.000Z';
+    fx.db
+      .query<unknown, [string, string, string, string]>(
+        `INSERT INTO entity_souls (entity_id, entity_kind, memory_json, updated_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(withCity.id, 'company', '{}', soulIso);
+
+    const summaries = store.listSummaries([layerId]);
+    const sorted = [...summaries].sort((a, b) => a.slug.localeCompare(b.slug));
+    expect(sorted.length).toBe(2);
+
+    const noCityRow = sorted.find((s) => s.slug === 'no-city');
+    expect(noCityRow?.extras).toEqual({
+      city: null,
+      enrichmentLastRunAt: null,
+    });
+    const withCityRow = sorted.find((s) => s.slug === 'with-city');
+    expect(withCityRow?.extras).toEqual({
+      city: 'Rotterdam',
+      enrichmentLastRunAt: soulIso,
+    });
+    // The unused withoutCity local satisfies eslint for the
+    // soft-asserted "we created two rows above".
+    expect(withoutCity.id).not.toBe(withCity.id);
+  });
 });
 
 // Borrow a deterministic 8-digit KvK number from the seed string so the

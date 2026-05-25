@@ -486,6 +486,43 @@ export function runEntityContractSuite<Payload>(
       );
       expect(badTo.status).toBe(400);
     });
+
+    // -----------------------------------------------------------------
+    // EntitySummary.extras contract.
+    //
+    // Modules without `summaryColumns` emit a summary that has NO
+    // `extras` field on the wire — the web client treats absence as
+    // an empty object. This matters because the JSON payload shape is
+    // part of the public contract; a spurious `extras: {}` on every
+    // listing would inflate every response and break consumers that
+    // narrow on `extras !== undefined` for feature detection.
+    // -----------------------------------------------------------------
+    it('emits no `extras` field on summaries when the module declares no summaryColumns', async () => {
+      if (fixture.module.summaryColumns !== undefined) return;
+
+      const { layerAId } = fixture.createTwoLayers({
+        localesA: ['en'],
+        localesB: ['en'],
+        defaultLocaleA: 'en',
+      });
+      const userId = fixture.createUser('extras-empty');
+      await fixture.store.create({
+        layerId: layerAId,
+        slug: 'no-extras',
+        title: 'No extras',
+        originalLocale: 'en',
+        payload: fixture.samplePayload('extras'),
+        actorId: userId,
+      });
+      const summaries = fixture.store.listSummaries([layerAId]);
+      const row = summaries.find((s) => s.slug === 'no-extras');
+      expect(row).toBeDefined();
+      // Compare the JSON shape — the assertion is "the wire shape
+      // does NOT include an extras key", which is stronger than
+      // `row.extras === undefined` on a TypeScript reference.
+      const wire = JSON.parse(JSON.stringify(row)) as Record<string, unknown>;
+      expect(Object.prototype.hasOwnProperty.call(wire, 'extras')).toBe(false);
+    });
   });
 }
 

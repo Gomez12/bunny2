@@ -63,6 +63,23 @@ export interface EntityModule<Payload> {
   searchableText(payload: Payload): string;
   readonly indexedColumns?: readonly EntityIndexedColumn<Payload>[];
   /**
+   * Optional per-kind summary-row projections. Each column declares an
+   * `id` (used as the key under `EntitySummary.extras`) and a `project`
+   * callback that runs against the payload + audit row. The generic
+   * store evaluates the list once per summary and emits the merged
+   * object on `EntitySummary.extras`.
+   *
+   * Designed to mirror `indexedColumns` (4a.1): a small, declarative
+   * slot the foundation accepts so per-kind list pages can render
+   * cheap derived data (city, enrichment flag, …) without an N+1
+   * detail fetch. Modules without extra columns omit the field
+   * entirely. Values MUST be JSON-serialisable.
+   *
+   * Added in the companies-list-columns follow-up; see
+   * `docs/dev/follow-ups/done/companies-list-columns.md`.
+   */
+  readonly summaryColumns?: readonly EntitySummaryColumn<Payload>[];
+  /**
    * Optional indexed column name (must match an entry in
    * `indexedColumns`) that the generic list endpoint uses for the
    * `?from=&to=` range filter. When set, `GET /l/:slug/<kind>?from=…&to=…`
@@ -165,6 +182,45 @@ export interface EntityStatsContext {
 export interface EntityIndexedColumn<Payload> {
   readonly name: string;
   extract(payload: Payload): string | number | null;
+}
+
+/**
+ * Per-kind summary-row projection (see `EntityModule.summaryColumns`).
+ *
+ * `id` keys the result inside `EntitySummary.extras`; pick a stable,
+ * camelCased name (e.g. `city`, `enrichmentRecent`). `project`
+ * receives the payload AND the raw audit row so it can mix payload
+ * data with `updated_at` heuristics. Return any JSON-serialisable
+ * value; `null` and `undefined` both signal "no value for this row".
+ */
+export interface EntitySummaryColumn<Payload> {
+  readonly id: string;
+  project(payload: Payload, row: EntitySummaryColumnRow): unknown;
+}
+
+/**
+ * Subset of the per-kind row exposed to `EntitySummaryColumn.project`.
+ * The full row carries internal columns the projection should not
+ * see; this shape is the safe surface (audit timestamps + slug).
+ */
+export interface EntitySummaryColumnRow {
+  readonly id: string;
+  readonly layerId: string;
+  readonly slug: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly deletedAt: string | null;
+  readonly version: number;
+  /**
+   * `entity_souls.updated_at` for this row, or `null` when no soul
+   * row exists yet (i.e. no enrichment has ever written for this
+   * entity). The store batch-fetches this once per `listSummaries`
+   * call when the module declares `summaryColumns` — projecting an
+   * "enrichment recently ran" flag therefore costs one extra query
+   * per listing, not N. Modules that don't need enrichment-recency
+   * simply ignore the field.
+   */
+  readonly soulUpdatedAt: string | null;
 }
 
 /** Lifecycle context shared by all per-module hooks. */

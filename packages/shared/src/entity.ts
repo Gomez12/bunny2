@@ -77,6 +77,15 @@ export const EntitySummarySchema = EntityRefSchema.extend({
   title: z.string(),
   subtitle: z.string().nullable(),
   searchableText: z.string(),
+  /**
+   * Per-kind extras projected by `EntityModule.summaryColumns`. The
+   * generic store evaluates each declared column against the row's
+   * payload + audit metadata and stuffs the result keyed by `id`.
+   * Modules without `summaryColumns` omit the field entirely; the
+   * web client treats absence as an empty object. JSON-serialisable
+   * values only.
+   */
+  extras: z.record(z.unknown()).optional(),
 });
 export type EntitySummary = z.infer<typeof EntitySummarySchema>;
 

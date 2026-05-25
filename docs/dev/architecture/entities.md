@@ -104,6 +104,7 @@ interface EntityModule<Payload> {
   searchableText(payload): string;
   readonly indexedColumns?: readonly EntityIndexedColumn<Payload>[];
   readonly timeColumn?: string;
+  readonly summaryColumns?: readonly EntitySummaryColumn<Payload>[];
   readonly connectors?: readonly EntityConnector<Payload>[];
   readonly scheduledJobs?: readonly EntityScheduledJob[];
   readonly onCreate?: EntityLifecycleHook<Payload>;
@@ -125,6 +126,16 @@ columns to populate alongside `payload_json` — e.g. `companies.kvk_number`,
 treatment as `tableName`); reserved-column collisions throw at boot.
 Modules that need no extra columns omit the field entirely — the fixture
 module is the canonical example.
+
+`summaryColumns` (added in the companies-list-columns follow-up) is
+the per-kind slot for projecting derived per-row values into the list
+endpoint's `EntitySummary.extras` field. Each column declares an `id`
+(the key under `extras`) and a `project(payload, row)` callback that
+mixes the payload with audit / soul metadata. Used by the companies
+list page to render City + an enrichment-recency flag without an N+1
+detail fetch. The store batches `entity_souls.updated_at` once per
+listing call (not per row) when any module declares
+`summaryColumns`; `row.soulUpdatedAt` carries it for the projection.
 
 `timeColumn` (added in the calendar-list-range-filter follow-up) opts
 the kind into the generic list-endpoint `?from=&to=` range filter.

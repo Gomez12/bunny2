@@ -70,6 +70,27 @@ export function createCompanyModule(
         extract: (payload) => payload.website ?? null,
       },
     ],
+    // Companies-list-columns follow-up — declares the per-row extras
+    // surfaced under `EntitySummary.extras` so the list page can
+    // render City + an enrichment-recency flag without an N+1 detail
+    // fetch.
+    //
+    //  - `city` — read straight off `payload.address.city`; the §4.0
+    //    summary projection doesn't include nested address fields.
+    //  - `enrichmentLastRunAt` — the raw `entity_souls.updated_at`
+    //    timestamp the runner stamps on every successful enrichment.
+    //    The web layer decides the recency window (matches the 4a.4
+    //    widget's 24h convention via `isWithinHours`).
+    summaryColumns: [
+      {
+        id: 'city',
+        project: (payload) => payload.address?.city ?? null,
+      },
+      {
+        id: 'enrichmentLastRunAt',
+        project: (_payload, row) => row.soulUpdatedAt,
+      },
+    ],
     connectors,
     enrichmentJobs,
     // Phase 4c.3 — the runner's per-module `enrichmentOverwriteFields`

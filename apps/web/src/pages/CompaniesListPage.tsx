@@ -14,6 +14,7 @@ import {
   slugifyCompanyTitle,
 } from '../lib/companies-routes';
 import { errorKeyOf } from '../lib/errors';
+import { formatRelativeTime, isWithinHours } from '../lib/relative-time';
 import { pushToast } from '../lib/toast';
 import { useCurrentLayer } from '../lib/use-current-layer';
 import {
@@ -127,27 +128,71 @@ export function CompaniesListPage(): JSX.Element {
                       {t('entity.companies.colSubtitle')}
                     </th>
                     <th scope="col" className="px-2 py-2 font-medium">
+                      {t('entity.companies.colCity')}
+                    </th>
+                    <th scope="col" className="px-2 py-2 font-medium">
+                      {t('entity.companies.colEnriched')}
+                    </th>
+                    <th scope="col" className="px-2 py-2 font-medium">
                       {t('entity.companies.colUpdatedAt')}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {view.companies.map((c) => (
-                    <tr key={c.id} className="border-b last:border-0">
-                      <td className="px-2 py-2 font-medium">
-                        <Link
-                          to={companyDetailWebRoute(layer.slug, c.slug)}
-                          className="text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {c.title}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">
-                        {c.subtitle ?? t('entity.companies.subtitle.noDetails')}
-                      </td>
-                      <td className="px-2 py-2 text-muted-foreground">{c.meta.updatedAt}</td>
-                    </tr>
-                  ))}
+                  {view.companies.map((c) => {
+                    const extras = (c.extras ?? {}) as {
+                      readonly city?: string | null;
+                      readonly enrichmentLastRunAt?: string | null;
+                    };
+                    const enrichmentAt = extras.enrichmentLastRunAt ?? null;
+                    const enrichmentLabel =
+                      enrichmentAt === null
+                        ? t('entity.companies.enrichmentNever')
+                        : isWithinHours(enrichmentAt, 24)
+                          ? t('entity.companies.enrichmentRecent')
+                          : t('entity.companies.enrichmentStale');
+                    const updatedRel =
+                      formatRelativeTime(c.meta.updatedAt, {
+                        ...(i18n.resolvedLanguage === undefined
+                          ? {}
+                          : { locale: i18n.resolvedLanguage }),
+                      }) ?? c.meta.updatedAt;
+                    return (
+                      <tr key={c.id} className="border-b last:border-0">
+                        <td className="px-2 py-2 font-medium">
+                          <Link
+                            to={companyDetailWebRoute(layer.slug, c.slug)}
+                            className="text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            {c.title}
+                          </Link>
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground">
+                          {c.subtitle ?? t('entity.companies.subtitle.noDetails')}
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground">
+                          {extras.city ?? '—'}
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground">
+                          <span
+                            data-enrichment-state={
+                              enrichmentAt === null
+                                ? 'never'
+                                : isWithinHours(enrichmentAt, 24)
+                                  ? 'recent'
+                                  : 'stale'
+                            }
+                            title={enrichmentAt ?? undefined}
+                          >
+                            {enrichmentLabel}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground" title={c.meta.updatedAt}>
+                          {updatedRel}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
