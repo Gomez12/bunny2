@@ -394,6 +394,21 @@
       "streamAborted": "Het antwoord werd onderbroken voordat het klaar was.",
       "intentInvalid": "Je bericht kon niet worden begrepen. Herformuleer het."
     },
+    "trace": {
+      "summary": "Interne calls",
+      "loading": "Trace laden…",
+      "error": "Trace kon niet worden geladen.",
+      "empty": "Er is geen pijplijn-run geregistreerd voor dit bericht.",
+      "runLabel": "Run",
+      "attempt": "poging {{n}}",
+      "latencyMs": "{{ms}} ms",
+      "tokens": "in {{in}} / uit {{out}}",
+      "request": "Request",
+      "response": "Response",
+      "input": "Step-input",
+      "output": "Step-output",
+      "noLlmCall": "Geen LLM-call voor deze stap."
+    },
     "board": {
       "title": "Chatboard",
       "description": "Recente assistent-berichten en waar ze in de pijplijn zijn. Kaarten vernieuwen elke paar seconden zolang dit tabblad zichtbaar is.",

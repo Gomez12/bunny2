@@ -19,6 +19,7 @@ import type {
   ChatConversationSummary as SharedChatConversationSummary,
   ChatMessage as SharedChatMessage,
   ChatMessageFeedback as SharedChatMessageFeedback,
+  ChatMessageTrace as SharedChatMessageTrace,
   ChatFeedbackValue as SharedChatFeedbackValue,
 } from '@bunny2/shared';
 import type {
@@ -1317,6 +1318,7 @@ export type LayerChatMessage = SharedChatMessage;
 export type LayerChatFeedback = SharedChatMessageFeedback;
 export type LayerChatFeedbackValue = SharedChatFeedbackValue;
 export type LayerChatBoardItem = SharedChatBoardItem;
+export type LayerChatMessageTrace = SharedChatMessageTrace;
 
 function chatConversationsBase(layerSlug: string): string {
   return `/l/${encodeURIComponent(layerSlug)}/chat/conversations`;
@@ -1399,6 +1401,24 @@ export async function listLayerChatMessages(
  */
 export function layerChatMessageStreamPath(layerSlug: string, conversationId: string): string {
   return `${chatConversationsBase(layerSlug)}/${encodeURIComponent(conversationId)}/messages`;
+}
+
+/**
+ * Lazily-fetched diagnostic surface for one assistant message. The
+ * server returns every pipeline run + step with its joined
+ * `llm_calls` row (request + response + error) so the renderer can
+ * surface why a turn ended as `failed`. Callers gate the fetch on
+ * the user opening the trace `<details>` — payloads include full
+ * prompts + retrieved context and grow large.
+ */
+export async function getLayerChatMessageTrace(
+  layerSlug: string,
+  conversationId: string,
+  messageId: string,
+): Promise<LayerChatMessageTrace> {
+  return await request<LayerChatMessageTrace>(
+    `${chatConversationsBase(layerSlug)}/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/trace`,
+  );
 }
 
 /**

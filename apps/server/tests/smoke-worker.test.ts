@@ -149,6 +149,9 @@ describe('phase 5.7 — smoke-worker (role=worker against DurableSqliteMessageBu
           count(): number {
             return 0;
           },
+          getById(): null {
+            return null;
+          },
           pruneOlderThan(): number {
             return 0;
           },

@@ -17,6 +17,7 @@ import { Textarea } from '../components/ui/textarea';
 import {
   createLayerChatConversation,
   deleteLayerChatConversation,
+  getLayerChatMessageTrace,
   layerChatMessageStreamPath,
   listLayerChatConversations,
   listLayerChatMessages,
@@ -25,6 +26,7 @@ import {
   type LayerChatConversation,
   type LayerChatFeedbackValue,
   type LayerChatMessage,
+  type LayerChatMessageTrace,
 } from '../lib/api';
 import { trackEvent } from '../lib/analytics';
 import { errorKeyOf } from '../lib/errors';
@@ -574,6 +576,8 @@ export function LayerChatPage(): JSX.Element {
                   onDown={() => openThumbsDown(m.id)}
                   feedbackSubmitting={feedbackSubmitting}
                   highlighted={highlightedMessageId === m.id}
+                  layerSlug={layerSlug}
+                  conversationId={activeId}
                 />
               ))}
               {streaming ? (
@@ -687,11 +691,22 @@ interface MessageBubbleProps {
   readonly onDown: () => void;
   readonly feedbackSubmitting: boolean;
   readonly highlighted: boolean;
+  readonly layerSlug: string | null;
+  readonly conversationId: string | null;
 }
 
 function MessageBubble(props: MessageBubbleProps): JSX.Element {
   const { t } = useTranslation();
-  const { message, feedbackValue, onUp, onDown, feedbackSubmitting, highlighted } = props;
+  const {
+    message,
+    feedbackValue,
+    onUp,
+    onDown,
+    feedbackSubmitting,
+    highlighted,
+    layerSlug,
+    conversationId,
+  } = props;
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   return (
@@ -757,7 +772,189 @@ function MessageBubble(props: MessageBubbleProps): JSX.Element {
           </button>
         </footer>
       ) : null}
+      {isAssistant && layerSlug !== null && conversationId !== null ? (
+        <MessageTracePanel
+          layerSlug={layerSlug}
+          conversationId={conversationId}
+          messageId={message.id}
+        />
+      ) : null}
     </article>
+  );
+}
+
+// ---------- trace inspector ----------------------------------------------
+//
+// Collapsed-by-default `<details>` block under each assistant bubble.
+// Lazy-fetches `GET /l/:slug/chat/conversations/:cid/messages/:mid/trace`
+// the first time it's opened — the payload includes full request +
+// response strings (prompt + retrieved context) and is large enough
+// that we don't want it loading for messages the user never inspects.
+
+interface MessageTracePanelProps {
+  readonly layerSlug: string;
+  readonly conversationId: string;
+  readonly messageId: string;
+}
+
+function MessageTracePanel(props: MessageTracePanelProps): JSX.Element {
+  const { t } = useTranslation();
+  const { layerSlug, conversationId, messageId } = props;
+  const [trace, setTrace] = useState<LayerChatMessageTrace | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
+  const fetched = useRef(false);
+
+  const onToggle = useCallback(
+    async (event: React.SyntheticEvent<HTMLDetailsElement>): Promise<void> => {
+      if (!event.currentTarget.open || fetched.current) return;
+      fetched.current = true;
+      setLoading(true);
+      setErrorKey(null);
+      try {
+        const result = await getLayerChatMessageTrace(layerSlug, conversationId, messageId);
+        setTrace(result);
+        trackEvent('chat_message_trace_inspected', { layerSlug });
+      } catch (err: unknown) {
+        const key = errorKeyOf(err);
+        setErrorKey(key);
+        console.error('[chat.page] trace load failed', { errorKey: key });
+        fetched.current = false; // allow retry on next open
+      } finally {
+        setLoading(false);
+      }
+    },
+    [layerSlug, conversationId, messageId],
+  );
+
+  return (
+    <details
+      className="mt-2 border-t border-muted-foreground/10 pt-2 text-xs"
+      onToggle={(e): void => void onToggle(e)}
+    >
+      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+        {t('chat.trace.summary')}
+      </summary>
+      <div className="mt-2 space-y-2">
+        {loading ? (
+          <p className="text-muted-foreground">{t('chat.trace.loading')}</p>
+        ) : null}
+        {errorKey !== null && !loading ? (
+          <p role="alert" className="text-destructive">
+            {t(errorKey, { defaultValue: t('chat.trace.error') })}
+          </p>
+        ) : null}
+        {trace !== null && trace.runs.length === 0 ? (
+          <p className="text-muted-foreground">{t('chat.trace.empty')}</p>
+        ) : null}
+        {trace?.runs.map((run) => (
+          <div key={run.id} className="rounded border border-muted-foreground/15 p-2">
+            <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-muted-foreground">
+              <span className="font-semibold uppercase tracking-wide">
+                {t('chat.trace.runLabel')}
+              </span>
+              <span>{run.status}</span>
+              <span className="text-[0.7rem]">{run.startedAt}</span>
+            </div>
+            <ul className="space-y-1">
+              {run.steps.map((step) => (
+                <li key={step.id}>
+                  <details className="rounded border border-muted-foreground/15 bg-background/50 px-2 py-1">
+                    <summary className="cursor-pointer">
+                      <span className="font-mono uppercase">{step.kind}</span>
+                      <span className="ml-2 text-muted-foreground">{step.status}</span>
+                      {step.attempt > 1 ? (
+                        <span className="ml-2 text-muted-foreground">
+                          {t('chat.trace.attempt', { n: step.attempt })}
+                        </span>
+                      ) : null}
+                      {step.errorCode !== null ? (
+                        <span className="ml-2 text-destructive">{step.errorCode}</span>
+                      ) : null}
+                      {step.llmCall !== null ? (
+                        <span className="ml-2 text-muted-foreground">{step.llmCall.model}</span>
+                      ) : null}
+                    </summary>
+                    <div className="mt-2 space-y-2 text-[0.75rem]">
+                      {step.llmCall !== null ? (
+                        <div className="space-y-1">
+                          <div className="text-muted-foreground">
+                            {step.llmCall.endpoint}
+                            {step.llmCall.latencyMs !== null ? (
+                              <span className="ml-2">
+                                {t('chat.trace.latencyMs', { ms: step.llmCall.latencyMs })}
+                              </span>
+                            ) : null}
+                            {step.llmCall.tokensIn !== null || step.llmCall.tokensOut !== null ? (
+                              <span className="ml-2">
+                                {t('chat.trace.tokens', {
+                                  in: step.llmCall.tokensIn ?? 0,
+                                  out: step.llmCall.tokensOut ?? 0,
+                                })}
+                              </span>
+                            ) : null}
+                          </div>
+                          {step.llmCall.error !== null && step.llmCall.error.length > 0 ? (
+                            <p className="text-destructive">{step.llmCall.error}</p>
+                          ) : null}
+                          <TraceJsonBlock
+                            labelKey="chat.trace.request"
+                            text={step.llmCall.request}
+                          />
+                          {step.llmCall.response !== null ? (
+                            <TraceJsonBlock
+                              labelKey="chat.trace.response"
+                              text={step.llmCall.response}
+                            />
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground">{t('chat.trace.noLlmCall')}</p>
+                      )}
+                      {step.inputJson !== null ? (
+                        <TraceJsonBlock labelKey="chat.trace.input" text={step.inputJson} />
+                      ) : null}
+                      {step.outputJson !== null ? (
+                        <TraceJsonBlock labelKey="chat.trace.output" text={step.outputJson} />
+                      ) : null}
+                    </div>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+interface TraceJsonBlockProps {
+  readonly labelKey: string;
+  readonly text: string;
+}
+
+function TraceJsonBlock(props: TraceJsonBlockProps): JSX.Element {
+  const { t } = useTranslation();
+  const { labelKey, text } = props;
+  // Pretty-print JSON when possible; fall back to the raw string for
+  // payloads the server emitted unparsed (rare; the llm-client serialises
+  // request/response with JSON.stringify before persistence).
+  let pretty = text;
+  try {
+    pretty = JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    /* keep raw */
+  }
+  return (
+    <details className="rounded border border-muted-foreground/10 bg-muted/40 px-2 py-1">
+      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+        {t(labelKey)}
+      </summary>
+      <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-all font-mono text-[0.7rem] leading-snug">
+        {pretty}
+      </pre>
+    </details>
   );
 }
 

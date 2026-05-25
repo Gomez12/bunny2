@@ -257,6 +257,76 @@ export function registerLayerChatRoutes(
     return c.json({ ok: true });
   });
 
+  // ---------- GET /l/:slug/chat/conversations/:convId/messages/:msgId/trace
+  //
+  // Diagnostic surface: returns every pipeline run + step the
+  // orchestrator persisted for `:msgId`, with each step's joined
+  // `llm_calls` row (request + response + error) hanging off when
+  // present. The renderer surfaces this collapsed under each assistant
+  // bubble so a user can answer "why did this turn fail?" without
+  // having to open SQLite. Owner-only: the conversation must belong to
+  // `(layer.id, user.id)` exactly like the rest of `/l/:slug/chat/*`
+  // — closed by the same `isOwnedAndVisible` helper.
+
+  app.get('/l/:slug/chat/conversations/:convId/messages/:msgId/trace', requireLayer, (c) => {
+    const user = c.get('user');
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    const convId = c.req.param('convId');
+    const msgId = c.req.param('msgId');
+    const conv = conversationsRepo.getConversationById(convId);
+    if (conv === null || !isOwnedAndVisible(conv, layer.id, user.id)) {
+      return c.json(NOT_FOUND, 404);
+    }
+    const msg = messagesRepo.getMessageById(msgId);
+    if (msg === null || msg.conversationId !== convId) {
+      return c.json(NOT_FOUND, 404);
+    }
+    const runs = runsRepo.listByMessage(msgId).map((run) => {
+      const steps = stepsRepo.listByRun(run.id).map((step) => ({
+        id: step.id,
+        kind: step.kind,
+        status: step.status,
+        attempt: step.attempt,
+        startedAt: step.startedAt,
+        endedAt: step.endedAt,
+        inputJson: step.inputJson,
+        outputJson: step.outputJson,
+        errorCode: step.errorCode,
+        llmCall:
+          step.llmCallId === null
+            ? null
+            : (() => {
+                const row = deps.llmCallLog.getById(step.llmCallId);
+                if (row === null) return null;
+                return {
+                  id: row.id,
+                  startedAt: row.startedAt,
+                  endedAt: row.endedAt,
+                  model: row.model,
+                  endpoint: row.endpoint,
+                  request: row.request,
+                  response: row.response,
+                  tokensIn: row.tokensIn,
+                  tokensOut: row.tokensOut,
+                  costUsd: row.costUsd,
+                  latencyMs: row.latencyMs,
+                  error: row.error,
+                  modelSource: row.modelSource,
+                };
+              })(),
+      }));
+      return {
+        id: run.id,
+        status: run.status,
+        startedAt: run.startedAt,
+        endedAt: run.endedAt,
+        steps,
+      };
+    });
+    return c.json({ messageId: msgId, runs });
+  });
+
   // ---------- GET /l/:slug/chat/conversations/:id/messages ---------------
 
   app.get('/l/:slug/chat/conversations/:id/messages', requireLayer, (c) => {

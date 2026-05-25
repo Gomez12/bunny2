@@ -291,6 +291,7 @@ phase-3 `createRequireLayer` middleware — non-members see
 | `/l/:slug/chat/conversations/:id`          | DELETE | `{ ok: true }` (soft-delete)                                   |
 | `/l/:slug/chat/conversations/:id/messages` | GET    | `{ messages: ChatMessage[] }`                                  |
 | `/l/:slug/chat/conversations/:id/messages` | POST   | **SSE.** Body `{ content }` only; rejects `model`              |
+| `/l/:slug/chat/conversations/:cid/messages/:mid/trace` | GET | `ChatMessageTrace` — runs + steps + joined LLM calls |
 | `/l/:slug/chat/messages/:id/feedback`      | POST   | `{ value: 'up'                                                 | 'down', reason? }` → upserts |
 | `/l/:slug/chat/board`                      | GET    | `{ cards: BoardCard[] }` (last N hours)                        |
 

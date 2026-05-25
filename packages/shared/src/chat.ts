@@ -249,6 +249,81 @@ export const ChatBoardItemSchema = z
   .strict();
 export type ChatBoardItem = z.infer<typeof ChatBoardItemSchema>;
 
+// ---------- per-message trace (follow-up: chat-llm-call-inspector) ---
+//
+// The shape returned by
+// `GET /l/:slug/chat/conversations/:convId/messages/:msgId/trace`.
+//
+// The route assembles the pipeline-run + step rows that produced a
+// given assistant message, joins each step's `llm_call_id` to the
+// `llm_calls` table, and ships the whole bundle so the renderer can
+// surface why an answer landed as `failed` (the user-visible string
+// is just `errors.chat.assistantFailed` — every diagnostic detail
+// lives here). Owner-only: the route gates on `(layerId, userId)`
+// the same way every other `/l/:slug/chat/*` route does.
+//
+// `request` and `response` are the already-stringified JSON the
+// server wrote into `llm_calls`. The renderer surfaces them verbatim
+// inside a collapsed `<details>` element — never auto-expanded —
+// because real prompts include the retrieved context and grow large.
+// `inputJson` / `outputJson` on a step are the orchestrator's
+// per-step payloads (intent classification, retrieval kind hints,
+// answerer prompt, …) — same opaque-JSON convention.
+
+export const ChatMessageTraceLlmCallSchema = z
+  .object({
+    id: z.string().uuid(),
+    startedAt: z.string(),
+    endedAt: z.string().nullable(),
+    model: z.string(),
+    endpoint: z.string(),
+    request: z.string(),
+    response: z.string().nullable(),
+    tokensIn: z.number().int().min(0).nullable(),
+    tokensOut: z.number().int().min(0).nullable(),
+    costUsd: z.number().nullable(),
+    latencyMs: z.number().int().min(0).nullable(),
+    error: z.string().nullable(),
+    modelSource: z.enum(['system', 'layer']).nullable(),
+  })
+  .strict();
+export type ChatMessageTraceLlmCall = z.infer<typeof ChatMessageTraceLlmCallSchema>;
+
+export const ChatMessageTraceStepSchema = z
+  .object({
+    id: z.string().uuid(),
+    kind: PipelineStepKindSchema,
+    status: PipelineStepStatusSchema,
+    attempt: z.number().int().min(1),
+    startedAt: z.string(),
+    endedAt: z.string().nullable(),
+    inputJson: z.string().nullable(),
+    outputJson: z.string().nullable(),
+    errorCode: z.string().nullable(),
+    llmCall: ChatMessageTraceLlmCallSchema.nullable(),
+  })
+  .strict();
+export type ChatMessageTraceStep = z.infer<typeof ChatMessageTraceStepSchema>;
+
+export const ChatMessageTraceRunSchema = z
+  .object({
+    id: z.string().uuid(),
+    status: PipelineRunStatusSchema,
+    startedAt: z.string(),
+    endedAt: z.string().nullable(),
+    steps: z.array(ChatMessageTraceStepSchema),
+  })
+  .strict();
+export type ChatMessageTraceRun = z.infer<typeof ChatMessageTraceRunSchema>;
+
+export const ChatMessageTraceSchema = z
+  .object({
+    messageId: z.string().uuid(),
+    runs: z.array(ChatMessageTraceRunSchema),
+  })
+  .strict();
+export type ChatMessageTrace = z.infer<typeof ChatMessageTraceSchema>;
+
 // ---------- per-layer chat settings (follow-up) ---------------------
 //
 // Per-layer overrides for the chat LLM model + embedding budget. The

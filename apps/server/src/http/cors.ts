@@ -34,7 +34,7 @@ export function createDevCors(): MiddlewareHandler {
     if (allowed && origin !== undefined) {
       c.header('Access-Control-Allow-Origin', origin);
       c.header('Vary', 'Origin');
-      c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
       c.header('Access-Control-Allow-Headers', 'Content-Type');
       c.header('Access-Control-Max-Age', '600');
       if (origin !== 'null') {

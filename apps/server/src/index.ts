@@ -693,6 +693,17 @@ if (role === 'worker') {
     port: config.http.port,
     hostname: config.http.host,
     fetch: app.fetch,
+    // Bun's default `idleTimeout` is 10 seconds, which is fatal for
+    // the chat SSE route: a local LLM that takes more than ~10 s to
+    // finish the intent/entities/retrieval prelude triggers Bun to
+    // cancel the response body. Hono's SSEStreamingApi reacts by
+    // calling `stream.abort()`, which aborts the orchestrator's
+    // shared abort signal, which makes the subsequent `chatStream`
+    // fetch fail with `AbortError` after ~2 ms and the answer step
+    // bubbles `answer_llm_failed`. 255 s is the documented maximum
+    // and comfortably covers the 60 s per-step ceiling we already
+    // enforce in `chat/pipeline/answer-step.ts`.
+    idleTimeout: 255,
   });
   console.log(`[${appName}] listening on http://${server.hostname}:${server.port}`);
 }

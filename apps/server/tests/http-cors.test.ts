@@ -54,6 +54,30 @@ describe('http cors middleware', () => {
     expect(res.headers.get('access-control-allow-headers')).toContain('Content-Type');
   });
 
+  it('advertises DELETE, PUT, PATCH so renderer mutations preflight cleanly', async () => {
+    // The codebase has many DELETE/PUT/PATCH endpoints (e.g.
+    // `DELETE /l/:slug/chat/conversations/:id`). If the
+    // `Access-Control-Allow-Methods` header omits any of them, the
+    // browser blocks the preflight and the renderer surfaces
+    // `errors.network` ("Could not reach the server") on every
+    // mutation — even though the route itself is fine.
+    const app = buildApp();
+    const res = await app.fetch(
+      new Request('http://server/echo', {
+        method: 'OPTIONS',
+        headers: {
+          origin: 'http://localhost:5173',
+          'access-control-request-method': 'DELETE',
+        },
+      }),
+    );
+    expect(res.status).toBe(204);
+    const methods = res.headers.get('access-control-allow-methods') ?? '';
+    expect(methods).toContain('DELETE');
+    expect(methods).toContain('PUT');
+    expect(methods).toContain('PATCH');
+  });
+
   it('allows the 127.0.0.1 origin (Vite-by-IP) with credentials', async () => {
     const app = buildApp();
     const res = await app.fetch(

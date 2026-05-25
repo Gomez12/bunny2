@@ -193,6 +193,21 @@
       "streamAborted": "The answer was interrupted before it finished.",
       "intentInvalid": "Your message could not be understood. Please rephrase it."
     },
+    "trace": {
+      "summary": "Internal calls",
+      "loading": "Loading trace…",
+      "error": "Trace could not be loaded.",
+      "empty": "No pipeline run was recorded for this message.",
+      "runLabel": "Run",
+      "attempt": "attempt {{n}}",
+      "latencyMs": "{{ms}} ms",
+      "tokens": "in {{in}} / out {{out}}",
+      "request": "Request",
+      "response": "Response",
+      "input": "Step input",
+      "output": "Step output",
+      "noLlmCall": "No LLM call for this step."
+    },
     "board": {
       "title": "Chat board",
       "description": "Latest assistant messages and where they are in the pipeline. Cards refresh every few seconds while this tab is visible.",

@@ -36,6 +36,8 @@ export interface LlmCallRow {
 export interface LlmCallLog {
   write(row: LlmCallRow): void;
   count(): number;
+  /** Returns the row for a given id, or null when no such row exists. */
+  getById(id: string): LlmCallRow | null;
   /** Returns the number of rows deleted. */
   pruneOlderThan(cutoff: Date): number;
 }
@@ -77,6 +79,34 @@ export function createSqliteLlmCallLog(db: Database): LlmCallLog {
 
   const countStmt = db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM llm_calls');
 
+  interface LlmCallSqlRow {
+    id: string;
+    started_at: string;
+    ended_at: string | null;
+    model: string;
+    endpoint: string;
+    request: string;
+    response: string | null;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    cost_usd: number | null;
+    latency_ms: number | null;
+    correlation_id: string | null;
+    flow_id: string | null;
+    layer_id: string | null;
+    user_id: string | null;
+    error: string | null;
+    model_source: 'system' | 'layer' | null;
+  }
+
+  const findById = db.query<LlmCallSqlRow, [string]>(
+    `SELECT id, started_at, ended_at, model, endpoint, request, response,
+            tokens_in, tokens_out, cost_usd, latency_ms,
+            correlation_id, flow_id, layer_id, user_id, error, model_source
+       FROM llm_calls
+       WHERE id = ?`,
+  );
+
   const deleteOld = db.query<unknown, [string]>('DELETE FROM llm_calls WHERE started_at < ?');
 
   return {
@@ -103,6 +133,29 @@ export function createSqliteLlmCallLog(db: Database): LlmCallLog {
     },
     count(): number {
       return countStmt.get()?.n ?? 0;
+    },
+    getById(id: string): LlmCallRow | null {
+      const row = findById.get(id);
+      if (row === null) return null;
+      return {
+        id: row.id,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+        model: row.model,
+        endpoint: row.endpoint,
+        request: row.request,
+        response: row.response,
+        tokensIn: row.tokens_in,
+        tokensOut: row.tokens_out,
+        costUsd: row.cost_usd,
+        latencyMs: row.latency_ms,
+        correlationId: row.correlation_id,
+        flowId: row.flow_id,
+        layerId: row.layer_id,
+        userId: row.user_id,
+        error: row.error,
+        modelSource: row.model_source,
+      };
     },
     pruneOlderThan(cutoff: Date): number {
       const before = countStmt.get()?.n ?? 0;

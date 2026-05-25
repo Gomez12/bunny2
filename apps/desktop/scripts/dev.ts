@@ -18,6 +18,16 @@ import * as path from 'node:path';
 
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 
+// Per-child log files under `apps/server/.data/dev-logs/<name>.log`.
+// `bun run --filter '@bunny2/desktop' dev` collapses interleaved
+// stdout to the last ~10 lines, so anything more than a handful of
+// log lines is gone from the terminal before you can read it.
+// Writing the raw streams to disk gives a `tail -f`-able trace that
+// survives the filter's compaction. Each restart truncates the file
+// so the log reflects only the current process.
+const logDir = path.join(repoRoot, 'apps', 'server', '.data', 'dev-logs');
+fs.mkdirSync(logDir, { recursive: true });
+
 interface Child {
   readonly name: string;
   readonly proc: ChildProcess;
@@ -30,19 +40,37 @@ const children: Child[] = [];
 // separate handle keeps the restart path obvious.
 let serverChild: Child | null = null;
 
-function start(name: string, cmd: string, args: string[], env: NodeJS.ProcessEnv = {}): Child {
+function start(
+  name: string,
+  cmd: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = {},
+  cwd: string = repoRoot,
+): Child {
   const proc = spawn(cmd, args, {
-    cwd: repoRoot,
+    cwd,
     env: { ...process.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: false,
   });
   proc.stdout?.setEncoding('utf8');
   proc.stderr?.setEncoding('utf8');
-  proc.stdout?.on('data', (chunk: string) => process.stdout.write(`[${name}] ${chunk}`));
-  proc.stderr?.on('data', (chunk: string) => process.stderr.write(`[${name}] ${chunk}`));
+  // Open a fresh log file for this child. 'w' truncates on each
+  // (re)spawn so the file shows only the current process — old runs
+  // are gone, but `tail -f` survives the orchestrator restart loop.
+  const logPath = path.join(logDir, `${name}.log`);
+  const logStream = fs.createWriteStream(logPath, { flags: 'w', encoding: 'utf8' });
+  proc.stdout?.on('data', (chunk: string) => {
+    process.stdout.write(`[${name}] ${chunk}`);
+    logStream.write(chunk);
+  });
+  proc.stderr?.on('data', (chunk: string) => {
+    process.stderr.write(`[${name}] ${chunk}`);
+    logStream.write(chunk);
+  });
   proc.on('exit', (code, signal) => {
     console.log(`[dev] ${name} exited code=${code ?? '<none>'} signal=${signal ?? '<none>'}`);
+    logStream.end();
   });
   const child = { name, proc };
   children.push(child);
@@ -115,9 +143,26 @@ function installSignalHandlers(): void {
 // To keep things simple for phase 1.6, dev mode here runs the server as a
 // standalone process and the desktop app reuses the same one. We emit a
 // clear log so the developer sees both startup messages interleaved.
-/** Spawn the server child and remember it as the active handle. */
+/**
+ * Spawn the server child and remember it as the active handle.
+ *
+ * We spawn `bun src/index.ts` directly with `cwd=apps/server` rather than
+ * going through `bun run --filter '@bunny2/server' dev`. The filter form
+ * creates an intermediate Bun process that owns the real server as a
+ * grandchild; SIGTERM to that intermediate does not reliably propagate to
+ * the grandchild, leaving port 4317 bound and causing EADDRINUSE on the
+ * next restart. Spawning directly keeps the server as a single child the
+ * orchestrator can stop cleanly. Workspace deps resolve through the
+ * node_modules symlinks that `bun install` creates.
+ */
 function startServer(): void {
-  serverChild = start('server', 'bun', ['run', '--filter', '@bunny2/server', 'dev']);
+  serverChild = start(
+    'server',
+    'bun',
+    ['src/index.ts'],
+    {},
+    path.join(repoRoot, 'apps', 'server'),
+  );
 }
 
 /**

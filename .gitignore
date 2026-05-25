@@ -133,3 +133,7 @@ apps/desktop/vendor/
 
 # TernJS port file
 .tern-port
+
+
+# local server config (contains API keys)
+apps/server/config.json
