@@ -232,6 +232,19 @@
     }
   },
   "admin": {
+    "nav": {
+      "label": "Admin",
+      "users": "Users",
+      "groups": "Groups",
+      "scheduledTasks": "Scheduled tasks",
+      "busDlq": "Bus DLQ",
+      "observability": "Observability",
+      "sections": {
+        "usersAndGroups": "Users & Groups",
+        "operations": "Operations",
+        "observability": "Observability"
+      }
+    },
     "users": {
       "title": "Users",
       "newUser": "New user",

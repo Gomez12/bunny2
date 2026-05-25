@@ -9,6 +9,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import { AdminNav } from './components/admin/AdminNav';
 import { Button } from './components/ui/button';
 import { UserMenu } from './components/UserMenu';
 import { LayerSwitcher } from './components/LayerSwitcher';
@@ -205,54 +206,7 @@ function AppShell(): JSX.Element {
                 </li>
                 {isAdmin ? (
                   <li>
-                    <Button
-                      type="button"
-                      variant={active('/admin/users') ? 'default' : 'ghost'}
-                      size="sm"
-                      aria-current={active('/admin/users') ? 'page' : undefined}
-                      onClick={() => nav('/admin/users')}
-                    >
-                      {t('nav.adminUsers')}
-                    </Button>
-                  </li>
-                ) : null}
-                {isAdmin ? (
-                  <li>
-                    <Button
-                      type="button"
-                      variant={active('/admin/groups') ? 'default' : 'ghost'}
-                      size="sm"
-                      aria-current={active('/admin/groups') ? 'page' : undefined}
-                      onClick={() => nav('/admin/groups')}
-                    >
-                      {t('nav.adminGroups')}
-                    </Button>
-                  </li>
-                ) : null}
-                {isAdmin ? (
-                  <li>
-                    <Button
-                      type="button"
-                      variant={active('/admin/scheduled-tasks') ? 'default' : 'ghost'}
-                      size="sm"
-                      aria-current={active('/admin/scheduled-tasks') ? 'page' : undefined}
-                      onClick={() => nav('/admin/scheduled-tasks')}
-                    >
-                      {t('nav.adminScheduledTasks')}
-                    </Button>
-                  </li>
-                ) : null}
-                {isAdmin ? (
-                  <li>
-                    <Button
-                      type="button"
-                      variant={active('/admin/bus/dlq') ? 'default' : 'ghost'}
-                      size="sm"
-                      aria-current={active('/admin/bus/dlq') ? 'page' : undefined}
-                      onClick={() => nav('/admin/bus/dlq')}
-                    >
-                      {t('nav.adminBusDlq')}
-                    </Button>
+                    <AdminNav />
                   </li>
                 ) : null}
               </ul>

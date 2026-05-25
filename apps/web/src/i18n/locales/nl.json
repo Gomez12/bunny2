@@ -180,6 +180,19 @@
     }
   },
   "admin": {
+    "nav": {
+      "label": "Beheer",
+      "users": "Gebruikers",
+      "groups": "Groepen",
+      "scheduledTasks": "Geplande taken",
+      "busDlq": "Bus DLQ",
+      "observability": "Observability",
+      "sections": {
+        "usersAndGroups": "Gebruikers & groepen",
+        "operations": "Operatie",
+        "observability": "Observability"
+      }
+    },
     "layers": {
       "create": {
         "title": "Projectlaag maken",
