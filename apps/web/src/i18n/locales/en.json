@@ -1175,6 +1175,11 @@
       "importSuccess": "Imported {{created}} new and updated {{updated}} existing contacts.",
       "importWarningsTitle": "Warnings",
       "importNoFile": "Please choose a .vcf file first."
+    },
+    "whiteboard": {
+      "mention": {
+        "linked": "Linked from whiteboard mention"
+      }
     }
   },
   "scheduledTasks": {

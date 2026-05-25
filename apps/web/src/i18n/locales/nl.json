@@ -956,6 +956,11 @@
       "importSuccess": "{{created}} nieuwe contacten geïmporteerd en {{updated}} bestaande bijgewerkt.",
       "importWarningsTitle": "Waarschuwingen",
       "importNoFile": "Kies eerst een .vcf-bestand."
+    },
+    "whiteboard": {
+      "mention": {
+        "linked": "Gekoppeld vanuit whiteboard-vermelding"
+      }
     }
   },
   "scheduledTasks": {

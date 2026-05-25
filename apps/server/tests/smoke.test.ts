@@ -4040,3 +4040,257 @@ describe('phase 8.6 — threshold-automation smoke (enable settings → auto-act
     }
   });
 });
+
+// ---------------------------------------------------------------------
+// Phase 11.6 — whiteboards smoke (create → checkpoint → list → enrich
+// → soft-delete). Mirrors the phase-6.7 block shape: sibling
+// `describe`, dedicated `makeChatFixture`, deterministic fake LLM for
+// the enrichment runner so the soul summary is reproducible. The
+// canonical assertions are:
+//
+//   1. POST /l/<slug>/whiteboard creates the whiteboard.
+//   2. PATCH /l/<slug>/whiteboard/<slug>/_checkpoint bumps the version
+//      and stamps `last_checkpoint_at`.
+//   3. GET /l/<slug>/whiteboard list includes the new row.
+//   4. The event-driven enrichment runner publishes
+//      `entity.enrichment.succeeded` for `whiteboard.sceneSummary` and
+//      writes a non-empty `summary` into `entity_souls.memory_json`.
+//   5. DELETE soft-deletes the row; subsequent list excludes it.
+//
+// The enrichment runner is constructed against the SAME `bus` the
+// HTTP app uses, with a fake LLM so the summary text is deterministic
+// (no dependency on `mock://echo`). The production whiteboard module
+// (with `whiteboardEnrichmentJobs` wired in via
+// `buildProductionWhiteboardModule`) is already registered by
+// `createApp` inside `makeChatFixture`, so the runner picks the jobs
+// up via `listEntityModules()`.
+// ---------------------------------------------------------------------
+
+import {
+  buildProductionWhiteboardModule,
+  readWhiteboardSummary,
+  WHITEBOARD_SCENE_SUMMARY_JOB_ID,
+} from '../src/entities/whiteboards';
+import type { WhiteboardPayload } from '@bunny2/shared';
+
+describe('phase 11.6 — whiteboards smoke (create → checkpoint → list → enrich → soft-delete)', () => {
+  it('creates a whiteboard, checkpoints it, lists it, enriches it, and soft-deletes it', async () => {
+    const fx = await makeChatFixture('bunny2-smoke-whiteboards-');
+    const enrichmentSummaryText = 'AMI BV roadmap whiteboard highlights Q3 product launches.';
+    try {
+      // -------------------------------------------------------------
+      // 1. Deterministic LLM for the enrichment runner. The chat
+      //    fixture's programmable LLM is owned by the chat pipeline
+      //    and would throw on unknown step keys; the whiteboards
+      //    enrichment job sets `flowId` (not `step`) so we wire a
+      //    dedicated client that returns a fixed summary regardless
+      //    of metadata. Mirrors step 12's `fakeLlm` pattern.
+      // -------------------------------------------------------------
+      const whiteboardLlmCalls: { messages: string; flowId: string | undefined }[] = [];
+      const whiteboardLlm: LlmClient = {
+        endpoint: 'mock://smoke-whiteboards',
+        defaultModel: 'mock-default',
+        async chat(req: ChatRequest): Promise<ChatResponse> {
+          const flowId = typeof req.metadata?.flowId === 'string' ? req.metadata.flowId : undefined;
+          whiteboardLlmCalls.push({
+            messages: req.messages.map((m) => m.content).join('\n'),
+            flowId,
+          });
+          return {
+            id: crypto.randomUUID(),
+            model: 'mock-default',
+            content: enrichmentSummaryText,
+            tokensIn: 8,
+            tokensOut: 9,
+            raw: null,
+          };
+        },
+      };
+
+      // -------------------------------------------------------------
+      // 2. Subscribe to enrichment events BEFORE the runner ticks so
+      //    we can pin the `entity.enrichment.succeeded` publish for
+      //    the scene-summary job (the headline assertion this smoke
+      //    contributes — mirrors phase 6.7's enrichment-event capture).
+      // -------------------------------------------------------------
+      const enrichmentEvents: BusEvent[] = [];
+      const unsubEnrichmentSucceeded = fx.app.bus.subscribe('entity.enrichment.succeeded', (ev) => {
+        enrichmentEvents.push(ev);
+      });
+
+      // -------------------------------------------------------------
+      // 3. Build the enrichment runner with a per-module store
+      //    resolver — the runner reads modules from the registry
+      //    (`buildProductionWhiteboardModule()` was already registered
+      //    by `createApp` inside `makeChatFixture`) and applies patches
+      //    via the store. Whiteboards enrichment jobs do NOT patch the
+      //    payload (they write to `entity_souls` and
+      //    `entity_external_links` as side effects), so the resolver
+      //    never has to mutate the whiteboards table — but we still
+      //    pass a working store to mirror the production wiring shape.
+      // -------------------------------------------------------------
+      const wbStore = createEntityStore<WhiteboardPayload>({
+        module: buildProductionWhiteboardModule(),
+        db: fx.app.db,
+        bus: fx.app.bus,
+        llm: whiteboardLlm,
+      });
+      const enrichmentRunner = createEnrichmentRunner({
+        db: fx.app.db,
+        bus: fx.app.bus,
+        llm: whiteboardLlm,
+        resolveStore: (m) => (m.kind === 'whiteboard' ? (wbStore as EntityStore<unknown>) : null),
+      });
+      enrichmentRunner.start();
+      try {
+        // -----------------------------------------------------------
+        // 4. POST /l/<slug>/whiteboard — create "Q3 roadmap".
+        //    Minimal payload: one text element so the searchable
+        //    text + scene summary have content to work with. Per ADR
+        //    0028 element bodies are opaque; only `type`/`id`
+        //    /`version` are validated.
+        // -----------------------------------------------------------
+        const sceneText = 'AMI BV product launches roadmap';
+        const createPayload: WhiteboardPayload = {
+          scene: {
+            elements: [
+              {
+                id: 'el-1',
+                type: 'text',
+                version: 1,
+                text: sceneText,
+              } as unknown as WhiteboardPayload['scene']['elements'][number],
+            ],
+          },
+          files: {},
+        };
+        const createRes = await fx.app.app.fetch(
+          new Request(`http://localhost/l/${fx.layerSlug}/whiteboard`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${fx.token}`,
+            },
+            body: JSON.stringify({
+              title: 'Q3 roadmap',
+              slug: 'q3-roadmap',
+              originalLocale: 'en',
+              payload: createPayload,
+            }),
+          }),
+        );
+        expect(createRes.status).toBe(201);
+        const createdBody = (await createRes.json()) as {
+          entity: { id: string; slug: string; meta: { version: number } };
+        };
+        expect(createdBody.entity.slug).toBe('q3-roadmap');
+        expect(createdBody.entity.meta.version).toBe(1);
+        const whiteboardId = createdBody.entity.id;
+
+        // -----------------------------------------------------------
+        // 5. PATCH /l/<slug>/whiteboard/<slug>/_checkpoint — bump
+        //    the version, stamp `last_checkpoint_at`, no thumbnail
+        //    bytes (the smoke does not exercise the binary blob path;
+        //    the route tests pin that branch).
+        // -----------------------------------------------------------
+        const checkpointPayload: WhiteboardPayload = {
+          scene: {
+            elements: [
+              {
+                id: 'el-1',
+                type: 'text',
+                version: 2,
+                text: `${sceneText} — updated`,
+              } as unknown as WhiteboardPayload['scene']['elements'][number],
+            ],
+          },
+          files: {},
+        };
+        const checkpointRes = await fx.app.app.fetch(
+          new Request(`http://localhost/l/${fx.layerSlug}/whiteboard/q3-roadmap/_checkpoint`, {
+            method: 'PATCH',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${fx.token}`,
+            },
+            body: JSON.stringify({ payload: checkpointPayload }),
+          }),
+        );
+        expect(checkpointRes.status).toBe(200);
+        const checkpointBody = (await checkpointRes.json()) as {
+          entity: { meta: { version: number } };
+          lastCheckpointAt: string;
+        };
+        expect(checkpointBody.entity.meta.version).toBe(2);
+        expect(checkpointBody.lastCheckpointAt).toBeTruthy();
+
+        // -----------------------------------------------------------
+        // 6. GET /l/<slug>/whiteboard — list includes the row.
+        // -----------------------------------------------------------
+        const listRes = await fx.app.app.fetch(
+          new Request(`http://localhost/l/${fx.layerSlug}/whiteboard`, {
+            headers: { authorization: `Bearer ${fx.token}` },
+          }),
+        );
+        expect(listRes.status).toBe(200);
+        const listBody = (await listRes.json()) as {
+          entities: ReadonlyArray<{ slug: string; title: string }>;
+        };
+        expect(
+          listBody.entities.some((e) => e.slug === 'q3-roadmap' && e.title === 'Q3 roadmap'),
+        ).toBe(true);
+
+        // -----------------------------------------------------------
+        // 7. Flush the runner. The create event + the checkpoint
+        //    update event both land in the runner's debounce queue;
+        //    `tickOnce()` flushes the pending entry. The summary job
+        //    runs once for the latest version (idempotent on
+        //    `summarySourceVersion`), produces the deterministic
+        //    `enrichmentSummaryText`, and writes it to
+        //    `entity_souls.memory_json[summary]`. The
+        //    `entity.enrichment.succeeded` event fires for the job.
+        // -----------------------------------------------------------
+        await enrichmentRunner.tickOnce();
+
+        const soul = readWhiteboardSummary(fx.app.db, whiteboardId);
+        expect(soul).not.toBeNull();
+        expect(soul?.summary).toBe(enrichmentSummaryText);
+        expect(soul?.sourceVersion).toBe(2);
+
+        const summaryEvents = enrichmentEvents.filter((ev) => {
+          const p = ev.payload as { jobId?: string; entityId?: string };
+          return p.jobId === WHITEBOARD_SCENE_SUMMARY_JOB_ID && p.entityId === whiteboardId;
+        });
+        expect(summaryEvents.length).toBeGreaterThanOrEqual(1);
+        expect(whiteboardLlmCalls.length).toBeGreaterThanOrEqual(1);
+
+        // -----------------------------------------------------------
+        // 8. DELETE — soft-delete. Subsequent list excludes the row.
+        // -----------------------------------------------------------
+        const deleteRes = await fx.app.app.fetch(
+          new Request(`http://localhost/l/${fx.layerSlug}/whiteboard/q3-roadmap`, {
+            method: 'DELETE',
+            headers: { authorization: `Bearer ${fx.token}` },
+          }),
+        );
+        expect(deleteRes.status).toBe(200);
+
+        const listAfterDelete = await fx.app.app.fetch(
+          new Request(`http://localhost/l/${fx.layerSlug}/whiteboard`, {
+            headers: { authorization: `Bearer ${fx.token}` },
+          }),
+        );
+        expect(listAfterDelete.status).toBe(200);
+        const listAfterDeleteBody = (await listAfterDelete.json()) as {
+          entities: ReadonlyArray<{ slug: string }>;
+        };
+        expect(listAfterDeleteBody.entities.some((e) => e.slug === 'q3-roadmap')).toBe(false);
+      } finally {
+        enrichmentRunner.stop();
+        unsubEnrichmentSucceeded();
+      }
+    } finally {
+      fx.app.cleanup();
+    }
+  });
+});

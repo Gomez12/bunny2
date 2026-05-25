@@ -393,3 +393,193 @@ describe('phase 8.6 — proposals.auto-activate handler registers (--role=worker
     }
   });
 });
+
+// ---------------------------------------------------------------------
+// Phase 11.6 — whiteboards enrichment runs once in `--role=worker` and
+// writes a deterministic summary to `entity_souls.memory_json` against
+// a fixture scene. Mirrors the 5.7 / 6.7 worker shape: pre-seed a
+// whiteboard, register the production module, call
+// `runWhiteboardsEnrichSweep` directly (the pure entry point exported
+// for exactly this), and assert the soul row carries the canned LLM
+// response. A second sweep at the same version is a no-op (idempotent
+// on `summarySourceVersion`).
+// ---------------------------------------------------------------------
+
+import {
+  __resetEntityRegistryForTests,
+  createEntityStore as createEntityStoreForWorker,
+  registerEntityModule,
+} from '../src/entities';
+import {
+  createWhiteboardModule,
+  whiteboardEnrichmentJobs,
+  runWhiteboardsEnrichSweep,
+  readWhiteboardSummary,
+} from '../src/entities/whiteboards';
+import { createUsersRepo } from '../src/repos/users-repo';
+import type { ChatRequest, ChatResponse } from '../src/llm';
+import type { WhiteboardPayload } from '@bunny2/shared';
+
+describe('phase 11.6 — whiteboards enrichment sweep (--role=worker)', () => {
+  it('runs the enrichment sweep once and writes a deterministic summary to entity_souls', async () => {
+    // Fresh data-dir so the sweep does not collide with the
+    // top-of-file `phase 5.7` smoke that owns `tmpDir`. Mirrors the
+    // pattern phase 8.6's `localTmpDir` uses.
+    const localTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bunny2-smoke-worker-whiteboards-'));
+    let localDb: Database | null = null;
+    try {
+      const database = openDatabase(localTmpDir);
+      localDb = database;
+      const fixtureBus = new DurableSqliteMessageBus(database, {
+        writeEvent: (event) => writeEventRow(database, event),
+        middlewares: [correlationIdMiddleware, errorCaptureMiddleware()],
+        subscriberKey: 'smoke-worker-whiteboards',
+      });
+      fixtureBus.start();
+
+      // Register the production whiteboards module so
+      // `runWhiteboardsEnrichSweep` (and any downstream
+      // `getEntityModule('whiteboard')` lookup) sees the jobs slot.
+      __resetEntityRegistryForTests();
+      const whiteboardMod = createWhiteboardModule({
+        connectors: [],
+        enrichmentJobs: whiteboardEnrichmentJobs,
+      });
+      registerEntityModule(whiteboardMod);
+
+      // Stub LLM returns a fixed summary — the headline determinism
+      // assertion. The mention resolver job runs too (the sweep
+      // invokes both jobs in sequence), but the layer has no other
+      // entities so it produces zero external-link inserts and never
+      // calls the LLM.
+      const canned = 'Fixture scene summary for the worker-role smoke.';
+      const llmCalls: { flowId: string | undefined }[] = [];
+      const stubLlm: LlmClient = {
+        endpoint: 'mock://smoke-worker-whiteboards',
+        defaultModel: 'mock-default',
+        async chat(req: ChatRequest): Promise<ChatResponse> {
+          const flowId = typeof req.metadata?.flowId === 'string' ? req.metadata.flowId : undefined;
+          llmCalls.push({ flowId });
+          return {
+            id: crypto.randomUUID(),
+            model: 'mock-default',
+            content: canned,
+            tokensIn: 8,
+            tokensOut: 9,
+            raw: null,
+          };
+        },
+      };
+
+      // Boot helpers — admin user + the layer seed so we have a real
+      // (project) layer to attach the whiteboard to.
+      await seedAdminIfNeeded({ db: database, bus: fixtureBus });
+      const resolver = createGroupResolver({ db: database, bus: fixtureBus });
+      await seedLayersIfNeeded({
+        db: database,
+        bus: fixtureBus,
+        transitiveGroups: resolver,
+      });
+      const nowIso = new Date().toISOString();
+      const userId = crypto.randomUUID();
+      createUsersRepo(database).createUser({
+        id: userId,
+        username: 'smoke-worker-wb',
+        displayName: 'Smoke Worker WB',
+        passwordHash: 'h',
+        mustChangePassword: false,
+        now: nowIso,
+      });
+      const layerId = createLayersRepo(database).insertLayer({
+        id: crypto.randomUUID(),
+        type: 'project',
+        slug: 'smoke-worker-whiteboards',
+        name: 'Smoke Worker Whiteboards',
+        now: nowIso,
+      }).id;
+
+      // Pre-seed a whiteboard via the store with a fixture scene
+      // containing a single text element. Per ADR 0028 element bodies
+      // are opaque — only `type`/`id`/`version` are validated.
+      const wbStore = createEntityStoreForWorker<WhiteboardPayload>({
+        module: whiteboardMod,
+        db: database,
+        bus: fixtureBus,
+        llm: stubLlm,
+      });
+      const fixtureScene: WhiteboardPayload = {
+        scene: {
+          elements: [
+            {
+              id: 'fix-1',
+              type: 'text',
+              version: 1,
+              text: 'Q3 onboarding plan with deterministic fixture content',
+            } as unknown as WhiteboardPayload['scene']['elements'][number],
+          ],
+        },
+        files: {},
+      };
+      const wb = await wbStore.create({
+        layerId,
+        slug: 'worker-fixture',
+        title: 'Worker fixture',
+        originalLocale: 'en',
+        payload: fixtureScene,
+        actorId: userId,
+      });
+
+      // Run the sweep ONCE. The headline assertion: the soul row now
+      // carries the canned LLM content + the matching source version.
+      const result = await runWhiteboardsEnrichSweep({
+        db: database,
+        bus: fixtureBus,
+        llm: stubLlm,
+        config: { maxPerSweep: 10 },
+      });
+      expect(result.considered).toBe(1);
+      expect(result.enriched).toBe(1);
+      expect(result.failed).toBe(0);
+
+      const soul = readWhiteboardSummary(database, wb.id);
+      expect(soul).not.toBeNull();
+      expect(soul?.summary).toBe(canned);
+      expect(soul?.sourceVersion).toBe(wb.meta.version);
+
+      // The summary job called the stub LLM exactly once for this
+      // sweep (mention resolver is LLM-free).
+      const summaryCalls = llmCalls.filter(
+        (c) => c.flowId === 'enrichment:whiteboard.sceneSummary',
+      );
+      expect(summaryCalls.length).toBe(1);
+
+      // A second sweep at the same version is a no-op (idempotent on
+      // `summarySourceVersion`). Pin that here too so a regression in
+      // the stamp logic surfaces in the worker-role smoke.
+      const second = await runWhiteboardsEnrichSweep({
+        db: database,
+        bus: fixtureBus,
+        llm: stubLlm,
+        config: { maxPerSweep: 10 },
+      });
+      expect(second.considered).toBe(0);
+      expect(llmCalls.length).toBe(summaryCalls.length); // unchanged
+
+      fixtureBus.stop();
+    } finally {
+      __resetEntityRegistryForTests();
+      if (localDb !== null) {
+        try {
+          localDb.close();
+        } catch {
+          /* already closed */
+        }
+      }
+      try {
+        safeRmSync(localTmpDir);
+      } catch {
+        /* best-effort */
+      }
+    }
+  });
+});
