@@ -661,8 +661,14 @@ export async function getTodoStats(slug: string): Promise<TodoStatsResponse> {
 // override on `EntityModule` until a second entity needs a different
 // mapping.
 
-export async function listCompanies(layerSlug: string): Promise<readonly EntitySummary[]> {
-  const res = await request<{ entities: readonly EntitySummary[] }>(companiesServerBase(layerSlug));
+export async function listCompanies(
+  layerSlug: string,
+  opts: { readonly includeDeleted?: boolean } = {},
+): Promise<readonly EntitySummary[]> {
+  const qs = opts.includeDeleted === true ? '?includeDeleted=true' : '';
+  const res = await request<{ entities: readonly EntitySummary[] }>(
+    `${companiesServerBase(layerSlug)}${qs}`,
+  );
   return res.entities;
 }
 
@@ -742,8 +748,14 @@ export async function removeCompanyExternalLink(
 // server router mounts the singular `/l/:slug/contact` segment per the
 // §4.0 entity contract; the web URLs use the friendlier plural form.
 
-export async function listContacts(layerSlug: string): Promise<readonly EntitySummary[]> {
-  const res = await request<{ entities: readonly EntitySummary[] }>(contactsServerBase(layerSlug));
+export async function listContacts(
+  layerSlug: string,
+  opts: { readonly includeDeleted?: boolean } = {},
+): Promise<readonly EntitySummary[]> {
+  const qs = opts.includeDeleted === true ? '?includeDeleted=true' : '';
+  const res = await request<{ entities: readonly EntitySummary[] }>(
+    `${contactsServerBase(layerSlug)}${qs}`,
+  );
   return res.entities;
 }
 
@@ -849,7 +861,7 @@ export async function importContactsVcard(
 
 export async function listCalendarEvents(
   layerSlug: string,
-  opts: { readonly from?: string; readonly to?: string } = {},
+  opts: { readonly from?: string; readonly to?: string; readonly includeDeleted?: boolean } = {},
 ): Promise<readonly EntitySummary[]> {
   // Phase 4c.5 follow-up — the server's §4.0 list endpoint now accepts
   // `?from=&to=` against the indexed `starts_at` column when the
@@ -858,6 +870,7 @@ export async function listCalendarEvents(
   const params = new URLSearchParams();
   if (opts.from !== undefined && opts.from !== '') params.set('from', opts.from);
   if (opts.to !== undefined && opts.to !== '') params.set('to', opts.to);
+  if (opts.includeDeleted === true) params.set('includeDeleted', 'true');
   const qs = params.toString();
   const url = qs === '' ? calendarServerBase(layerSlug) : `${calendarServerBase(layerSlug)}?${qs}`;
   const res = await request<{ entities: readonly EntitySummary[] }>(url);
@@ -979,8 +992,14 @@ export async function syncGoogleCalendar(layerSlug: string): Promise<GoogleCalen
 // `docs/dev/follow-ups/companies-list-columns.md` already tracks the
 // gap.
 
-export async function listTodos(layerSlug: string): Promise<readonly EntitySummary[]> {
-  const res = await request<{ entities: readonly EntitySummary[] }>(todosServerBase(layerSlug));
+export async function listTodos(
+  layerSlug: string,
+  opts: { readonly includeDeleted?: boolean } = {},
+): Promise<readonly EntitySummary[]> {
+  const qs = opts.includeDeleted === true ? '?includeDeleted=true' : '';
+  const res = await request<{ entities: readonly EntitySummary[] }>(
+    `${todosServerBase(layerSlug)}${qs}`,
+  );
   return res.entities;
 }
 
@@ -1112,6 +1131,27 @@ export async function listWhiteboardsWithThumbnails(
   return res.items;
 }
 
+/**
+ * Phase 1 (ui-exposure-gaps) — generic whiteboard list, used when the
+ * caller wants soft-deleted rows surfaced. The dedicated
+ * `_list-with-thumbnails` route hard-codes `WHERE deleted_at IS NULL`
+ * (see `apps/server/src/entities/whiteboards/routes.ts`), so the
+ * include-deleted toggle on the list page has to hit the generic
+ * `GET /l/:slug/whiteboard` endpoint instead. That route returns
+ * `EntitySummary[]` without thumbnails — acceptable for the deleted-
+ * row view, which renders a plain row with the Deleted badge.
+ */
+export async function listWhiteboards(
+  layerSlug: string,
+  opts: { readonly includeDeleted?: boolean } = {},
+): Promise<readonly EntitySummary[]> {
+  const qs = opts.includeDeleted === true ? '?includeDeleted=true' : '';
+  const res = await request<{ entities: readonly EntitySummary[] }>(
+    `${whiteboardServerBase(layerSlug)}${qs}`,
+  );
+  return res.entities;
+}
+
 export async function getWhiteboard(
   layerSlug: string,
   whiteboardSlug: string,
@@ -1168,6 +1208,34 @@ export async function softDeleteWhiteboard(
   await request<{ ok: true }>(whiteboardServerDetail(layerSlug, whiteboardSlug), {
     method: 'DELETE',
   });
+}
+
+// ---------- soft-delete restore (Phase 1, ui-exposure-gaps) ----------------
+//
+// Closes the audit gap "soft-delete restore has no UI caller". The
+// server route `POST /l/:slug/<kind>/:entitySlug/restore` exists for
+// every entity kind via `mountEntityRoutes`; this helper dispatches
+// to the right singular kind segment so every entity-page caller has a
+// single uniform helper to import. Each per-page caller passes the
+// kind explicitly so a typo at the call site is a type-check failure
+// (closed enum `RestorableEntityKind`).
+//
+// The route returns `{ entity }`; we discard the body — every caller
+// re-fetches via `getCompany` / `getContact` / ... immediately after
+// to refresh the meta + payload in one place. Returning `void` keeps
+// the helper symmetric with `softDelete*`.
+
+export type RestorableEntityKind = 'company' | 'contact' | 'calendar_event' | 'todo' | 'whiteboard';
+
+export async function restoreEntity(
+  layerSlug: string,
+  kind: RestorableEntityKind,
+  entitySlug: string,
+): Promise<void> {
+  await request<{ entity: unknown }>(
+    `/l/${encodeURIComponent(layerSlug)}/${kind}/${encodeURIComponent(entitySlug)}/restore`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
 }
 
 // ---------- scheduled tasks (phase 5.6) ------------------------------------

@@ -8,7 +8,8 @@
  * `docs/dev/follow-ups/web-component-tests.md`.
  */
 import { describe, expect, it } from 'bun:test';
-import type { WhiteboardListWithThumbnailItem } from '../src/lib/api-types';
+import type { EntitySummary, WhiteboardListWithThumbnailItem } from '../src/lib/api-types';
+import { i18nKeysForKind, isSoftDeleted, restoreTelemetryName } from '../src/lib/entity-restore';
 import {
   RESERVED_WHITEBOARD_SLUGS,
   WHITEBOARD_SERVER_KIND,
@@ -64,7 +65,92 @@ describe('whiteboardsListView', () => {
     if (view.kind === 'ready') {
       expect(view.items).toHaveLength(1);
       expect(view.items[0]?.slug).toBe('q3-retro');
+      // The default thumbnail branch carries deletedAt:null and the
+      // numeric elementCount.
+      expect(view.items[0]?.deletedAt).toBeNull();
+      expect(view.items[0]?.elementCount).toBe(3);
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase 1 (ui-exposure-gaps) — `?includeDeleted=1` path. The list
+  // page switches from `_list-with-thumbnails` (which hard-filters
+  // `deleted_at IS NULL`) to the generic `EntitySummary[]` endpoint;
+  // the reducer flattens both shapes into the same row.
+
+  function summary(overrides: Partial<EntitySummary> = {}): EntitySummary {
+    return {
+      id: '00000000-0000-0000-0000-000000000010',
+      kind: 'whiteboard',
+      layerId: '00000000-0000-0000-0000-0000000000aa',
+      slug: 'q3-retro',
+      title: 'Q3 retro board',
+      subtitle: null,
+      searchableText: 'q3 retro',
+      meta: {
+        createdAt: '2026-05-23T00:00:00.000Z',
+        createdBy: '00000000-0000-0000-0000-0000000000bb',
+        updatedAt: '2026-05-24T10:00:00.000Z',
+        updatedBy: '00000000-0000-0000-0000-0000000000bb',
+        deletedAt: null,
+        deletedBy: null,
+        version: 1,
+        originalLocale: 'en',
+      },
+      ...overrides,
+    };
+  }
+
+  it('returns ready (empty) for the include-deleted branch when no summaries', () => {
+    expect(whiteboardsListView({ status: 'ready-with-deleted', summaries: [] })).toEqual({
+      kind: 'empty',
+    });
+  });
+
+  it('flattens summaries into rows with deletedAt and null thumbnail/elementCount', () => {
+    const deleted = summary({
+      slug: 'old-board',
+      title: 'Old board',
+      meta: {
+        ...summary().meta,
+        deletedAt: '2026-05-24T11:00:00.000Z',
+        deletedBy: '00000000-0000-0000-0000-0000000000bb',
+        version: 2,
+      },
+    });
+    const view = whiteboardsListView({
+      status: 'ready-with-deleted',
+      summaries: [summary(), deleted],
+    });
+    expect(view.kind).toBe('ready');
+    if (view.kind === 'ready') {
+      expect(view.items).toHaveLength(2);
+      expect(view.items[0]?.deletedAt).toBeNull();
+      expect(view.items[0]?.thumbnailBlobBase64).toBeNull();
+      expect(view.items[0]?.elementCount).toBeNull();
+      expect(view.items[1]?.slug).toBe('old-board');
+      expect(view.items[1]?.deletedAt).toBe('2026-05-24T11:00:00.000Z');
+    }
+  });
+});
+
+describe('soft-delete restore (whiteboards)', () => {
+  it('isSoftDeleted is true when deletedAt is set', () => {
+    expect(isSoftDeleted({ deletedAt: '2026-05-24T11:00:00.000Z' })).toBe(true);
+    expect(isSoftDeleted({ deletedAt: null })).toBe(false);
+  });
+
+  it('i18nKeysForKind("whiteboard") returns the entity.whiteboards.restore.* namespace', () => {
+    const keys = i18nKeysForKind('whiteboard');
+    expect(keys.deletedBadge).toBe('entity.whiteboards.restore.deletedBadge');
+    expect(keys.bannerTitle).toBe('entity.whiteboards.restore.bannerTitle');
+    expect(keys.restoreCta).toBe('entity.whiteboards.restore.cta');
+    expect(keys.confirmBody).toBe('entity.whiteboards.restore.confirmBody');
+    expect(keys.toggleHideDeleted).toBe('entity.whiteboards.restore.toggleHideDeleted');
+  });
+
+  it('restoreTelemetryName uses the singular kind segment', () => {
+    expect(restoreTelemetryName('whiteboard')).toBe('entity.whiteboard.restore');
   });
 });
 

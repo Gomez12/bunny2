@@ -9,10 +9,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { ConfirmDialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { RestoreBanner } from '../components/ui/restore-banner';
 import { Textarea } from '../components/ui/textarea';
-import { getContact, listCompanies, softDeleteContact, updateContact } from '../lib/api';
+import {
+  getContact,
+  listCompanies,
+  restoreEntity,
+  softDeleteContact,
+  updateContact,
+} from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import type { EntityExternalLink, EntitySummary } from '../lib/api-types';
 import { contactsListWebRoute } from '../lib/contacts-routes';
+import { i18nKeysForKind, isSoftDeleted, restoreTelemetryName } from '../lib/entity-restore';
 import { errorKeyOf } from '../lib/errors';
 import { pushToast } from '../lib/toast';
 import { useCurrentLayer } from '../lib/use-current-layer';
@@ -67,6 +76,10 @@ export function ContactDetailPage(): JSX.Element {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [restorePending, setRestorePending] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const restoreKeys = i18nKeysForKind('contact');
 
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
 
@@ -148,8 +161,47 @@ export function ContactDetailPage(): JSX.Element {
     }
   }
 
+  async function handleRestore(): Promise<void> {
+    if (restorePending || layerSlug === null) return;
+    setRestorePending(true);
+    setRestoreError(null);
+    const startedAt = Date.now();
+    const telemetry = restoreTelemetryName('contact');
+    try {
+      await restoreEntity(layerSlug, 'contact', contactSlug);
+      console.log(`[${telemetry}]`, { success: true, latencyMs: Date.now() - startedAt });
+      trackEvent('entity_restored', { kind: 'contact', layerSlug });
+      pushToast({ kind: 'success', message: t(restoreKeys.restored) });
+      setRestoreDialogOpen(false);
+      await refresh();
+    } catch (err: unknown) {
+      console.log(`[${telemetry}]`, { success: false, latencyMs: Date.now() - startedAt });
+      setRestoreError(errorKeyOf(err));
+    } finally {
+      setRestorePending(false);
+    }
+  }
+
+  const showRestoreBanner =
+    view.kind === 'ready' && isSoftDeleted(view.contact.meta) && current.canEdit;
+
   return (
     <div className="space-y-4">
+      {showRestoreBanner ? (
+        <RestoreBanner
+          titleKey={restoreKeys.bannerTitle}
+          bodyKey={restoreKeys.bannerBody}
+          restoreCtaKey={restoreKeys.restoreCta}
+          confirmTitleKey={restoreKeys.confirmTitle}
+          confirmBodyKey={restoreKeys.confirmBody}
+          cancelKey={restoreKeys.cancel}
+          busy={restorePending}
+          errorKey={restoreError}
+          dialogOpen={restoreDialogOpen}
+          onDialogOpenChange={setRestoreDialogOpen}
+          onConfirm={() => void handleRestore()}
+        />
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>

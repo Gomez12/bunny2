@@ -14,15 +14,20 @@ import { Button } from '../components/ui/button';
 import { ConfirmDialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { RestoreBanner } from '../components/ui/restore-banner';
 import {
   getWhiteboard,
   patchWhiteboard,
   patchWhiteboardCheckpoint,
+  restoreEntity,
   softDeleteWhiteboard,
 } from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import type { ExcalidrawElement, ExcalidrawFileEntry, WhiteboardPayload } from '../lib/api-types';
+import { i18nKeysForKind, isSoftDeleted, restoreTelemetryName } from '../lib/entity-restore';
 import { errorKeyOf } from '../lib/errors';
 import { formatRelativeTime } from '../lib/relative-time';
+import { pushToast } from '../lib/toast';
 import { useSession } from '../lib/session';
 import { useCurrentLayer } from '../lib/use-current-layer';
 import { webWhiteboardsPath } from '../lib/whiteboards-routes';
@@ -240,6 +245,10 @@ export function WhiteboardDetailPage(): JSX.Element {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [restorePending, setRestorePending] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const restoreKeys = i18nKeysForKind('whiteboard');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInflightRef = useRef<boolean>(false);
@@ -471,6 +480,27 @@ export function WhiteboardDetailPage(): JSX.Element {
     }
   }
 
+  async function handleRestore(): Promise<void> {
+    if (restorePending || layerSlug === null) return;
+    setRestorePending(true);
+    setRestoreError(null);
+    const startedAt = Date.now();
+    const telemetry = restoreTelemetryName('whiteboard');
+    try {
+      await restoreEntity(layerSlug, 'whiteboard', whiteboardSlug);
+      console.log(`[${telemetry}]`, { success: true, latencyMs: Date.now() - startedAt });
+      trackEvent('entity_restored', { kind: 'whiteboard', layerSlug });
+      pushToast({ kind: 'success', message: t(restoreKeys.restored) });
+      setRestoreDialogOpen(false);
+      await refresh();
+    } catch (err: unknown) {
+      console.log(`[${telemetry}]`, { success: false, latencyMs: Date.now() - startedAt });
+      setRestoreError(errorKeyOf(err));
+    } finally {
+      setRestorePending(false);
+    }
+  }
+
   if (current.status !== 'ready') {
     return (
       <div role="status" aria-live="polite" className="text-sm text-muted-foreground">
@@ -523,8 +553,25 @@ export function WhiteboardDetailPage(): JSX.Element {
   const langCode = i18n.resolvedLanguage ?? 'en';
   const hasUnsaved = pendingScene !== null && !view.saving;
 
+  const showRestoreBanner = isSoftDeleted(wb.meta) && current.canEdit;
+
   return (
     <section className="space-y-3">
+      {showRestoreBanner ? (
+        <RestoreBanner
+          titleKey={restoreKeys.bannerTitle}
+          bodyKey={restoreKeys.bannerBody}
+          restoreCtaKey={restoreKeys.restoreCta}
+          confirmTitleKey={restoreKeys.confirmTitle}
+          confirmBodyKey={restoreKeys.confirmBody}
+          cancelKey={restoreKeys.cancel}
+          busy={restorePending}
+          errorKey={restoreError}
+          dialogOpen={restoreDialogOpen}
+          onDialogOpenChange={setRestoreDialogOpen}
+          onConfirm={() => void handleRestore()}
+        />
+      ) : null}
       <header className="flex flex-wrap items-center gap-3">
         <Button type="button" variant="ghost" onClick={() => navigate(webWhiteboardsPath(slug))}>
           {t('entity.whiteboards.detail.back')}

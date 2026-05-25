@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { DeletedBadge } from '../components/ui/deleted-badge';
 import { Dialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { createTodo, getTodo, listTodos, updateTodo } from '../lib/api';
 import type { EntitySummary, Todo, TodoStatus } from '../lib/api-types';
+import { i18nKeysForKind, isSoftDeleted } from '../lib/entity-restore';
 import { errorKeyOf } from '../lib/errors';
 import { pushToast } from '../lib/toast';
 import { slugifyTodoTitle, webTodoNewPath, webTodoPath, webTodosPath } from '../lib/todos-routes';
@@ -82,19 +84,32 @@ export function TodosPage(): JSX.Element {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const current = useCurrentLayer();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const includeDeleted = searchParams.get('includeDeleted') === '1';
   const [input, setInput] = useState<TodosListInput>({ status: 'loading' });
   const [hydrated, setHydrated] = useState<readonly Todo[]>([]);
   const [viewMode, setViewMode] = useState<TodosViewMode>('list');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [kanbanBusySlug, setKanbanBusySlug] = useState<string | null>(null);
+  const restoreKeys = i18nKeysForKind('todo');
 
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
+
+  function toggleIncludeDeleted(): void {
+    const next = new URLSearchParams(searchParams);
+    if (includeDeleted) {
+      next.delete('includeDeleted');
+    } else {
+      next.set('includeDeleted', '1');
+    }
+    setSearchParams(next, { replace: true });
+  }
 
   const refresh = useCallback(async (): Promise<void> => {
     if (layerSlug === null) return;
     setInput({ status: 'loading' });
     try {
-      const summaries = await listTodos(layerSlug);
+      const summaries = await listTodos(layerSlug, { includeDeleted });
       setInput({ status: 'ready', todos: summaries });
       const full = await Promise.all(
         summaries.map(async (s) => {
@@ -113,7 +128,7 @@ export function TodosPage(): JSX.Element {
     } catch (err: unknown) {
       setInput({ status: 'error', errorKey: errorKeyOf(err) });
     }
-  }, [layerSlug]);
+  }, [layerSlug, includeDeleted]);
 
   useEffect(() => {
     void refresh();
@@ -197,6 +212,15 @@ export function TodosPage(): JSX.Element {
                 {t('entity.todos.viewKanban')}
               </Button>
             </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={toggleIncludeDeleted}
+              aria-pressed={includeDeleted}
+            >
+              {includeDeleted ? t(restoreKeys.toggleHideDeleted) : t(restoreKeys.toggleShowDeleted)}
+            </Button>
             <Button type="button" onClick={() => setDialogOpen(true)}>
               {t('entity.todos.createCta')}
             </Button>
@@ -222,7 +246,12 @@ export function TodosPage(): JSX.Element {
             </div>
           ) : null}
           {view.kind === 'ready' && viewMode === 'list' ? (
-            <TodosListView layerSlug={layer.slug} todos={hydrated} summaries={view.todos} />
+            <TodosListView
+              layerSlug={layer.slug}
+              todos={hydrated}
+              summaries={view.todos}
+              deletedBadgeKey={restoreKeys.deletedBadge}
+            />
           ) : null}
           {view.kind === 'ready' && viewMode === 'kanban' ? (
             <TodosKanbanView
@@ -258,6 +287,7 @@ interface TodosListViewProps {
   readonly layerSlug: string;
   readonly todos: readonly Todo[];
   readonly summaries: readonly EntitySummary[];
+  readonly deletedBadgeKey: string;
 }
 
 /**
@@ -301,14 +331,19 @@ function TodosListView(props: TodosListViewProps): JSX.Element {
           {props.summaries.map((s) => {
             const full = fullById.get(s.id);
             return (
-              <tr key={s.id} className="border-b last:border-0">
+              <tr key={s.id} className="border-b last:border-0" data-row-id={s.id}>
                 <td className="px-2 py-2 font-medium">
-                  <Link
-                    to={webTodoPath(props.layerSlug, s.slug)}
-                    className="text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {s.title}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to={webTodoPath(props.layerSlug, s.slug)}
+                      className="text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {s.title}
+                    </Link>
+                    {isSoftDeleted(s.meta) ? (
+                      <DeletedBadge labelKey={props.deletedBadgeKey} />
+                    ) : null}
+                  </div>
                 </td>
                 <td className="px-2 py-2 text-muted-foreground">
                   {full !== undefined ? (

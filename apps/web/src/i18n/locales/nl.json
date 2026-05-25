@@ -680,6 +680,18 @@
       "deleteConfirmTitle": "Bedrijf verwijderen",
       "deleteConfirmBody": "Dit bedrijf verwijderen? Het wordt zacht verwijderd en kan door een beheerder worden hersteld.",
       "deleted": "Bedrijf verwijderd.",
+      "restore": {
+        "deletedBadge": "Verwijderd",
+        "bannerTitle": "Dit bedrijf is verwijderd",
+        "bannerBody": "Zacht verwijderde bedrijven zijn verborgen uit de standaardlijst. Herstel om het terug te brengen.",
+        "cta": "Bedrijf herstellen",
+        "confirmTitle": "Bedrijf herstellen",
+        "confirmBody": "Dit bedrijf herstellen? Het wordt weer zichtbaar voor iedereen die deze laag kan zien.",
+        "cancel": "Annuleren",
+        "restored": "Bedrijf hersteld.",
+        "toggleShowDeleted": "Verwijderde tonen",
+        "toggleHideDeleted": "Verwijderde verbergen"
+      },
       "externalLinksTitle": "Externe koppelingen",
       "externalLinksEmpty": "Nog geen externe koppelingen.",
       "linkKvkNumberLabel": "KvK-nummer",
@@ -745,6 +757,18 @@
       "deleteConfirmTitle": "Contact verwijderen",
       "deleteConfirmBody": "Dit contact verwijderen? Het wordt zacht verwijderd en kan door een beheerder worden hersteld.",
       "deleted": "Contact verwijderd.",
+      "restore": {
+        "deletedBadge": "Verwijderd",
+        "bannerTitle": "Dit contact is verwijderd",
+        "bannerBody": "Zacht verwijderde contacten zijn verborgen uit de standaardlijst. Herstel om het terug te brengen.",
+        "cta": "Contact herstellen",
+        "confirmTitle": "Contact herstellen",
+        "confirmBody": "Dit contact herstellen? Het wordt weer zichtbaar voor iedereen die deze laag kan zien.",
+        "cancel": "Annuleren",
+        "restored": "Contact hersteld.",
+        "toggleShowDeleted": "Verwijderde tonen",
+        "toggleHideDeleted": "Verwijderde verbergen"
+      },
       "externalLinksTitle": "Externe koppelingen",
       "externalLinksEmpty": "Nog geen externe koppelingen. vCard-imports verschijnen hier.",
       "linkConnectorLabel": "{{connector}} · {{externalId}}",
@@ -813,6 +837,18 @@
       "deleteCta": "Afspraak verwijderen",
       "deleteConfirmTitle": "Afspraak verwijderen",
       "deleteConfirmBody": "Deze afspraak verwijderen? Hij wordt soft-deleted en kan door een beheerder worden hersteld.",
+      "restore": {
+        "deletedBadge": "Verwijderd",
+        "bannerTitle": "Deze afspraak is verwijderd",
+        "bannerBody": "Zacht verwijderde afspraken zijn verborgen uit het standaardrooster. Herstel om de afspraak terug te brengen.",
+        "cta": "Afspraak herstellen",
+        "confirmTitle": "Afspraak herstellen",
+        "confirmBody": "Deze afspraak herstellen? Hij wordt weer zichtbaar in de agenda voor iedereen die deze laag kan zien.",
+        "cancel": "Annuleren",
+        "restored": "Afspraak hersteld.",
+        "toggleShowDeleted": "Verwijderde tonen",
+        "toggleHideDeleted": "Verwijderde verbergen"
+      },
       "externalLinksTitle": "Externe koppelingen",
       "externalLinksEmpty": "Nog geen externe koppelingen. Google Agenda-imports verschijnen hier.",
       "linkConnectorLabel": "{{connector}} · {{externalId}}",
@@ -896,6 +932,18 @@
       "deleteCta": "Taak verwijderen",
       "deleteConfirmTitle": "Taak verwijderen",
       "deleteConfirmBody": "Deze taak verwijderen? Hij wordt zacht verwijderd en kan door een beheerder worden hersteld.",
+      "restore": {
+        "deletedBadge": "Verwijderd",
+        "bannerTitle": "Deze taak is verwijderd",
+        "bannerBody": "Zacht verwijderde taken zijn verborgen uit de standaardlijst en het kanban. Herstel om de taak terug te brengen.",
+        "cta": "Taak herstellen",
+        "confirmTitle": "Taak herstellen",
+        "confirmBody": "Deze taak herstellen? Hij wordt weer zichtbaar voor iedereen die deze laag kan zien.",
+        "cancel": "Annuleren",
+        "restored": "Taak hersteld.",
+        "toggleShowDeleted": "Verwijderde tonen",
+        "toggleHideDeleted": "Verwijderde verbergen"
+      },
       "slug": "Slug",
       "slugHint": "Alleen kleine letters, cijfers en streepjes. Laat leeg om automatisch te genereren op basis van de titel.",
       "originalLocale": "Oorspronkelijke taal"
@@ -958,6 +1006,18 @@
         "tooLarge": "Dit whiteboard is te groot om op te slaan. Verwijder enkele elementen of bijgevoegde afbeeldingen en probeer opnieuw.",
         "invalidScene": "De whiteboard-scene kon niet worden opgeslagen omdat de validatie faalde.",
         "saveFailed": "Het whiteboard kon niet worden opgeslagen. Probeer het opnieuw."
+      },
+      "restore": {
+        "deletedBadge": "Verwijderd",
+        "bannerTitle": "Dit whiteboard is verwijderd",
+        "bannerBody": "Zacht verwijderde whiteboards zijn verborgen uit de standaardlijst. Herstel om het terug te brengen.",
+        "cta": "Whiteboard herstellen",
+        "confirmTitle": "Whiteboard herstellen",
+        "confirmBody": "Dit whiteboard herstellen? Het wordt weer zichtbaar voor iedereen die deze laag kan zien.",
+        "cancel": "Annuleren",
+        "restored": "Whiteboard hersteld.",
+        "toggleShowDeleted": "Verwijderde tonen",
+        "toggleHideDeleted": "Verwijderde verbergen"
       }
     }
   },

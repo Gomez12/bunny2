@@ -6,8 +6,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { ConfirmDialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { RestoreBanner } from '../components/ui/restore-banner';
 import { Textarea } from '../components/ui/textarea';
-import { getTodo, listCompanies, listContacts, softDeleteTodo, updateTodo } from '../lib/api';
+import {
+  getTodo,
+  listCompanies,
+  listContacts,
+  restoreEntity,
+  softDeleteTodo,
+  updateTodo,
+} from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import type {
   EntitySummary,
   TodoLinkedEntityKind,
@@ -16,6 +25,7 @@ import type {
 } from '../lib/api-types';
 import { companyDetailWebRoute } from '../lib/companies-routes';
 import { contactDetailWebRoute } from '../lib/contacts-routes';
+import { i18nKeysForKind, isSoftDeleted, restoreTelemetryName } from '../lib/entity-restore';
 import { errorKeyOf } from '../lib/errors';
 import { pushToast } from '../lib/toast';
 import { webTodosPath } from '../lib/todos-routes';
@@ -83,6 +93,10 @@ export function TodoDetailPage(): JSX.Element {
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
+  const [restorePending, setRestorePending] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const restoreKeys = i18nKeysForKind('todo');
 
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
 
@@ -170,14 +184,53 @@ export function TodoDetailPage(): JSX.Element {
     }
   }
 
+  async function handleRestore(): Promise<void> {
+    if (restorePending || layerSlug === null) return;
+    setRestorePending(true);
+    setRestoreError(null);
+    const startedAt = Date.now();
+    const telemetry = restoreTelemetryName('todo');
+    try {
+      await restoreEntity(layerSlug, 'todo', todoSlug);
+      console.log(`[${telemetry}]`, { success: true, latencyMs: Date.now() - startedAt });
+      trackEvent('entity_restored', { kind: 'todo', layerSlug });
+      pushToast({ kind: 'success', message: t(restoreKeys.restored) });
+      setRestoreDialogOpen(false);
+      await refresh();
+    } catch (err: unknown) {
+      console.log(`[${telemetry}]`, { success: false, latencyMs: Date.now() - startedAt });
+      setRestoreError(errorKeyOf(err));
+    } finally {
+      setRestorePending(false);
+    }
+  }
+
   function handleAddTag(): void {
     if (tagInput.trim().length === 0) return;
     setDraft((prev) => addTag(prev, tagInput));
     setTagInput('');
   }
 
+  const showRestoreBanner =
+    view.kind === 'ready' && isSoftDeleted(view.todo.meta) && current.canEdit;
+
   return (
     <div className="space-y-4">
+      {showRestoreBanner ? (
+        <RestoreBanner
+          titleKey={restoreKeys.bannerTitle}
+          bodyKey={restoreKeys.bannerBody}
+          restoreCtaKey={restoreKeys.restoreCta}
+          confirmTitleKey={restoreKeys.confirmTitle}
+          confirmBodyKey={restoreKeys.confirmBody}
+          cancelKey={restoreKeys.cancel}
+          busy={restorePending}
+          errorKey={restoreError}
+          dialogOpen={restoreDialogOpen}
+          onDialogOpenChange={setRestoreDialogOpen}
+          onConfirm={() => void handleRestore()}
+        />
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>

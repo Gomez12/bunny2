@@ -204,12 +204,25 @@ export interface MappableEventLike {
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
+export interface MapEventsOptions {
+  /**
+   * Phase 1 (ui-exposure-gaps) — when set, soft-deleted events are
+   * still rendered on the grid with the supplied prefix prepended to
+   * the title (e.g. `"[Deleted] Standup"`). When `undefined`, the
+   * mapper skips soft-deleted events entirely — the default behaviour
+   * the calendar page has used since 4c.5.
+   */
+  readonly deletedTitlePrefix?: string;
+}
+
 export function mapEventsToCalendarItems(
   events: readonly MappableEventLike[],
+  opts: MapEventsOptions = {},
 ): readonly CalendarGridItem[] {
   const out: CalendarGridItem[] = [];
   for (const e of events) {
-    if (e.meta !== undefined && e.meta.deletedAt !== null) continue;
+    const isDeleted = e.meta !== undefined && e.meta.deletedAt !== null;
+    if (isDeleted && opts.deletedTitlePrefix === undefined) continue;
     const p = e.payload;
     const allDay = p.allDay === true;
     const startMs = parseTimestampToMs(p.startsAt, allDay);
@@ -221,10 +234,14 @@ export function mapEventsToCalendarItems(
     } else {
       endMs = allDay ? startMs : startMs + ONE_HOUR_MS;
     }
+    const title =
+      isDeleted && opts.deletedTitlePrefix !== undefined
+        ? `${opts.deletedTitlePrefix} ${e.title}`
+        : e.title;
     out.push({
       id: e.id,
       slug: e.slug,
-      title: e.title,
+      title,
       start: new Date(startMs),
       end: new Date(endMs),
       allDay,

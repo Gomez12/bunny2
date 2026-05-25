@@ -105,7 +105,36 @@ behave — see `docs/user/guides/working-with-layers.md`.
 
 ---
 
-## 7. Known limits
+## 7. Deleting and restoring a whiteboard
+
+Click **Delete** in the editor footer to soft-delete the whiteboard.
+Soft-deleted whiteboards disappear from the default list but stay in
+the database with `deleted_at` set so the audit trail (and any
+checkpointed history) is intact.
+
+### Restoring deleted whiteboards
+
+To bring a whiteboard back:
+
+1. Open **Whiteboards** and click **Show deleted** in the top right.
+   The list switches from the thumbnail view to a plain row view
+   (the dedicated thumbnail endpoint hides deleted rows by design);
+   soft-deleted rows carry a "Deleted" badge next to the title and
+   the URL gains `?includeDeleted=1` so the filtered view is share-
+   /bookmark-able.
+2. Click the whiteboard you want to restore. The editor page shows a
+   red banner at the top: **"This whiteboard is deleted — Restore
+   whiteboard"**.
+3. Click **Restore whiteboard**, then confirm in the dialog. The
+   whiteboard becomes visible again to everyone who can see the
+   layer.
+
+Restore requires the same permission as Delete; the banner is
+hidden for viewers who cannot edit the layer.
+
+---
+
+## 8. Known limits
 
 A short list of behaviours that are intentionally **not** in v1:
 
@@ -128,7 +157,7 @@ A short list of behaviours that are intentionally **not** in v1:
 
 ---
 
-## 8. Related reading
+## 9. Related reading
 
 - `docs/user/guides/getting-started.md` — first steps with bunny2.
 - `docs/user/guides/working-with-layers.md` — how layers control

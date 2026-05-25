@@ -116,6 +116,20 @@ Call sites:
 
 - [`apps/web/src/pages/LayerCapabilitiesPage.tsx`](../../../apps/web/src/pages/LayerCapabilitiesPage.tsx)
 
+### Entities
+
+| Event             | Properties          | Privacy                                                                                                                      |
+| ----------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `entity_restored` | `kind`, `layerSlug` | `kind` is the closed `RestorableEntityKind` enum (`company`/`contact`/`calendar_event`/`todo`/`whiteboard`); no row content. |
+
+Call sites (Phase 1 of `docs/dev/plans/ui-exposure-gaps.md`):
+
+- [`apps/web/src/pages/CompanyDetailPage.tsx`](../../../apps/web/src/pages/CompanyDetailPage.tsx)
+- [`apps/web/src/pages/ContactDetailPage.tsx`](../../../apps/web/src/pages/ContactDetailPage.tsx)
+- [`apps/web/src/pages/CalendarEventDetailPage.tsx`](../../../apps/web/src/pages/CalendarEventDetailPage.tsx)
+- [`apps/web/src/pages/TodoDetailPage.tsx`](../../../apps/web/src/pages/TodoDetailPage.tsx)
+- [`apps/web/src/pages/WhiteboardDetailPage.tsx`](../../../apps/web/src/pages/WhiteboardDetailPage.tsx)
+
 ## Adding a new event
 
 1. Pick a stable, snake-case name with clear product meaning. See the

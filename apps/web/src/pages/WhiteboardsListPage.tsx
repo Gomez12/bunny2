@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { DeletedBadge } from '../components/ui/deleted-badge';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { createWhiteboard, listWhiteboardsWithThumbnails } from '../lib/api';
+import { createWhiteboard, listWhiteboards, listWhiteboardsWithThumbnails } from '../lib/api';
 import type { WhiteboardPayload } from '../lib/api-types';
+import { i18nKeysForKind } from '../lib/entity-restore';
 import { errorKeyOf } from '../lib/errors';
 import { formatRelativeTime } from '../lib/relative-time';
 import { useCurrentLayer } from '../lib/use-current-layer';
@@ -50,6 +52,9 @@ export function WhiteboardsListPage(): JSX.Element {
   const navigate = useNavigate();
   const current = useCurrentLayer();
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const includeDeleted = searchParams.get('includeDeleted') === '1';
+  const restoreKeys = i18nKeysForKind('whiteboard');
 
   const [input, setInput] = useState<WhiteboardsListInput>({ status: 'loading' });
   const [creating, setCreating] = useState(false);
@@ -57,16 +62,36 @@ export function WhiteboardsListPage(): JSX.Element {
   const [createTitle, setCreateTitle] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
 
+  function toggleIncludeDeleted(): void {
+    const next = new URLSearchParams(searchParams);
+    if (includeDeleted) {
+      next.delete('includeDeleted');
+    } else {
+      next.set('includeDeleted', '1');
+    }
+    setSearchParams(next, { replace: true });
+  }
+
   const refresh = useCallback(async (): Promise<void> => {
     if (layerSlug === null) return;
     setInput({ status: 'loading' });
     try {
-      const items = await listWhiteboardsWithThumbnails(layerSlug);
-      setInput({ status: 'ready', items });
+      if (includeDeleted) {
+        // The dedicated `_list-with-thumbnails` endpoint hard-filters
+        // soft-deleted rows; the generic `/l/:slug/whiteboard` route
+        // honours `?includeDeleted=true`. We trade per-row thumbnails
+        // for visibility of recoverable rows — the list still renders
+        // title + updated-at + Deleted badge.
+        const summaries = await listWhiteboards(layerSlug, { includeDeleted: true });
+        setInput({ status: 'ready-with-deleted', summaries });
+      } else {
+        const items = await listWhiteboardsWithThumbnails(layerSlug);
+        setInput({ status: 'ready', items });
+      }
     } catch (err: unknown) {
       setInput({ status: 'error', errorKey: errorKeyOf(err) });
     }
-  }, [layerSlug]);
+  }, [layerSlug, includeDeleted]);
 
   useEffect(() => {
     void refresh();
@@ -122,16 +147,27 @@ export function WhiteboardsListPage(): JSX.Element {
         <h1 id="whiteboards-list-heading" className="text-xl font-semibold">
           {t('entity.whiteboards.list.title')}
         </h1>
-        <Button
-          type="button"
-          onClick={() => {
-            setCreateOpen((v) => !v);
-            setCreateError(null);
-          }}
-          aria-expanded={createOpen}
-        >
-          {t('entity.whiteboards.list.new')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={toggleIncludeDeleted}
+            aria-pressed={includeDeleted}
+          >
+            {includeDeleted ? t(restoreKeys.toggleHideDeleted) : t(restoreKeys.toggleShowDeleted)}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              setCreateOpen((v) => !v);
+              setCreateError(null);
+            }}
+            aria-expanded={createOpen}
+          >
+            {t('entity.whiteboards.list.new')}
+          </Button>
+        </div>
       </header>
 
       {createOpen ? (
@@ -209,8 +245,9 @@ export function WhiteboardsListPage(): JSX.Element {
             });
             const titleText =
               item.title.trim().length > 0 ? item.title : t('entity.whiteboards.list.untitled');
+            const isDeleted = item.deletedAt !== null;
             return (
-              <li key={item.id}>
+              <li key={item.id} data-row-id={item.id}>
                 <Link
                   to={webWhiteboardPath(readySlug, item.slug)}
                   className="block rounded-md border bg-card transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -231,12 +268,17 @@ export function WhiteboardsListPage(): JSX.Element {
                       )}
                     </div>
                     <div className="flex-1 space-y-1">
-                      <p className="font-medium">{titleText}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {t('entity.whiteboards.list.elementCount', {
-                          count: item.elementCount,
-                        })}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{titleText}</p>
+                        {isDeleted ? <DeletedBadge labelKey={restoreKeys.deletedBadge} /> : null}
+                      </div>
+                      {item.elementCount !== null ? (
+                        <p className="text-xs text-muted-foreground">
+                          {t('entity.whiteboards.list.elementCount', {
+                            count: item.elementCount,
+                          })}
+                        </p>
+                      ) : null}
                       {when !== null ? (
                         <p className="text-xs text-muted-foreground">
                           {t('entity.whiteboards.list.editedAgo', {

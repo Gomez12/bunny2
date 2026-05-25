@@ -6,16 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { ConfirmDialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { RestoreBanner } from '../components/ui/restore-banner';
 import { Textarea } from '../components/ui/textarea';
 import {
   addCompanyExternalLink,
   getCompany,
   removeCompanyExternalLink,
+  restoreEntity,
   softDeleteCompany,
   updateCompany,
 } from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import type { EntityExternalLink } from '../lib/api-types';
 import { companiesListWebRoute } from '../lib/companies-routes';
+import { i18nKeysForKind, isSoftDeleted, restoreTelemetryName } from '../lib/entity-restore';
 import { errorKeyOf } from '../lib/errors';
 import { pushToast } from '../lib/toast';
 import { useCurrentLayer } from '../lib/use-current-layer';
@@ -73,6 +77,10 @@ export function CompanyDetailPage(): JSX.Element {
   const [linkPending, setLinkPending] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [linkRemovePending, setLinkRemovePending] = useState<string | null>(null);
+  const [restorePending, setRestorePending] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const restoreKeys = i18nKeysForKind('company');
 
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
 
@@ -175,6 +183,31 @@ export function CompanyDetailPage(): JSX.Element {
     }
   }
 
+  async function handleRestore(): Promise<void> {
+    if (restorePending || layerSlug === null) return;
+    setRestorePending(true);
+    setRestoreError(null);
+    const startedAt = Date.now();
+    const telemetry = restoreTelemetryName('company');
+    try {
+      await restoreEntity(layerSlug, 'company', companySlug);
+      // Placeholder telemetry surface — see `docs/dev/observability/
+      // telemetry.md` §4. The web bundle has no real telemetry sink
+      // today; the dotted name surfaces in dev logs so the metric is
+      // grep-able when the primitive lands.
+      console.log(`[${telemetry}]`, { success: true, latencyMs: Date.now() - startedAt });
+      trackEvent('entity_restored', { kind: 'company', layerSlug });
+      pushToast({ kind: 'success', message: t(restoreKeys.restored) });
+      setRestoreDialogOpen(false);
+      await refresh();
+    } catch (err: unknown) {
+      console.log(`[${telemetry}]`, { success: false, latencyMs: Date.now() - startedAt });
+      setRestoreError(errorKeyOf(err));
+    } finally {
+      setRestorePending(false);
+    }
+  }
+
   async function handleRemoveLink(linkId: string): Promise<void> {
     if (layerSlug === null) return;
     setLinkRemovePending(linkId);
@@ -190,8 +223,26 @@ export function CompanyDetailPage(): JSX.Element {
     }
   }
 
+  const showRestoreBanner =
+    view.kind === 'ready' && isSoftDeleted(view.company.meta) && current.canEdit;
+
   return (
     <div className="space-y-4">
+      {showRestoreBanner ? (
+        <RestoreBanner
+          titleKey={restoreKeys.bannerTitle}
+          bodyKey={restoreKeys.bannerBody}
+          restoreCtaKey={restoreKeys.restoreCta}
+          confirmTitleKey={restoreKeys.confirmTitle}
+          confirmBodyKey={restoreKeys.confirmBody}
+          cancelKey={restoreKeys.cancel}
+          busy={restorePending}
+          errorKey={restoreError}
+          dialogOpen={restoreDialogOpen}
+          onDialogOpenChange={setRestoreDialogOpen}
+          onConfirm={() => void handleRestore()}
+        />
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>

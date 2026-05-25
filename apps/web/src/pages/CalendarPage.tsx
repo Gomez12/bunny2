@@ -4,7 +4,7 @@ import { Calendar, dateFnsLocalizer, type View } from 'react-big-calendar';
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import { enUS } from 'date-fns/locale/en-US';
 import { nl } from 'date-fns/locale/nl';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -20,6 +20,7 @@ import {
   syncGoogleCalendar,
   type TodoCalendarProjectionItem,
 } from '../lib/api';
+import { i18nKeysForKind } from '../lib/entity-restore';
 import { webTodoPath } from '../lib/todos-routes';
 import type { CalendarEvent as CalendarEventEntity, EntitySummary } from '../lib/api-types';
 import {
@@ -82,6 +83,9 @@ export function CalendarPage(): JSX.Element {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const current = useCurrentLayer();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const includeDeleted = searchParams.get('includeDeleted') === '1';
+  const restoreKeys = i18nKeysForKind('calendar_event');
   const [input, setInput] = useState<CalendarPageInput>({ status: 'loading' });
   const [hydrated, setHydrated] = useState<readonly MappableEventLike[]>([]);
   const [projections, setProjections] = useState<readonly TodoCalendarProjectionItem[]>([]);
@@ -91,6 +95,16 @@ export function CalendarPage(): JSX.Element {
   const [syncPending, setSyncPending] = useState(false);
 
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
+
+  function toggleIncludeDeleted(): void {
+    const next = new URLSearchParams(searchParams);
+    if (includeDeleted) {
+      next.delete('includeDeleted');
+    } else {
+      next.set('includeDeleted', '1');
+    }
+    setSearchParams(next, { replace: true });
+  }
 
   const refresh = useCallback(async (): Promise<void> => {
     if (layerSlug === null) return;
@@ -110,7 +124,7 @@ export function CalendarPage(): JSX.Element {
       // projection layer simply does not render — same defensive
       // posture as the per-event `getCalendarEvent` hydrate below.
       const [summaries, projectionsResp] = await Promise.all([
-        listCalendarEvents(layerSlug, range),
+        listCalendarEvents(layerSlug, { ...range, includeDeleted }),
         listTodoProjectionsForCalendar(layerSlug).catch(() => ({
           items: [] as readonly TodoCalendarProjectionItem[],
         })),
@@ -140,7 +154,7 @@ export function CalendarPage(): JSX.Element {
     } catch (err: unknown) {
       setInput({ status: 'error', errorKey: errorKeyOf(err) });
     }
-  }, [layerSlug, view, date]);
+  }, [layerSlug, view, date, includeDeleted]);
 
   useEffect(() => {
     void refresh();
@@ -164,7 +178,10 @@ export function CalendarPage(): JSX.Element {
   const calendarMessages = useMemo(() => buildCalendarMessages(t), [t]);
 
   const items = useMemo(() => {
-    const events = mapEventsToCalendarItems(hydrated);
+    const events = mapEventsToCalendarItems(
+      hydrated,
+      includeDeleted ? { deletedTitlePrefix: `[${t(restoreKeys.deletedBadge)}]` } : {},
+    );
     // Phase 4d.6 — prefix the projection title with the localized
     // "Todo" label so the calendar grid telegraphs the read-only
     // nature of the entry. Status badge ("blocked", "in progress") is
@@ -201,7 +218,7 @@ export function CalendarPage(): JSX.Element {
     });
     const todoItems = mapTodoProjectionsToCalendarItems(projectionLikes);
     return mergeCalendarFeed(events, todoItems);
-  }, [hydrated, projections, t]);
+  }, [hydrated, projections, t, includeDeleted, restoreKeys.deletedBadge]);
 
   if (current.status !== 'ready') {
     return (
@@ -245,6 +262,15 @@ export function CalendarPage(): JSX.Element {
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle>{t('entity.calendar.listTitle', { name: layer.name })}</CardTitle>
           <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={toggleIncludeDeleted}
+              aria-pressed={includeDeleted}
+            >
+              {includeDeleted ? t(restoreKeys.toggleHideDeleted) : t(restoreKeys.toggleShowDeleted)}
+            </Button>
             <Button
               type="button"
               variant="ghost"

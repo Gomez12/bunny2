@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { DeletedBadge } from '../components/ui/deleted-badge';
 import { Dialog } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
 import { createCompany, listCompanies } from '../lib/api';
+import { i18nKeysForKind, isSoftDeleted } from '../lib/entity-restore';
 import {
   companiesNewWebRoute,
   companyDetailWebRoute,
@@ -56,8 +58,11 @@ export function CompaniesListPage(): JSX.Element {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const current = useCurrentLayer();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const includeDeleted = searchParams.get('includeDeleted') === '1';
   const [input, setInput] = useState<CompaniesListInput>({ status: 'loading' });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const restoreKeys = i18nKeysForKind('company');
 
   const layerSlug = current.status === 'ready' ? current.layer.slug : null;
 
@@ -65,12 +70,22 @@ export function CompaniesListPage(): JSX.Element {
     if (layerSlug === null) return;
     setInput({ status: 'loading' });
     try {
-      const companies = await listCompanies(layerSlug);
+      const companies = await listCompanies(layerSlug, { includeDeleted });
       setInput({ status: 'ready', companies });
     } catch (err: unknown) {
       setInput({ status: 'error', errorKey: errorKeyOf(err) });
     }
-  }, [layerSlug]);
+  }, [layerSlug, includeDeleted]);
+
+  function toggleIncludeDeleted(): void {
+    const next = new URLSearchParams(searchParams);
+    if (includeDeleted) {
+      next.delete('includeDeleted');
+    } else {
+      next.set('includeDeleted', '1');
+    }
+    setSearchParams(next, { replace: true });
+  }
 
   useEffect(() => {
     void refresh();
@@ -93,9 +108,20 @@ export function CompaniesListPage(): JSX.Element {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
           <CardTitle>{t('entity.companies.listTitle', { name: layer.name })}</CardTitle>
-          <Button type="button" onClick={() => setDialogOpen(true)}>
-            {t('entity.companies.createCta')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={toggleIncludeDeleted}
+              aria-pressed={includeDeleted}
+            >
+              {includeDeleted ? t(restoreKeys.toggleHideDeleted) : t(restoreKeys.toggleShowDeleted)}
+            </Button>
+            <Button type="button" onClick={() => setDialogOpen(true)}>
+              {t('entity.companies.createCta')}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {view.kind === 'loading' ? (
@@ -158,14 +184,19 @@ export function CompaniesListPage(): JSX.Element {
                           : { locale: i18n.resolvedLanguage }),
                       }) ?? c.meta.updatedAt;
                     return (
-                      <tr key={c.id} className="border-b last:border-0">
+                      <tr key={c.id} className="border-b last:border-0" data-row-id={c.id}>
                         <td className="px-2 py-2 font-medium">
-                          <Link
-                            to={companyDetailWebRoute(layer.slug, c.slug)}
-                            className="text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {c.title}
-                          </Link>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              to={companyDetailWebRoute(layer.slug, c.slug)}
+                              className="text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {c.title}
+                            </Link>
+                            {isSoftDeleted(c.meta) ? (
+                              <DeletedBadge labelKey={restoreKeys.deletedBadge} />
+                            ) : null}
+                          </div>
                         </td>
                         <td className="px-2 py-2 text-muted-foreground">
                           {c.subtitle ?? t('entity.companies.subtitle.noDetails')}

@@ -899,6 +899,18 @@
       "deleteConfirmTitle": "Delete company",
       "deleteConfirmBody": "Delete this company? It will be soft-deleted and can be restored by an administrator.",
       "deleted": "Company deleted.",
+      "restore": {
+        "deletedBadge": "Deleted",
+        "bannerTitle": "This company is deleted",
+        "bannerBody": "Soft-deleted companies are hidden from the default list. Restore to bring it back.",
+        "cta": "Restore company",
+        "confirmTitle": "Restore company",
+        "confirmBody": "Restore this company? It will become visible again to everyone who can see this layer.",
+        "cancel": "Cancel",
+        "restored": "Company restored.",
+        "toggleShowDeleted": "Show deleted",
+        "toggleHideDeleted": "Hide deleted"
+      },
       "externalLinksTitle": "External links",
       "externalLinksEmpty": "No external links yet.",
       "linkKvkNumberLabel": "KvK number",
@@ -964,6 +976,18 @@
       "deleteConfirmTitle": "Delete contact",
       "deleteConfirmBody": "Delete this contact? It will be soft-deleted and can be restored by an administrator.",
       "deleted": "Contact deleted.",
+      "restore": {
+        "deletedBadge": "Deleted",
+        "bannerTitle": "This contact is deleted",
+        "bannerBody": "Soft-deleted contacts are hidden from the default list. Restore to bring it back.",
+        "cta": "Restore contact",
+        "confirmTitle": "Restore contact",
+        "confirmBody": "Restore this contact? It will become visible again to everyone who can see this layer.",
+        "cancel": "Cancel",
+        "restored": "Contact restored.",
+        "toggleShowDeleted": "Show deleted",
+        "toggleHideDeleted": "Hide deleted"
+      },
       "externalLinksTitle": "External links",
       "externalLinksEmpty": "No external links yet. vCard imports will appear here.",
       "linkConnectorLabel": "{{connector}} · {{externalId}}",
@@ -1032,6 +1056,18 @@
       "deleteCta": "Delete event",
       "deleteConfirmTitle": "Delete event",
       "deleteConfirmBody": "Delete this event? It will be soft-deleted and can be restored by an administrator.",
+      "restore": {
+        "deletedBadge": "Deleted",
+        "bannerTitle": "This event is deleted",
+        "bannerBody": "Soft-deleted events are hidden from the default calendar grid. Restore to bring it back.",
+        "cta": "Restore event",
+        "confirmTitle": "Restore event",
+        "confirmBody": "Restore this event? It will become visible again on the calendar for everyone who can see this layer.",
+        "cancel": "Cancel",
+        "restored": "Event restored.",
+        "toggleShowDeleted": "Show deleted",
+        "toggleHideDeleted": "Hide deleted"
+      },
       "externalLinksTitle": "External links",
       "externalLinksEmpty": "No external links yet. Google Calendar imports will appear here.",
       "linkConnectorLabel": "{{connector}} · {{externalId}}",
@@ -1115,6 +1151,18 @@
       "deleteCta": "Delete todo",
       "deleteConfirmTitle": "Delete todo",
       "deleteConfirmBody": "Delete this todo? It will be soft-deleted and can be restored by an administrator.",
+      "restore": {
+        "deletedBadge": "Deleted",
+        "bannerTitle": "This todo is deleted",
+        "bannerBody": "Soft-deleted todos are hidden from the default list and kanban. Restore to bring it back.",
+        "cta": "Restore todo",
+        "confirmTitle": "Restore todo",
+        "confirmBody": "Restore this todo? It will become visible again to everyone who can see this layer.",
+        "cancel": "Cancel",
+        "restored": "Todo restored.",
+        "toggleShowDeleted": "Show deleted",
+        "toggleHideDeleted": "Hide deleted"
+      },
       "slug": "Slug",
       "slugHint": "Lowercase letters, digits and dashes only. Leave blank to auto-generate from the title.",
       "originalLocale": "Original locale"
@@ -1177,6 +1225,18 @@
         "tooLarge": "This whiteboard is too large to save. Remove some elements or attached images and try again.",
         "invalidScene": "The whiteboard scene could not be saved because it failed validation.",
         "saveFailed": "Could not save the whiteboard. Please try again."
+      },
+      "restore": {
+        "deletedBadge": "Deleted",
+        "bannerTitle": "This whiteboard is deleted",
+        "bannerBody": "Soft-deleted whiteboards are hidden from the default list. Restore to bring it back.",
+        "cta": "Restore whiteboard",
+        "confirmTitle": "Restore whiteboard",
+        "confirmBody": "Restore this whiteboard? It will become visible again to everyone who can see this layer.",
+        "cancel": "Cancel",
+        "restored": "Whiteboard restored.",
+        "toggleShowDeleted": "Show deleted",
+        "toggleHideDeleted": "Hide deleted"
       }
     }
   },

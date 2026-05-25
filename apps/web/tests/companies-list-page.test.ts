@@ -19,6 +19,7 @@
  */
 import { describe, expect, it } from 'bun:test';
 import type { EntitySummary } from '../src/lib/api-types';
+import { i18nKeysForKind, isSoftDeleted, restoreTelemetryName } from '../src/lib/entity-restore';
 import {
   COMPANIES_SERVER_KIND,
   COMPANIES_WEB_SEGMENT,
@@ -129,6 +130,60 @@ describe('companies-routes URL helpers', () => {
 
   it('percent-encodes layer and company slug segments in server URLs', () => {
     expect(companyServerDetail('a b', 'c d')).toBe('/l/a%20b/company/c%20d');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 1 (ui-exposure-gaps) — soft-delete restore surface.
+//
+// Pure-logic coverage for the Companies list/detail surface: the
+// `isSoftDeleted` decision used by the list-row Deleted badge and the
+// detail-page Restore banner, plus the per-kind i18n key namespace
+// and the telemetry-name placeholder. The page itself remains
+// untested (no DOM runtime in this repo, see
+// `docs/dev/follow-ups/web-component-tests.md`).
+describe('soft-delete restore (companies)', () => {
+  it('default-list reducer hides nothing extra — soft-deleted rows still flow through', () => {
+    // The reducer is shape-agnostic: filtering happens server-side via
+    // `?includeDeleted=true`. When the server returns a deleted row,
+    // the reducer should pass it through so the page renders it with
+    // the badge.
+    const deleted = summary({
+      meta: {
+        createdAt: '2026-05-23T00:00:00.000Z',
+        createdBy: '00000000-0000-0000-0000-0000000000bb',
+        updatedAt: '2026-05-24T10:00:00.000Z',
+        updatedBy: '00000000-0000-0000-0000-0000000000bb',
+        deletedAt: '2026-05-24T11:00:00.000Z',
+        deletedBy: '00000000-0000-0000-0000-0000000000bb',
+        version: 2,
+        originalLocale: 'en',
+      },
+    });
+    const view = companiesListView({ status: 'ready', companies: [deleted] });
+    expect(view.kind).toBe('ready');
+    if (view.kind === 'ready') {
+      expect(view.companies).toHaveLength(1);
+      expect(view.companies[0]?.meta.deletedAt).toBe('2026-05-24T11:00:00.000Z');
+    }
+  });
+
+  it('isSoftDeleted is true exactly when deletedAt is non-null', () => {
+    expect(isSoftDeleted({ deletedAt: null })).toBe(false);
+    expect(isSoftDeleted({ deletedAt: '2026-05-24T11:00:00.000Z' })).toBe(true);
+  });
+
+  it('i18nKeysForKind("company") returns the per-kind namespace', () => {
+    const keys = i18nKeysForKind('company');
+    expect(keys.deletedBadge).toBe('entity.companies.restore.deletedBadge');
+    expect(keys.bannerTitle).toBe('entity.companies.restore.bannerTitle');
+    expect(keys.restoreCta).toBe('entity.companies.restore.cta');
+    expect(keys.confirmTitle).toBe('entity.companies.restore.confirmTitle');
+    expect(keys.toggleShowDeleted).toBe('entity.companies.restore.toggleShowDeleted');
+  });
+
+  it('restoreTelemetryName uses the stable dotted name', () => {
+    expect(restoreTelemetryName('company')).toBe('entity.company.restore');
   });
 });
 
