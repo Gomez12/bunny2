@@ -477,6 +477,13 @@ export async function setLayerLocales(
   return res.locales;
 }
 
+export async function listLayerAttachments(slug: string): Promise<readonly LayerAttachment[]> {
+  const res = await request<{ attachments: readonly LayerAttachment[] }>(
+    `/layers/${encodeURIComponent(slug)}/attachments`,
+  );
+  return res.attachments;
+}
+
 export async function registerLayerAttachment(
   slug: string,
   body: RegisterLayerAttachmentPayload,

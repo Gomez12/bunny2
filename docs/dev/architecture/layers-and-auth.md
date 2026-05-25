@@ -45,6 +45,7 @@ Mirrors `auth-and-sessions.md §0`.
 | `POST`   | `/layers/:slug/visibility`             | 3.4         | `canEditLayer`; v1 direction = `bottom_up` |
 | `DELETE` | `/layers/:slug/visibility/:parentSlug` | 3.4         | `canEditLayer`                             |
 | `POST`   | `/layers/:slug/locales`                | 3.4         | `canEditLayer`                             |
+| `GET`    | `/layers/:slug/attachments`            | follow-up   | Visibility only (no `canEditLayer`)        |
 | `POST`   | `/layers/:slug/attachments`            | 3.4         | `canEditLayer`                             |
 | `DELETE` | `/layers/:slug/attachments/:id`        | 3.4         | `canEditLayer`                             |
 

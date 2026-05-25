@@ -624,6 +624,24 @@ export function registerLayersRoutes(
     return c.json({ ok: true, locales: localesRepo.listLocales(layer.id) });
   });
 
+  // ---------- GET /layers/:slug/attachments -------------------------------
+
+  /**
+   * List attachments for a layer. Any visible member can read — the
+   * Attachments tab needs to render on mount and after every
+   * register / remove so the list survives a page reload. Authz is
+   * delegated to `requireLayer` (404 leak shape matches `/layers/:slug`).
+   * Sibling shape recommended by `docs/dev/follow-ups/done/
+   * layer-attachments-on-get.md` over nesting into the detail route
+   * so each tab fetches what it needs independently.
+   */
+  app.get('/layers/:slug/attachments', requireLayer, (c) => {
+    const layer = c.get('layer');
+    if (layer === undefined) return c.json(NOT_VISIBLE, 404);
+    const attachments = attachmentsRepo.listAttachments(layer.id);
+    return c.json({ attachments });
+  });
+
   // ---------- POST /layers/:slug/attachments ------------------------------
 
   app.post('/layers/:slug/attachments', requireLayer, async (c) => {

@@ -12,8 +12,8 @@ import { LayerTypeBadge } from '../components/LayerTypeBadge';
 import {
   addLayerVisibility,
   deleteLayer,
-  getLayer,
   getSystemLocales,
+  listLayerAttachments,
   registerLayerAttachment,
   removeLayerAttachment,
   removeLayerVisibility,
@@ -611,17 +611,15 @@ function AttachmentsTab(props: TabProps): JSX.Element {
   const [configError, setConfigError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // The /layers/:slug GET response in 3.4 only returns the layer row,
-  // not its attachments. Without a list endpoint we keep the
-  // currently-rendered list in component state, prepending newly
-  // registered attachments. This is a known phase-3 limitation; the
-  // tab refreshes the layer row via getLayer to pick up rename / desc
-  // edits made on the General tab from elsewhere.
+  // Fetch the canonical attachment list from the sibling
+  // GET /layers/:slug/attachments endpoint on mount and after every
+  // register / remove. Phase 3's component-local state has been
+  // replaced by this read; the list now survives a page reload.
   const refresh = useCallback(async () => {
     setLoadError(null);
     try {
-      await getLayer(props.layer.slug);
-      setAttachments((prev) => prev ?? []);
+      const list = await listLayerAttachments(props.layer.slug);
+      setAttachments(list);
     } catch (err: unknown) {
       setLoadError(errorKeyOf(err));
     }

@@ -7,6 +7,8 @@
  *     errors.layer.attachmentConfigInvalid.
  *   - duplicate (kind, refId) → 409 errors.layer.attachmentAlreadyRegistered.
  *   - delete attachment from another layer leaks 404, not 200.
+ *   - GET sibling endpoint hit + 404-on-non-visible (follow-up
+ *     `layer-attachments-on-get.md`).
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 import { seedUserAndSession } from './_helpers/auth';
@@ -145,6 +147,58 @@ describe('/layers/:slug/attachments', () => {
     expect(dupe.status).toBe(409);
     const body = (await dupe.json()) as { error: string };
     expect(body.error).toBe('errors.layer.attachmentAlreadyRegistered');
+  });
+
+  it('GET /layers/:slug/attachments returns the canonical attachment list', async () => {
+    fx = makeTestApp('bunny2-att-list-ok-');
+    const { token } = seedUserAndSession(fx.db, { username: 'alice' });
+    await seedLayersIfNeeded({
+      db: fx.db,
+      bus: fx.bus,
+      transitiveGroups: fx.resolver,
+    });
+    await postJson(fx, '/layers', token, { type: 'project', slug: 'p', name: 'P' });
+    await postJson(fx, '/layers/p/attachments', token, {
+      kind: 'agent',
+      refId: 'agent-1',
+      config: { temperature: 0.1 },
+    });
+    await postJson(fx, '/layers/p/attachments', token, {
+      kind: 'skill',
+      refId: 'skill-1',
+    });
+
+    const res = await fx.app.fetch(
+      new Request('http://localhost/layers/p/attachments', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { attachments: readonly LayerAttachment[] };
+    expect(body.attachments.length).toBe(2);
+    const refIds = body.attachments.map((a) => a.refId).sort();
+    expect(refIds).toEqual(['agent-1', 'skill-1']);
+  });
+
+  it('GET /layers/:slug/attachments 404s with errors.layer.notVisible when the caller cannot see the layer', async () => {
+    fx = makeTestApp('bunny2-att-list-miss-');
+    const owner = seedUserAndSession(fx.db, { username: 'alice' });
+    await seedLayersIfNeeded({
+      db: fx.db,
+      bus: fx.bus,
+      transitiveGroups: fx.resolver,
+    });
+    await postJson(fx, '/layers', owner.token, { type: 'project', slug: 'private', name: 'P' });
+
+    const stranger = seedUserAndSession(fx.db, { username: 'mallory' });
+    const res = await fx.app.fetch(
+      new Request('http://localhost/layers/private/attachments', {
+        headers: { authorization: `Bearer ${stranger.token}` },
+      }),
+    );
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('errors.layer.notVisible');
   });
 
   it('DELETE /layers/:slug/attachments/:id 404s when the attachment belongs to another layer', async () => {
