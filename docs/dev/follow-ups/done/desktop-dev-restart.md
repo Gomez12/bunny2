@@ -1,7 +1,16 @@
 # Desktop dev orchestrator: watch + restart on source changes
 
-- Status: open
+- Status: done
 - Owner: phase 1.6+ DX
+
+## Resolution
+
+`apps/desktop/scripts/dev.ts` now installs a recursive `fs.watch` over
+`apps/server/src` and each `packages/*/src`, filters to
+`.ts`/`.tsx`/`.json` edits, debounces bursts at 250ms, and restarts the
+server child with a single-flight guard (SIGTERM, 3s fallback to SIGKILL,
+then re-spawn via `startServer()`). Vite continues to handle renderer
+changes itself.
 
 ## What remains
 

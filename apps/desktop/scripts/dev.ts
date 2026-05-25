@@ -13,6 +13,7 @@
  * child process.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
@@ -23,6 +24,11 @@ interface Child {
 }
 
 const children: Child[] = [];
+// Tracked separately so the source-watch loop can replace this child on
+// restart without leaving stale entries in `children`. `stopAll` keys off
+// `exitCode`/`signalCode` so a dead entry there is harmless, but the
+// separate handle keeps the restart path obvious.
+let serverChild: Child | null = null;
 
 function start(name: string, cmd: string, args: string[], env: NodeJS.ProcessEnv = {}): Child {
   const proc = spawn(cmd, args, {
@@ -109,10 +115,139 @@ function installSignalHandlers(): void {
 // To keep things simple for phase 1.6, dev mode here runs the server as a
 // standalone process and the desktop app reuses the same one. We emit a
 // clear log so the developer sees both startup messages interleaved.
+/** Spawn the server child and remember it as the active handle. */
+function startServer(): void {
+  serverChild = start('server', 'bun', ['run', '--filter', '@bunny2/server', 'dev']);
+}
+
+/**
+ * Stop the current server child gracefully (SIGTERM, then SIGKILL after a
+ * short grace period) and resolve once it has actually exited.
+ */
+async function stopServer(): Promise<void> {
+  const current = serverChild;
+  if (current === null) return;
+  const { proc } = current;
+  if (proc.exitCode !== null || proc.signalCode !== null) return;
+  await new Promise<void>((resolve) => {
+    const killTimer = setTimeout(() => {
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        // already dead
+      }
+    }, 3_000);
+    proc.once('exit', () => {
+      clearTimeout(killTimer);
+      resolve();
+    });
+    try {
+      proc.kill('SIGTERM');
+    } catch {
+      clearTimeout(killTimer);
+      resolve();
+    }
+  });
+}
+
+/**
+ * Watch server-side TypeScript sources and restart the server child when
+ * they change. Renderer changes are not handled here — Vite already has
+ * its own watcher.
+ *
+ * Design:
+ *   - Recursive `fs.watch` on `apps/server/src` and each `packages/*\/src`.
+ *     Bun and Node 20+ both support `{ recursive: true }` on macOS,
+ *     Windows, and Linux. We wrap each watch in try/catch so a single
+ *     platform regression logs a clear message instead of crashing.
+ *   - Filter callbacks to `.ts`/`.tsx`/`.json` files outside `node_modules`
+ *     and `dist` segments.
+ *   - 250ms debounce: dev edits land in bursts.
+ *   - Single-flight: a `restarting` flag plus a `pendingRestart` boolean
+ *     means at most one restart runs at a time, and at most one
+ *     follow-up restart is queued no matter how many events arrive
+ *     during the in-flight one.
+ */
+function installSourceWatcher(): void {
+  const watchTargets: string[] = [];
+  const serverSrc = path.join(repoRoot, 'apps', 'server', 'src');
+  if (fs.existsSync(serverSrc)) watchTargets.push(serverSrc);
+
+  const packagesDir = path.join(repoRoot, 'packages');
+  if (fs.existsSync(packagesDir)) {
+    for (const entry of fs.readdirSync(packagesDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const pkgSrc = path.join(packagesDir, entry.name, 'src');
+      if (fs.existsSync(pkgSrc)) watchTargets.push(pkgSrc);
+    }
+  }
+
+  const allowedExt = new Set(['.ts', '.tsx', '.json']);
+  const ignoredSegments = ['node_modules', 'dist', '.turbo', '.cache'];
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let restarting = false;
+  let pendingRestart = false;
+
+  const restartServer = async (): Promise<void> => {
+    if (restarting) {
+      pendingRestart = true;
+      return;
+    }
+    restarting = true;
+    const startedAt = Date.now();
+    console.log('[dev] server source changed, restarting…');
+    try {
+      await stopServer();
+      startServer();
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      console.log(`[dev] server restarted in ${elapsed}ms`);
+      restarting = false;
+      if (pendingRestart) {
+        pendingRestart = false;
+        // Schedule next restart on the next tick so callers see the
+        // current one complete first.
+        setTimeout(() => void restartServer(), 0);
+      }
+    }
+  };
+
+  const trigger = (): void => {
+    if (debounceTimer !== null) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      void restartServer();
+    }, 250);
+  };
+
+  for (const target of watchTargets) {
+    try {
+      const watcher = fs.watch(target, { recursive: true }, (_event, filename) => {
+        if (filename === null) return;
+        const rel = typeof filename === 'string' ? filename : String(filename);
+        if (ignoredSegments.some((seg) => rel.split(path.sep).includes(seg))) return;
+        const ext = path.extname(rel);
+        if (!allowedExt.has(ext)) return;
+        trigger();
+      });
+      watcher.on('error', (err) => {
+        console.warn(`[dev] watcher error on ${target}: ${(err as Error).message}`);
+      });
+      console.log(`[dev] watching ${path.relative(repoRoot, target)} for restarts`);
+    } catch (err) {
+      console.warn(
+        `[dev] could not watch ${target}: ${(err as Error).message}. Server auto-restart disabled for this path.`,
+      );
+    }
+  }
+}
+
 installSignalHandlers();
 
 start('web', 'bun', ['run', '--filter', '@bunny2/web', 'dev']);
-start('server', 'bun', ['run', '--filter', '@bunny2/server', 'dev']);
+startServer();
+installSourceWatcher();
 
 // Give Vite and the server a moment to begin listening so Electron's
 // first load doesn't race them; the renderer would just retry, but the
