@@ -27,6 +27,7 @@ import { AdminBusDlqPage } from './pages/admin/AdminBusDlqPage';
 import { AdminEventsPage } from './pages/admin/AdminEventsPage';
 import { AdminLlmCallsPage } from './pages/admin/AdminLlmCallsPage';
 import { AdminChatRunsPage } from './pages/admin/AdminChatRunsPage';
+import { AdminAnalyticsPage } from './pages/admin/AdminAnalyticsPage';
 import { ScheduledTasksListPage } from './pages/ScheduledTasksListPage';
 import { MyLayersPage } from './pages/MyLayersPage';
 import { LayerSettingsPage } from './pages/LayerSettingsPage';
@@ -251,6 +252,9 @@ function AppShell(): JSX.Element {
           {isAdmin ? (
             <Route path="/admin/observability/chat-runs" element={<AdminChatRunsPage />} />
           ) : null}
+          {isAdmin ? (
+            <Route path="/admin/observability/analytics" element={<AdminAnalyticsPage />} />
+          ) : null}
           <Route path="/l/:layerSlug/dashboard" element={<LayerDashboardPage />} />
           <Route path="/l/:layerSlug/settings" element={<LayerSettingsPage />} />
           <Route path="/l/:layerSlug/companies" element={<CompaniesListPage />} />
@@ -392,6 +396,7 @@ function pageTitleFor(pathname: string, t: (k: string) => string): string | null
   if (pathname.startsWith('/admin/observability/events')) return t('admin.events.title');
   if (pathname.startsWith('/admin/observability/llm-calls')) return t('admin.llmCalls.title');
   if (pathname.startsWith('/admin/observability/chat-runs')) return t('admin.chatRuns.title');
+  if (pathname.startsWith('/admin/observability/analytics')) return t('admin.analytics.title');
   if (pathname.startsWith('/account')) return t('auth.changePassword.title');
   return null;
 }

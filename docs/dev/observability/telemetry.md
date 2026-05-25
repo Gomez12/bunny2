@@ -189,9 +189,25 @@ responseTruncated, linkedEventCount }` /
    `{ durationMs, found, payloadTruncated, metadataTruncated }`
    so R3 mitigation activity stays observable without leaking
    the bytes themselves).
+   `admin.observability.analytics.query` /
+   `admin.observability.analytics.rollups` (Phase 6 analytics
+   viewer; same `{ durationMs, rowCount, filterKeys, limit,
+hasCursor }` query shape as the other admin viewers and a
+   `{ durationMs, count24h, count7d }` rollups shape mirroring
+   `admin.observability.llm-calls.rollups`).
+   `analytics.events.ingested` / `analytics.events.rejected`
+   / `analytics.events.pruned` (Phase 6 write path + retention;
+   `eventName` dimension is the only label, bounded by the
+   closed catalogue in
+   [`analytics.md`](./analytics.md). `rejected` adds a closed
+   `reason` enum (`unknown_name` / `unknown_property` /
+   `invalid_envelope` / `payload_too_large` /
+   `invalid_property_value`); `pruned` carries `deletedCount`
+   plus the active `retentionDays`).
    The closed sets are exported as constants
    (e.g. `SCHEDULED_TASK_EVENT_TYPES`,
-   `ADMIN_OBSERVABILITY_EVENT_TYPES`) for machine-checking.
+   `ADMIN_OBSERVABILITY_EVENT_TYPES`,
+   `ANALYTICS_SINK_EVENT_TYPES`) for machine-checking.
 2. **Structured-logger `event` field** — same shape, used by
    `logger.info(msg, fields)` so log lines and bus events
    stay grep-able by the same dotted name. Example

@@ -13,6 +13,7 @@ import {
   SYSTEM_HEALTHCHECK_KIND,
   SCHEDULED_RUNS_PRUNE_KIND,
   BUS_OUTBOX_PRUNE_KIND,
+  ANALYTICS_PRUNE_KIND,
 } from './built-in';
 import {
   PROPOSALS_AUTO_ACTIVATE_KIND,
@@ -71,6 +72,14 @@ const SYSTEM_TASKS: readonly SystemTaskSpec[] = [
     name: 'Scheduled-task run-history prune',
   },
   { kind: BUS_OUTBOX_PRUNE_KIND, slug: 'bus-outbox-prune', name: 'Bus outbox prune' },
+  // Phase 6 of `docs/dev/plans/admin-observability-viewer.md` —
+  // analytics retention. Same `everyone`-layer seeding pattern; the
+  // handler iterates the single `analytics_events` table.
+  {
+    kind: ANALYTICS_PRUNE_KIND,
+    slug: 'analytics-events-prune',
+    name: 'Analytics events retention prune',
+  },
   // Phase 7.6 — proposal-domain retention + stale-refresh jobs. Same
   // `everyone`-layer seeding pattern (admin-only edit via
   // `canEditLayer`); the handlers themselves iterate every layer.

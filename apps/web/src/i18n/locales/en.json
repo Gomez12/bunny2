@@ -242,6 +242,7 @@
       "events": "Events",
       "llmCalls": "LLM calls",
       "chatRuns": "Chat pipeline runs",
+      "analytics": "Analytics",
       "sections": {
         "usersAndGroups": "Users & Groups",
         "operations": "Operations",
@@ -448,6 +449,56 @@
           "status": "Status",
           "id": "Call id"
         }
+      }
+    },
+    "analytics": {
+      "title": "Analytics events",
+      "description": "Read-only view of the analytics_events sink. The catalogue in docs/dev/observability/analytics.md bounds the event names and properties.",
+      "refresh": "Refresh",
+      "loadMore": "Load more",
+      "endOfResults": "End of results",
+      "empty": "No analytics events match the current filters.",
+      "viewDetail": "Details",
+      "rollups": {
+        "label": "Analytics rollups",
+        "heading": "Rollups",
+        "window24h": "Last 24h",
+        "window7d": "Last 7 days",
+        "total": "Total: {{count}}",
+        "empty": "No events in this window."
+      },
+      "filters": {
+        "label": "Filter analytics events",
+        "eventName": "Event name",
+        "eventNameAll": "All event names",
+        "layerSlug": "Layer slug",
+        "userIdHash": "User id hash",
+        "userIdHashHint": "Full SHA-256 hex digest as stored in user_id_hash.",
+        "from": "From",
+        "to": "To",
+        "apply": "Apply",
+        "reset": "Reset"
+      },
+      "columns": {
+        "occurredAt": "Occurred at",
+        "eventName": "Event",
+        "layerSlug": "Layer",
+        "userIdHash": "User hash",
+        "actions": "Actions"
+      },
+      "detail": {
+        "title": "Analytics event",
+        "id": "Event id",
+        "layerSlug": "Layer slug",
+        "userIdHash": "User id hash",
+        "ingestedAt": "Ingested at",
+        "documentedProps": "Documented properties (catalogue)",
+        "documentedPropsEmpty": "This event has no documented properties.",
+        "eventNameUnknown": "This event name is not in the current catalogue; the row predates the latest schema.",
+        "rowProps": "This row's properties",
+        "rowPropsEmpty": "(no properties)",
+        "rowPropsInvalid": "Stored properties_json is not a valid object.",
+        "driftedKeys": "Drifted keys not in catalogue: {{keys}}"
       }
     },
     "users": {
@@ -1043,6 +1094,10 @@
         "invalidStatus": "Status filter must be \"ok\" or \"err\".",
         "notFound": "The requested LLM call was not found."
       }
+    },
+    "analytics": {
+      "invalidEnvelope": "The analytics request envelope is malformed.",
+      "payloadTooLarge": "The analytics request is too large or contains too many events."
     },
     "layer": {
       "badRequest": "The request could not be processed. Please check the input and try again.",

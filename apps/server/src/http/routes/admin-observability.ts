@@ -79,6 +79,7 @@ export function registerAdminObservabilityRoutes(
 
   registerLlmCallsRoutes(app, deps, now);
   registerChatRunsRoutes(app, deps, now);
+  registerAdminAnalyticsRoutes(app, deps, now);
 
   // ---------- GET /admin/observability/events ----------------------------
 
@@ -1621,4 +1622,358 @@ function queryRunLinkedLlmCalls(
     costUsd: r.cost_usd,
     hasError: r.error !== null,
   }));
+}
+
+// ====================================================================
+// Phase 6 — /admin/observability/analytics (+ /rollups)
+// ====================================================================
+//
+// Read-only admin viewer for the `analytics_events` table seeded by
+// `POST /analytics/events`. Filters mirror the indexed columns
+// (`event_name`, `layer_slug`, `user_id_hash`, plus `(from, to)` on
+// `occurred_at`); cursor pagination uses the same row-value
+// comparison pattern as Phase 2/3/5 so a row inserted between page
+// calls neither duplicates nor skips a paginated row.
+//
+// The `/rollups` endpoint is registered BEFORE no per-id route lives
+// here, but it stays first by convention — the future `:id` route
+// (if any) would clash if added later.
+
+import { listCatalogueEntries } from '../../analytics/catalogue';
+
+interface AnalyticsFilter {
+  readonly eventName: string | null;
+  readonly layerSlug: string | null;
+  readonly userIdHash: string | null;
+  readonly from: string | null;
+  readonly to: string | null;
+  readonly limit: number;
+  readonly cursor: AnalyticsCursor | null;
+}
+
+export interface AnalyticsCursor {
+  readonly ts: string;
+  readonly id: string;
+}
+
+interface AnalyticsSqlRow {
+  id: string;
+  occurred_at: string;
+  event_name: string;
+  layer_slug: string | null;
+  user_id_hash: string | null;
+  properties_json: string;
+  ingested_at: string;
+}
+
+export interface AnalyticsListItem {
+  readonly id: string;
+  readonly occurredAt: string;
+  readonly eventName: string;
+  readonly layerSlug: string | null;
+  readonly userIdHash: string | null;
+  readonly propertiesJson: string;
+  readonly ingestedAt: string;
+}
+
+export interface AnalyticsCatalogueEntry {
+  readonly name: string;
+  readonly allowedProps: readonly string[];
+}
+
+export interface AnalyticsListResponse {
+  readonly rows: readonly AnalyticsListItem[];
+  readonly nextCursor: string | null;
+  /** The closed catalogue surfaced inline so the viewer can render
+   *  the per-event property schema next to a row's actual props. */
+  readonly catalogue: readonly AnalyticsCatalogueEntry[];
+}
+
+export interface AnalyticsRollupWindowItem {
+  readonly eventName: string;
+  readonly count: number;
+}
+
+export interface AnalyticsRollupsResponse {
+  readonly window24h: readonly AnalyticsRollupWindowItem[];
+  readonly window7d: readonly AnalyticsRollupWindowItem[];
+  /** Aggregate count across all rows in the window (NOT per-event). */
+  readonly totalCount24h: number;
+  readonly totalCount7d: number;
+}
+
+function registerAdminAnalyticsRoutes(
+  app: Hono<{ Variables: HonoVariables }>,
+  deps: AdminObservabilityRouteDeps,
+  now: () => number,
+): void {
+  // ---------- GET /admin/observability/analytics/rollups ---------------
+  // Registered BEFORE the list route so a future `/:id` cannot
+  // accidentally swallow `rollups`. Same Hono-registration-order
+  // discipline as Phase 3's `/llm-calls/rollups`.
+
+  app.get('/admin/observability/analytics/rollups', async (c) => {
+    const startMs = now();
+    const nowMs = now();
+    const rollups = computeAnalyticsRollups(deps.db, nowMs);
+    const durationMs = Math.max(0, now() - startMs);
+
+    console.log('[admin.observability.analytics.rollups]', {
+      event: 'admin.observability.analytics.rollups',
+      durationMs,
+      count24h: rollups.totalCount24h,
+      count7d: rollups.totalCount7d,
+    });
+
+    try {
+      await deps.bus.publish({
+        type: ADMIN_OBSERVABILITY_EVENT_TYPES.AnalyticsRollups,
+        payload: {
+          durationMs,
+          count24h: rollups.totalCount24h,
+          count7d: rollups.totalCount7d,
+        },
+      });
+    } catch {
+      // Telemetry must never break a read. Swallow.
+    }
+
+    return c.json(rollups);
+  });
+
+  // ---------- GET /admin/observability/analytics -----------------------
+
+  app.get('/admin/observability/analytics', async (c) => {
+    const parsed = parseAnalyticsQuery(c.req.query());
+    if (parsed.kind === 'error') {
+      return c.json({ error: parsed.errorKey }, 400);
+    }
+    const filter = parsed.filter;
+    const startMs = now();
+
+    const { rows, nextCursor } = queryAnalyticsEvents(deps.db, filter);
+
+    const durationMs = Math.max(0, now() - startMs);
+    const filterKeys = describeAnalyticsFilterKeys(filter);
+
+    console.log('[admin.observability.analytics.query]', {
+      event: 'admin.observability.analytics.query',
+      filterKeys,
+      limit: filter.limit,
+      hasCursor: filter.cursor !== null,
+      rowCount: rows.length,
+      durationMs,
+    });
+
+    try {
+      await deps.bus.publish({
+        type: ADMIN_OBSERVABILITY_EVENT_TYPES.AnalyticsQuery,
+        payload: {
+          durationMs,
+          rowCount: rows.length,
+          filterKeys,
+          limit: filter.limit,
+          hasCursor: filter.cursor !== null,
+        },
+      });
+    } catch {
+      // Telemetry must never break a read. Swallow.
+    }
+
+    const response: AnalyticsListResponse = {
+      rows,
+      nextCursor,
+      catalogue: listCatalogueEntries(),
+    };
+    return c.json(response);
+  });
+}
+
+// ---------- query parser ---------------------------------------------------
+
+type AnalyticsParseResult =
+  | { readonly kind: 'ok'; readonly filter: AnalyticsFilter }
+  | { readonly kind: 'error'; readonly errorKey: string };
+
+/**
+ * Parses the query-string for `GET /admin/observability/analytics`.
+ * Exported for unit tests.
+ */
+export function parseAnalyticsQuery(
+  query: Record<string, string | undefined>,
+): AnalyticsParseResult {
+  const limit = parseLimit(query.limit);
+  const cursor = parseAnalyticsCursor(query.cursor);
+  if (cursor === 'invalid') {
+    return { kind: 'error', errorKey: 'errors.admin.observability.invalidCursor' };
+  }
+
+  const from = normalizeIso(query.from);
+  if (from === 'invalid') {
+    return { kind: 'error', errorKey: 'errors.admin.observability.invalidTimestamp' };
+  }
+  const to = normalizeIso(query.to);
+  if (to === 'invalid') {
+    return { kind: 'error', errorKey: 'errors.admin.observability.invalidTimestamp' };
+  }
+
+  return {
+    kind: 'ok',
+    filter: {
+      eventName: nonEmpty(query.eventName),
+      layerSlug: nonEmpty(query.layerSlug),
+      userIdHash: nonEmpty(query.userIdHash),
+      from,
+      to,
+      limit,
+      cursor,
+    },
+  };
+}
+
+/** Cursor encode for the analytics list. Same scheme as the other admin viewers. */
+export function encodeAnalyticsCursor(cursor: AnalyticsCursor): string {
+  const json = JSON.stringify({ ts: cursor.ts, id: cursor.id });
+  return Buffer.from(json, 'utf8').toString('base64url');
+}
+
+export function parseAnalyticsCursor(raw: string | undefined): AnalyticsCursor | null | 'invalid' {
+  if (raw === undefined || raw === '') return null;
+  let json: string;
+  try {
+    json = Buffer.from(raw, 'base64url').toString('utf8');
+  } catch {
+    return 'invalid';
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return 'invalid';
+  }
+  if (
+    parsed === null ||
+    typeof parsed !== 'object' ||
+    typeof (parsed as { ts?: unknown }).ts !== 'string' ||
+    typeof (parsed as { id?: unknown }).id !== 'string'
+  ) {
+    return 'invalid';
+  }
+  const obj = parsed as { ts: string; id: string };
+  return { ts: obj.ts, id: obj.id };
+}
+
+function describeAnalyticsFilterKeys(filter: AnalyticsFilter): readonly string[] {
+  const keys: string[] = [];
+  if (filter.eventName !== null) keys.push('eventName');
+  if (filter.layerSlug !== null) keys.push('layerSlug');
+  if (filter.userIdHash !== null) keys.push('userIdHash');
+  if (filter.from !== null) keys.push('from');
+  if (filter.to !== null) keys.push('to');
+  return keys;
+}
+
+// ---------- list query -----------------------------------------------------
+
+interface AnalyticsListQueryResult {
+  readonly rows: readonly AnalyticsListItem[];
+  readonly nextCursor: string | null;
+}
+
+function queryAnalyticsEvents(db: Database, filter: AnalyticsFilter): AnalyticsListQueryResult {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (filter.eventName !== null) {
+    where.push('event_name = ?');
+    params.push(filter.eventName);
+  }
+  if (filter.layerSlug !== null) {
+    where.push('layer_slug = ?');
+    params.push(filter.layerSlug);
+  }
+  if (filter.userIdHash !== null) {
+    where.push('user_id_hash = ?');
+    params.push(filter.userIdHash);
+  }
+  if (filter.from !== null) {
+    where.push('occurred_at >= ?');
+    params.push(filter.from);
+  }
+  if (filter.to !== null) {
+    where.push('occurred_at <= ?');
+    params.push(filter.to);
+  }
+  if (filter.cursor !== null) {
+    where.push('(occurred_at, id) < (?, ?)');
+    params.push(filter.cursor.ts, filter.cursor.id);
+  }
+
+  const whereSql = where.length === 0 ? '' : `WHERE ${where.join(' AND ')}`;
+  const limitPlusOne = filter.limit + 1;
+  const sql = `SELECT id, occurred_at, event_name, layer_slug, user_id_hash,
+                      properties_json, ingested_at
+                 FROM analytics_events
+                 ${whereSql}
+                ORDER BY occurred_at DESC, id DESC
+                LIMIT ?`;
+  const rows = db.query<AnalyticsSqlRow, typeof params>(sql).all(...params, limitPlusOne);
+
+  const pageRows = rows.slice(0, filter.limit);
+  const hasMore = rows.length > filter.limit;
+  const last = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasMore && last !== undefined
+      ? encodeAnalyticsCursor({ ts: last.occurred_at, id: last.id })
+      : null;
+
+  return {
+    rows: pageRows.map(toAnalyticsListItem),
+    nextCursor,
+  };
+}
+
+function toAnalyticsListItem(row: AnalyticsSqlRow): AnalyticsListItem {
+  return {
+    id: row.id,
+    occurredAt: row.occurred_at,
+    eventName: row.event_name,
+    layerSlug: row.layer_slug,
+    userIdHash: row.user_id_hash,
+    propertiesJson: row.properties_json,
+    ingestedAt: row.ingested_at,
+  };
+}
+
+// ---------- rollups --------------------------------------------------------
+
+function computeAnalyticsRollups(db: Database, nowMs: number): AnalyticsRollupsResponse {
+  const cutoff24h = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+  const cutoff7d = new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString();
+  return {
+    window24h: countByEventName(db, cutoff24h),
+    window7d: countByEventName(db, cutoff7d),
+    totalCount24h: countWindow(db, cutoff24h),
+    totalCount7d: countWindow(db, cutoff7d),
+  };
+}
+
+function countByEventName(db: Database, cutoff: string): readonly AnalyticsRollupWindowItem[] {
+  const stmt = db.query<{ event_name: string; n: number }, [string]>(
+    `SELECT event_name, COUNT(*) AS n
+       FROM analytics_events
+      WHERE occurred_at >= ?
+      GROUP BY event_name
+      ORDER BY n DESC, event_name ASC`,
+  );
+  return stmt.all(cutoff).map((r) => ({ eventName: r.event_name, count: r.n }));
+}
+
+function countWindow(db: Database, cutoff: string): number {
+  const row = db
+    .query<
+      { n: number },
+      [string]
+    >(`SELECT COUNT(*) AS n FROM analytics_events WHERE occurred_at >= ?`)
+    .get(cutoff);
+  return row?.n ?? 0;
 }

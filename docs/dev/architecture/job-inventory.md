@@ -47,6 +47,7 @@ Reference: [`scheduled-tasks.md`](./scheduled-tasks.md),
 | `proposals.replan-stale`      | `everyone`  | every 24 h      | `apps/server/src/proposals/replan-stale-handler.ts`      | yes          |
 | `proposals.auto-activate`     | `everyone`  | every 1 h       | `apps/server/src/proposals/auto-activate-handler.ts`     | yes          |
 | `entity.whiteboards.enrich`   | `everyone`  | every 24 h      | `apps/server/src/entities/whiteboards/scheduled.ts`      | yes          |
+| `analytics.events.prune`      | `everyone`  | every 24 h      | `apps/server/src/scheduled/built-in/analytics-prune.ts`  | no           |
 
 <!-- job-inventory:end -->
 

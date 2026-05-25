@@ -83,6 +83,11 @@ const SECTIONS: readonly AdminNavSection[] = [
         labelKey: 'admin.nav.chatRuns',
         path: '/admin/observability/chat-runs',
       },
+      {
+        key: 'analytics',
+        labelKey: 'admin.nav.analytics',
+        path: '/admin/observability/analytics',
+      },
     ],
   },
 ];

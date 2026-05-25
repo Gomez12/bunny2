@@ -3,6 +3,16 @@ import { createRoot } from 'react-dom/client';
 import './i18n';
 import './index.css';
 import { App } from './App';
+import { configureAnalytics } from './lib/analytics';
+import { httpAnalyticsSink } from './lib/analytics-http-sink';
+
+// Phase 6 of `docs/dev/plans/admin-observability-viewer.md` — wire
+// the production analytics sink. `httpAnalyticsSink` batches, retries
+// on transient failure, drops on overflow, and never throws (see
+// `apps/web/src/lib/analytics-http-sink.ts`). Calling here keeps the
+// "once at app bootstrap" contract documented in
+// `docs/dev/observability/analytics.md`.
+configureAnalytics({ sink: httpAnalyticsSink });
 
 const rootEl = document.getElementById('root');
 if (!rootEl) throw new Error('root element missing');

@@ -39,6 +39,9 @@ import type {
   AdminObservabilityChatRunDetail,
   AdminObservabilityChatRunsFilter,
   AdminObservabilityChatRunsResponse,
+  AdminObservabilityAnalyticsFilter,
+  AdminObservabilityAnalyticsResponse,
+  AdminObservabilityAnalyticsRollupsResponse,
   AdminGroupDetailResponse,
   AdminGroupListResponse,
   AdminGroupRow,
@@ -1597,6 +1600,45 @@ export async function getAdminObservabilityChatRun(
   const qs = options.raw === true ? '?raw=true' : '';
   return request<AdminObservabilityChatRunDetail>(
     `/admin/observability/chat-runs/${encodeURIComponent(id)}${qs}`,
+  );
+}
+
+/**
+ * Phase 6 of `docs/dev/plans/admin-observability-viewer.md` —
+ * `GET /admin/observability/analytics`. Cursor pagination with
+ * `(occurred_at DESC, id DESC)` ordering; the response includes the
+ * closed catalogue inline so the viewer can label which properties
+ * are documented per event name.
+ */
+export async function listAdminObservabilityAnalytics(
+  filter: AdminObservabilityAnalyticsFilter = {},
+): Promise<AdminObservabilityAnalyticsResponse> {
+  const params = new URLSearchParams();
+  if (filter.eventName !== undefined && filter.eventName !== '') {
+    params.set('eventName', filter.eventName);
+  }
+  if (filter.layerSlug !== undefined && filter.layerSlug !== '') {
+    params.set('layerSlug', filter.layerSlug);
+  }
+  if (filter.userIdHash !== undefined && filter.userIdHash !== '') {
+    params.set('userIdHash', filter.userIdHash);
+  }
+  if (filter.from !== undefined && filter.from !== '') params.set('from', filter.from);
+  if (filter.to !== undefined && filter.to !== '') params.set('to', filter.to);
+  if (filter.limit !== undefined) params.set('limit', String(filter.limit));
+  if (filter.cursor !== undefined && filter.cursor !== '') params.set('cursor', filter.cursor);
+  const qs = params.toString();
+  const path = `/admin/observability/analytics${qs.length === 0 ? '' : `?${qs}`}`;
+  return request<AdminObservabilityAnalyticsResponse>(path);
+}
+
+/**
+ * `GET /admin/observability/analytics/rollups` — rolling 24h / 7d
+ * per-event-name counts plus per-window totals.
+ */
+export async function getAdminObservabilityAnalyticsRollups(): Promise<AdminObservabilityAnalyticsRollupsResponse> {
+  return request<AdminObservabilityAnalyticsRollupsResponse>(
+    '/admin/observability/analytics/rollups',
   );
 }
 

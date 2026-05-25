@@ -14,7 +14,7 @@ describe('migrations', () => {
     const dir = mkTmp();
     const db = openDatabase(dir);
     try {
-      expect(currentSchemaVersion(db)).toBe('0021_whiteboards');
+      expect(currentSchemaVersion(db)).toBe('0022_analytics_events');
       const tables = db
         .query<{ name: string }, []>(
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -151,6 +151,12 @@ describe('migrations', () => {
       expect(indexes).toContain('idx_whiteboards_layer');
       expect(indexes).toContain('idx_whiteboards_layer_updated_at');
       expect(indexes).toContain('idx_whiteboards_deleted_at');
+      // 0022 — Phase 6 admin-observability analytics sink.
+      expect(tables).toContain('analytics_events');
+      expect(indexes).toContain('idx_analytics_events_occurred_at');
+      expect(indexes).toContain('idx_analytics_events_event_name');
+      expect(indexes).toContain('idx_analytics_events_layer_slug');
+      expect(indexes).toContain('idx_analytics_events_user_id_hash');
 
       // 0007 — layer_attachments.kind CHECK extended to accept
       // `'connector'`. Asserting via INSERT is the only portable way
@@ -273,7 +279,9 @@ describe('migrations', () => {
         '0017_proposals_phase8',
         '0018_layer_chat_settings',
         '0019_chat_conversation_auto_summary',
+        '0020_proposals_auto_rollback',
         '0021_whiteboards',
+        '0022_analytics_events',
       ]);
     } finally {
       db2.close();

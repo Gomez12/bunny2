@@ -44,6 +44,7 @@ import { registerScheduledTasksRoutes } from './routes/scheduled-tasks';
 import { registerAdminScheduledTasksRoutes } from './routes/admin-scheduled-tasks';
 import { registerAdminBusRoutes } from './routes/admin-bus';
 import { registerAdminObservabilityRoutes } from './routes/admin-observability';
+import { registerAnalyticsRoutes } from './routes/analytics';
 import { registerLayerChatRoutes } from './routes/layer-chat';
 import { registerLayerProposalsRoutes } from './routes/layer-proposals';
 import { registerLayerCapabilitiesRoutes } from './routes/layer-capabilities';
@@ -308,6 +309,16 @@ export function createApp(deps: AppDeps): Hono<{ Variables: HonoVariables }> {
     ...(deps.replayDlq === undefined ? {} : { replayDlq: deps.replayDlq }),
   });
   registerAdminObservabilityRoutes(app, {
+    bus: deps.bus,
+    db: deps.db,
+  });
+
+  // Phase 6 of `docs/dev/plans/admin-observability-viewer.md` —
+  // `POST /analytics/events` ingest endpoint. Mounted OUTSIDE the
+  // `/admin/*` prefix on purpose: it sits behind the default
+  // `requireAuth` middleware (so every signed-in user can write to
+  // it) but NOT `requireAdmin`. ADR 0031 D2 + plan R1 mitigation.
+  registerAnalyticsRoutes(app, {
     bus: deps.bus,
     db: deps.db,
   });

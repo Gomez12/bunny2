@@ -832,6 +832,126 @@ properties_json, ingested_at)`.
   redaction sanity (no raw search text reaches storage),
   prune job, viewer smoke.
 
+#### Phase 6 — outcomes
+
+Shipped 2026-05-25:
+
+- **Migration** —
+  `apps/server/src/storage/migrations/0022_analytics_events.sql`.
+  Columns mirror ADR 0031 D1 (`id`, `occurred_at`, `event_name`,
+  `layer_slug`, `user_id_hash`, `properties_json`, `ingested_at`).
+  Indexes on every filter column the viewer offers per §14 R2:
+  `idx_analytics_events_occurred_at`,
+  `idx_analytics_events_event_name`,
+  `idx_analytics_events_layer_slug`,
+  `idx_analytics_events_user_id_hash`. All TEXT/UUID, Postgres-portable
+  per ADR 0002.
+- **Closed catalogue module** —
+  `apps/server/src/analytics/catalogue.ts`. Single source of truth that
+  the ingest endpoint validates against. Three call sites that were
+  not in `analytics.md` were added to both the docs catalogue AND the
+  enforcement module: `chat_conversation_title_regenerated`,
+  `chat_message_trace_inspected`, `layer_member_removed`. Without that
+  reconciliation the new sink would have started rejecting real
+  production events on flip-on.
+- **Hash strategy** —
+  `apps/server/src/analytics/hash.ts`. HMAC-SHA256 keyed off
+  `BUNNY2_ENCRYPTION_KEY` when the env is set; SHA-256 fallback when
+  it is absent. Documented in `analytics.md`. Hash width is the full
+  64-char hex digest at rest; the admin viewer truncates for display.
+- **Ingest endpoint** —
+  `POST /analytics/events` at
+  `apps/server/src/http/routes/analytics.ts`. Behind `requireAuth`
+  (NOT `requireAdmin` — mounted OUTSIDE the `/admin/*` prefix).
+  Validates against the catalogue: rejects unknown event names AND
+  unknown property keys with a closed-string `reason` set
+  (`unknown_name` / `unknown_property` / `invalid_envelope` /
+  `payload_too_large` / `invalid_property_value`). Body cap 32 KB
+  enforced BEFORE `JSON.parse`. Status policy: 400 when every event
+  in the request was rejected (so a single-event client and the web
+  sink's non-retryable branch both see the failure per ADR 0031 D2);
+  200 with per-event `{ ingested, rejected }` for mixed batches so
+  the sink does not re-send the accepted half. Whole-request
+  failures (oversize, malformed envelope) return 4xx with a stable
+  `errors.analytics.*` key.
+  Property-value typecheck restricts values to `string | number |
+boolean | null` — defence against nested-object payloads sneaking
+  raw content through a known key.
+- **Reject (don't sanitise) decision** — the endpoint rejects unknown
+  properties rather than dropping them silently. ADR 0031 D2 +
+  redaction-audit Finding 2 are explicit that catalogue-bounded
+  ingestion is what makes inline rendering of `properties_json`
+  safe. Silently dropping keys would mask a misbehaving client.
+- **Admin viewer endpoint** —
+  `GET /admin/observability/analytics` + `…/rollups`, appended to
+  `apps/server/src/http/routes/admin-observability.ts`. Cursor scheme
+  - row-value comparison match Phase 2/3/5 (`(occurred_at, id) < (?,?)`
+    DESC, base64url `{ts,id}` cursor). The list response inlines the
+    closed catalogue so the drawer can label which properties are
+    documented per event name (drift detection — no extra round-trip).
+- **Web sink** —
+  `apps/web/src/lib/analytics-http-sink.ts`. Batches up to 20 events
+  or 5 seconds; max queue 200 events with oldest-drop on overflow;
+  one retry on transient (`TypeError` from fetch or HTTP
+  408 / 429 / 5xx) before discard. Never throws — failures land in
+  `console.warn` only. Wired exactly once from
+  `apps/web/src/main.tsx`.
+- **Overflow drop behaviour** — when the buffer overflows the
+  oldest events are dropped and a single `console.warn` line with
+  the running drop count fires. Deliberately NOT a per-drop
+  telemetry POST (recursion risk back into the same surface; would
+  also force a meta-event into the closed catalogue). Aggregate
+  visibility falls to ops queries on the captured `console.warn`
+  output.
+- **Admin viewer page** —
+  `apps/web/src/pages/admin/AdminAnalyticsPage.tsx`. Filter form
+  (event-name `<select>` sourced from the inlined catalogue, layer
+  slug, user-id hash, from/to), rollups card with 24h / 7d top-5
+  per-event counts, paginated table, detail drawer pairing the row's
+  `properties_json` with the catalogue's documented property schema
+  and flagging any drifted keys with `role="alert"`.
+- **Nav + route** — `AdminNav` Observability section gained an
+  `Analytics` entry; route `/admin/observability/analytics` mounted
+  behind `isAdmin` in `App.tsx`; `pageTitleFor` returns
+  `admin.analytics.title`.
+- **i18n** — `admin.analytics.*`, `admin.nav.analytics`, and
+  `errors.analytics.*` added to both `en.json` and `nl.json`.
+- **Prune job** — `analytics.events.prune` registered as a built-in
+  via `analytics-prune.ts` + `built-in/index.ts` +
+  `scheduled/index.ts` + `seed.ts`. Default retention 90 days per
+  ADR 0031 D4; overridable per env via `ANALYTICS_RETENTION_DAYS`
+  and per task row via `config.retentionDays`. Daily cadence. Job
+  inventory row added to
+  `docs/dev/architecture/job-inventory.md`.
+- **Telemetry catalogue additions** — extended
+  `ADMIN_OBSERVABILITY_EVENT_TYPES` with `AnalyticsQuery` and
+  `AnalyticsRollups`. A separate `ANALYTICS_SINK_EVENT_TYPES`
+  catalogue carries `analytics.events.ingested` /
+  `analytics.events.rejected` / `analytics.events.pruned`. Payload
+  shapes documented inline (see
+  `apps/server/src/observability/events.ts`).
+- **Tests** —
+  `apps/server/tests/http-analytics.test.ts` covers ingest happy path
+  (hashed user id stored, raw id never), reject unknown name +
+  unknown property, oversize body 413, redaction sanity (a hostile
+  batch with raw text gets dropped on the property check), 401
+  without bearer, prune-by-retention, env retention parsing, admin
+  viewer list + rollups + 403 non-admin + cursor stability.
+  `apps/web/tests/analytics-http-sink.test.ts` covers batching,
+  never-throws on fetch reject + 4xx + 500, overflow-drop without
+  throwing.
+- **Deviations from the wireframe / spec** —
+  - The rollups card uses a two-column grid (24h | 7d) rather than
+    the ASCII layout; the underlying metric set is per-event-name
+    count + per-window total.
+  - The drawer drift indicator surfaces any present-but-undocumented
+    key as a `role="alert"` line. The wireframe described "highlight"
+    only; an alert role makes the signal a screen-reader announcement
+    too.
+  - Per advisor note 8: overflow drop count surfaces via
+    `console.warn` only — no per-drop telemetry POST.
+- **Commit pending below.**
+
 ### Phase 7 — Smoke + i18n + a11y + docs + close-out (est. 4h)
 
 - Full smoke run.

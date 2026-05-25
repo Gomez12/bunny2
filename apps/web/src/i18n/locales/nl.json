@@ -190,6 +190,7 @@
       "events": "Events",
       "llmCalls": "LLM-calls",
       "chatRuns": "Chat-pipelineruns",
+      "analytics": "Analytics",
       "sections": {
         "usersAndGroups": "Gebruikers & groepen",
         "operations": "Operatie",
@@ -396,6 +397,56 @@
           "status": "Status",
           "id": "Call-id"
         }
+      }
+    },
+    "analytics": {
+      "title": "Analytics-events",
+      "description": "Alleen-lezen weergave van de analytics_events-sink. De catalogus in docs/dev/observability/analytics.md begrenst de eventnamen en eigenschappen.",
+      "refresh": "Vernieuwen",
+      "loadMore": "Meer laden",
+      "endOfResults": "Einde van de resultaten",
+      "empty": "Geen analytics-events komen overeen met de huidige filters.",
+      "viewDetail": "Details",
+      "rollups": {
+        "label": "Analytics-rollups",
+        "heading": "Rollups",
+        "window24h": "Laatste 24u",
+        "window7d": "Laatste 7 dagen",
+        "total": "Totaal: {{count}}",
+        "empty": "Geen events in dit venster."
+      },
+      "filters": {
+        "label": "Filter analytics-events",
+        "eventName": "Eventnaam",
+        "eventNameAll": "Alle eventnamen",
+        "layerSlug": "Layer-slug",
+        "userIdHash": "Gebruikers-id-hash",
+        "userIdHashHint": "Volledige SHA-256 hex-digest zoals opgeslagen in user_id_hash.",
+        "from": "Vanaf",
+        "to": "Tot",
+        "apply": "Toepassen",
+        "reset": "Wissen"
+      },
+      "columns": {
+        "occurredAt": "Tijdstip",
+        "eventName": "Event",
+        "layerSlug": "Layer",
+        "userIdHash": "Gebruikershash",
+        "actions": "Acties"
+      },
+      "detail": {
+        "title": "Analytics-event",
+        "id": "Event-id",
+        "layerSlug": "Layer-slug",
+        "userIdHash": "Gebruikers-id-hash",
+        "ingestedAt": "Ingest-tijdstip",
+        "documentedProps": "Gedocumenteerde eigenschappen (catalogus)",
+        "documentedPropsEmpty": "Dit event kent geen gedocumenteerde eigenschappen.",
+        "eventNameUnknown": "Deze eventnaam staat niet in de huidige catalogus; de rij dateert van vóór het nieuwste schema.",
+        "rowProps": "Eigenschappen van deze rij",
+        "rowPropsEmpty": "(geen eigenschappen)",
+        "rowPropsInvalid": "Het opgeslagen properties_json is geen geldig object.",
+        "driftedKeys": "Afwijkende sleutels niet in catalogus: {{keys}}"
       }
     },
     "layers": {
@@ -847,6 +898,10 @@
         "invalidStatus": "Het statusfilter moet \"ok\" of \"err\" zijn.",
         "notFound": "De gevraagde LLM-call is niet gevonden."
       }
+    },
+    "analytics": {
+      "invalidEnvelope": "De envelop van de analytics-aanvraag is ongeldig.",
+      "payloadTooLarge": "De analytics-aanvraag is te groot of bevat te veel events."
     },
     "entity": {
       "notFound": "Item niet gevonden.",

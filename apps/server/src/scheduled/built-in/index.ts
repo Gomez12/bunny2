@@ -20,3 +20,10 @@ export type { CreateLlmPruneHandlerDeps } from './llm-prune';
 export { SYSTEM_HEALTHCHECK_KIND, createHealthcheckHandler } from './healthcheck';
 export type { CreateHealthcheckHandlerDeps } from './healthcheck';
 export { BUS_OUTBOX_PRUNE_KIND, busOutboxPruneHandler, pruneBusOutbox } from './bus-outbox-prune';
+export {
+  ANALYTICS_PRUNE_KIND,
+  createAnalyticsPruneHandler,
+  pruneAnalyticsEvents,
+  readAnalyticsRetentionDaysFromEnv,
+} from './analytics-prune';
+export type { CreateAnalyticsPruneHandlerDeps } from './analytics-prune';

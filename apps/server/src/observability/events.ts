@@ -14,9 +14,12 @@
  * Phase 2 ships `EventsQuery`; phase 3 adds three LLM-calls events
  * (`LlmCallsQuery` / `LlmCallsDetail` / `LlmCallsRollups`); phase 4
  * appends three chat-runs events (`ChatRunsQuery` / `ChatRunsDetail`
- * / `ChatRunsRawContentViewed`); phase 6 will append
- * `AnalyticsQuery`. The const-tuple keeps the catalogue closed at
- * compile time so a typo in a producer fails the typecheck.
+ * / `ChatRunsRawContentViewed`); phase 5 adds bus-outbox events;
+ * phase 6 appends `AnalyticsQuery` / `AnalyticsRollups` for the admin
+ * viewer surface AND the separate `analytics.events.*` family
+ * (`Ingested` / `Rejected` / `Pruned`) for the web-sink write path.
+ * The const-tuple keeps the catalogue closed at compile time so a
+ * typo in a producer fails the typecheck.
  */
 
 export const ADMIN_OBSERVABILITY_EVENT_TYPES = {
@@ -29,7 +32,91 @@ export const ADMIN_OBSERVABILITY_EVENT_TYPES = {
   ChatRunsRawContentViewed: 'admin.observability.chat-runs.raw-content.viewed',
   BusOutboxQuery: 'admin.observability.bus-outbox.query',
   BusOutboxDetail: 'admin.observability.bus-outbox.detail',
+  AnalyticsQuery: 'admin.observability.analytics.query',
+  AnalyticsRollups: 'admin.observability.analytics.rollups',
 } as const;
+
+/**
+ * Phase 6 — separate `analytics.events.*` family for the WRITE path
+ * (`POST /analytics/events`) and the retention job. Kept apart from
+ * the `admin.observability.*` namespace because these are not
+ * admin-viewer queries — they fire on user-driven ingest and on the
+ * scheduled prune. Both are stable-named, low-cardinality
+ * (`event_name` dimension is bounded by the catalogue in
+ * `apps/server/src/analytics/catalogue.ts`).
+ */
+export const ANALYTICS_SINK_EVENT_TYPES = {
+  Ingested: 'analytics.events.ingested',
+  Rejected: 'analytics.events.rejected',
+  Pruned: 'analytics.events.pruned',
+} as const;
+
+export type AnalyticsSinkEventType =
+  (typeof ANALYTICS_SINK_EVENT_TYPES)[keyof typeof ANALYTICS_SINK_EVENT_TYPES];
+
+/**
+ * Phase 6 — admin analytics-viewer list query payload. Same shape as
+ * the other admin viewer query events so a SELECT against `events`
+ * can aggregate latency across the whole admin observability
+ * surface.
+ */
+export interface AdminObservabilityAnalyticsQueryPayload {
+  readonly durationMs: number;
+  readonly rowCount: number;
+  readonly filterKeys: readonly string[];
+  readonly limit: number;
+  readonly hasCursor: boolean;
+}
+
+/**
+ * Phase 6 — admin analytics-viewer rollups payload. Same closed
+ * dimension set as `AdminObservabilityLlmCallsRollupsPayload`; the
+ * counts are aggregates only (no per-event-name labels on the
+ * telemetry event itself — those land in the rollups response body).
+ */
+export interface AdminObservabilityAnalyticsRollupsPayload {
+  readonly durationMs: number;
+  readonly count24h: number;
+  readonly count7d: number;
+}
+
+/**
+ * Phase 6 — `POST /analytics/events` accepted-write payload. The
+ * `event_name` dimension is bounded by the closed catalogue, so it
+ * is safe to label by name (cardinality stays in the dozens). No
+ * per-user / per-layer labels — those would explode cardinality.
+ */
+export interface AnalyticsEventsIngestedPayload {
+  readonly eventName: string;
+}
+
+/**
+ * Phase 6 — `POST /analytics/events` rejection payload. `reason` is
+ * a closed string union so dashboards can pivot on it without
+ * per-payload context. `eventName` is included when known (i.e. the
+ * envelope parsed but failed catalogue validation); name-not-string
+ * rejections set it to `null`.
+ */
+export type AnalyticsEventsRejectedReason =
+  | 'unknown_name'
+  | 'unknown_property'
+  | 'invalid_envelope'
+  | 'payload_too_large'
+  | 'invalid_property_value';
+
+export interface AnalyticsEventsRejectedPayload {
+  readonly eventName: string | null;
+  readonly reason: AnalyticsEventsRejectedReason;
+}
+
+/**
+ * Phase 6 — `analytics.events.prune` outcome payload. `deletedCount`
+ * is an aggregate; no per-row identifiers leave the prune handler.
+ */
+export interface AnalyticsEventsPrunedPayload {
+  readonly deletedCount: number;
+  readonly retentionDays: number;
+}
 
 export type AdminObservabilityEventType =
   (typeof ADMIN_OBSERVABILITY_EVENT_TYPES)[keyof typeof ADMIN_OBSERVABILITY_EVENT_TYPES];

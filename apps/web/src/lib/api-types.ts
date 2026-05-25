@@ -935,3 +935,57 @@ export interface AdminBusOutboxDetail extends AdminBusOutboxRow {
   readonly metadataTruncated: boolean;
   readonly metadataOriginalBytes: number;
 }
+
+/**
+ * Phase 6 of `docs/dev/plans/admin-observability-viewer.md` —
+ * `GET /admin/observability/analytics`. The list row mirrors the
+ * `analytics_events` schema; `propertiesJson` is the raw JSON
+ * payload (catalogue-bounded by ingest, so it is safe to render
+ * inline per the redaction audit).
+ */
+export interface AdminObservabilityAnalyticsRow {
+  readonly id: string;
+  readonly occurredAt: string;
+  readonly eventName: string;
+  readonly layerSlug: string | null;
+  readonly userIdHash: string | null;
+  readonly propertiesJson: string;
+  readonly ingestedAt: string;
+}
+
+export interface AdminObservabilityAnalyticsCatalogueEntry {
+  readonly name: string;
+  readonly allowedProps: readonly string[];
+}
+
+export interface AdminObservabilityAnalyticsFilter {
+  readonly eventName?: string;
+  readonly layerSlug?: string;
+  readonly userIdHash?: string;
+  readonly from?: string;
+  readonly to?: string;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface AdminObservabilityAnalyticsResponse {
+  readonly rows: readonly AdminObservabilityAnalyticsRow[];
+  readonly nextCursor: string | null;
+  readonly catalogue: readonly AdminObservabilityAnalyticsCatalogueEntry[];
+}
+
+/**
+ * Per-window rollup item — one row per event name in the window.
+ * The list is server-sorted by descending count then event name.
+ */
+export interface AdminObservabilityAnalyticsRollupItem {
+  readonly eventName: string;
+  readonly count: number;
+}
+
+export interface AdminObservabilityAnalyticsRollupsResponse {
+  readonly window24h: readonly AdminObservabilityAnalyticsRollupItem[];
+  readonly window7d: readonly AdminObservabilityAnalyticsRollupItem[];
+  readonly totalCount24h: number;
+  readonly totalCount7d: number;
+}

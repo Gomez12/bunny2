@@ -241,6 +241,48 @@ metadata, only the row id and which gated step kinds were
 revealed. Producers must never widen this shape to include the
 raw text — that would defeat the purpose of the gate.
 
+### Analytics ingest + retention log shapes
+
+Phase 6 of
+[`docs/dev/plans/admin-observability-viewer.md`](../plans/admin-observability-viewer.md)
+adds two stable console-log shapes on the analytics write path.
+Both are paired with the bus-event telemetry of the same name
+(see [`telemetry.md`](./telemetry.md) §4).
+
+`analytics.events.rejected` — every rejection on
+`POST /analytics/events`. The endpoint validates against the
+catalogue at
+[`apps/server/src/analytics/catalogue.ts`](../../../apps/server/src/analytics/catalogue.ts);
+unknown event names, unknown properties, malformed envelopes, and
+oversize bodies all land here:
+
+```
+[analytics.events.rejected] {
+  event: 'analytics.events.rejected',
+  eventName: <string | null>,
+  reason:    'unknown_name' | 'unknown_property'
+            | 'invalid_envelope' | 'payload_too_large'
+            | 'invalid_property_value',
+}
+```
+
+`analytics.events.pruned` — the retention sweep
+(`analytics.events.prune`) emits one line per run with the
+deleted-row count and the active retention window. No per-row
+identifiers leave the handler:
+
+```
+[analytics.events.pruned] {
+  event: 'analytics.events.pruned',
+  deletedCount: <number>,
+  retentionDays: <number>,
+}
+```
+
+Producers must never widen these shapes to include the rejected
+payload bytes — privacy contract per
+[`analytics.md §Privacy`](./analytics.md#privacy).
+
 ---
 
 ## 6. Adding a new log call site

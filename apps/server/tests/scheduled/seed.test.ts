@@ -67,7 +67,7 @@ describe('seedSystemScheduledTasksIfNeeded', () => {
     __resetScheduledTaskRegistryForTests();
   });
 
-  it('inserts the four system tasks in the everyone layer on first call, sets the marker', async () => {
+  it('inserts the system tasks in the everyone layer on first call, sets the marker', async () => {
     const db = mkDb();
     try {
       const { everyoneLayerId, adminUserId } = bootstrap(db);
@@ -76,11 +76,12 @@ describe('seedSystemScheduledTasksIfNeeded', () => {
       const bus = new InMemoryMessageBus();
       const res = await seedSystemScheduledTasksIfNeeded({ db, bus, repo });
       expect(res.seeded).toBe(true);
-      expect(res.created).toBe(7);
+      expect(res.created).toBe(8);
 
       const tasks = repo.listTasks({ layerId: everyoneLayerId });
       const kinds = tasks.map((t) => t.kind).sort();
       expect(kinds).toEqual([
+        'analytics.events.prune',
         'bus.outbox.prune',
         'llm.calls.prune',
         'proposals.auto-activate',
@@ -112,8 +113,8 @@ describe('seedSystemScheduledTasksIfNeeded', () => {
       const second = await seedSystemScheduledTasksIfNeeded({ db, bus, repo });
       expect(second.seeded).toBe(false);
       expect(second.created).toBe(0);
-      // Still exactly 4 rows.
-      expect(repo.listTasks().length).toBe(7);
+      // Still the full system-task count.
+      expect(repo.listTasks().length).toBe(8);
     } finally {
       db.close();
     }
@@ -177,7 +178,7 @@ describe('seedSystemScheduledTasksIfNeeded', () => {
       );
       const again = await seedSystemScheduledTasksIfNeeded({ db, bus, repo });
       expect(again.created).toBe(0);
-      expect(repo.listTasks().length).toBe(7);
+      expect(repo.listTasks().length).toBe(8);
     } finally {
       db.close();
     }

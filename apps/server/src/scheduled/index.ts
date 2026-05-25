@@ -35,6 +35,7 @@ import {
   createLlmPruneHandler,
   createHealthcheckHandler,
   busOutboxPruneHandler,
+  createAnalyticsPruneHandler,
 } from './built-in';
 import type { LlmCallLog } from '../llm';
 
@@ -47,6 +48,12 @@ export interface RegisterBuiltInsDeps {
   readonly schemaVersion: string | null;
   /** Stamped into `system.healthcheck.tick` payloads. */
   readonly busAdapter: string;
+  /**
+   * Fallback retention (days) for `analytics.events.prune`. When
+   * omitted, the handler reads `ANALYTICS_RETENTION_DAYS` from
+   * `process.env` and falls back to the ADR-0031-D4 default of 90.
+   */
+  readonly analyticsRetentionDays?: number;
 }
 
 /**
@@ -69,6 +76,11 @@ export function registerBuiltInScheduledTaskHandlers(deps: RegisterBuiltInsDeps)
       busAdapter: deps.busAdapter,
     }),
     busOutboxPruneHandler,
+    createAnalyticsPruneHandler(
+      deps.analyticsRetentionDays === undefined
+        ? {}
+        : { defaultRetentionDays: deps.analyticsRetentionDays },
+    ),
   ];
   for (const handler of handlers) {
     if (getScheduledTaskHandler(handler.kind) === null) {
@@ -138,8 +150,16 @@ export {
   BUS_OUTBOX_PRUNE_KIND,
   busOutboxPruneHandler,
   pruneBusOutbox,
+  ANALYTICS_PRUNE_KIND,
+  createAnalyticsPruneHandler,
+  pruneAnalyticsEvents,
+  readAnalyticsRetentionDaysFromEnv,
 } from './built-in';
-export type { CreateLlmPruneHandlerDeps, CreateHealthcheckHandlerDeps } from './built-in';
+export type {
+  CreateLlmPruneHandlerDeps,
+  CreateHealthcheckHandlerDeps,
+  CreateAnalyticsPruneHandlerDeps,
+} from './built-in';
 
 export { seedSystemScheduledTasksIfNeeded, SYSTEM_SCHEDULED_TASKS_SEED_DONE_KEY } from './seed';
 export type { SeedSystemScheduledTasksDeps, SeedSystemScheduledTasksResult } from './seed';
