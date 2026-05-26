@@ -417,7 +417,7 @@ Allowed statuses:
 
 Keep max 50 `done` tasks in `docs/dev/tasklist.md`.
 
-More than 50 `done` tasks? Move oldest done tasks to:
+More than 50 `done` tasks? Move oldest 25 done tasks to:
 
 ```txt
 docs/dev/tasklistarchive.md
